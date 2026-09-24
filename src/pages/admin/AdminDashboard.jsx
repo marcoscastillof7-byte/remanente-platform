@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router';
 import { api } from '../../utils/api';
-import { Users, BarChart3, BookOpen, Flame, Loader, ChevronRight, Flag } from 'lucide-react';
+import { Users, BarChart3, BookOpen, Flame, Loader, ChevronRight, Flag, MessageSquare } from 'lucide-react';
 
 const AdminDashboard = () => {
   const [stats, setStats] = useState(null);
@@ -42,8 +42,11 @@ const AdminDashboard = () => {
           <Link to="/admin/global-bulk" className="flex items-center gap-2 px-4 py-2 bg-gray-800 text-white rounded hover:bg-gray-900 transition-colors shadow-sm">
             <BookOpen className="w-5 h-5" /> Importador Global
           </Link>
+          <Link to="/admin/suggestions" className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors shadow-sm">
+            <MessageSquare className="w-5 h-5" /> Sugerencias
+          </Link>
           <Link to="/admin/reports" className="flex items-center gap-2 px-4 py-2 bg-danger text-white rounded hover:bg-red-600 transition-colors shadow-sm">
-            <Flag className="w-5 h-5" /> Reportes y Sugerencias
+            <Flag className="w-5 h-5" /> Reportes
           </Link>
         </div>
       </div>

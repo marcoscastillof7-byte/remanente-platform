@@ -14,8 +14,8 @@ const AdminReports = () => {
   const fetchReports = async () => {
     try {
       const data = await api.get('/reports');
-      // Solo mostramos los reportes pendientes en la interfaz
-      setReports(data.filter(r => r.status === 'pendiente'));
+      // Solo mostramos los reportes pendientes que sean de preguntas (question_id !== null)
+      setReports(data.filter(r => r.status === 'pendiente' && r.question_id !== null));
     } catch (err) {
       console.error(err);
     } finally {
@@ -26,7 +26,7 @@ const AdminReports = () => {
   const updateStatus = async (id, status) => {
     try {
       await api.put(`/reports/${id}`, { status });
-      setReports(reports.filter(r => r.id !== id)); // Lo quitamos de la vista automáticamente
+      setReports(reports.filter(r => r.id !== id)); 
     } catch (err) {
       console.error(err);
     }
@@ -36,7 +36,7 @@ const AdminReports = () => {
     if (!confirm('¿Seguro que deseas eliminar y descartar este reporte?')) return;
     try {
       await api.del(`/reports/${id}`);
-      setReports(reports.filter(r => r.id !== id)); // Lo quitamos de la vista automáticamente
+      setReports(reports.filter(r => r.id !== id)); 
     } catch (err) {
       console.error(err);
     }
@@ -53,11 +53,11 @@ const AdminReports = () => {
   return (
     <div className="max-w-6xl mx-auto">
       <h1 className="font-[Cinzel] text-3xl font-bold text-primary mb-8 flex items-center gap-3">
-        <Flag className="w-8 h-8 text-danger" /> Reportes y Sugerencias
+        <Flag className="w-8 h-8 text-danger" /> Reportes de Usuarios
       </h1>
 
       {reports.length === 0 ? (
-        <p className="text-gray-500 text-center py-16">No hay reportes ni sugerencias en este momento.</p>
+        <p className="text-gray-500 text-center py-16">No hay reportes de preguntas en este momento.</p>
       ) : (
         <div className="space-y-6">
           {reports.map(report => (
@@ -72,7 +72,7 @@ const AdminReports = () => {
                       {report.status}
                     </span>
                     <h3 className="font-bold text-primary-dark mt-2">
-                      {report.question_id ? `${report.book_name} - Capítulo ${report.chapter_number}` : 'Sugerencia General de Plataforma'}
+                      {report.book_name} - Capítulo {report.chapter_number}
                     </h3>
                     <p className="text-sm text-gray-500">Reportado por: {report.username} el {new Date(report.created_at).toLocaleDateString('es')}</p>
                   </div>
@@ -90,26 +90,20 @@ const AdminReports = () => {
                   </div>
                 </div>
 
-                {report.question_id && (
-                  <div className="bg-gray-50 p-4 rounded-lg border mb-4">
-                    <p className="font-medium text-gray-800">Pregunta Original:</p>
-                    <p className="text-sm text-gray-600 italic">"{report.question_text}"</p>
-                  </div>
-                )}
+                <div className="bg-gray-50 p-4 rounded-lg border mb-4">
+                  <p className="font-medium text-gray-800">Pregunta Original:</p>
+                  <p className="text-sm text-gray-600 italic">"{report.question_text}"</p>
+                </div>
 
                 <div className="mb-4">
-                  <p className="font-bold text-danger">{report.question_id ? `Problema: ${report.reason}` : `Asunto: ${report.reason}`}</p>
+                  <p className="font-bold text-danger">Problema: {report.reason}</p>
                   {report.details && <p className="text-gray-700 mt-1">Detalles: {report.details}</p>}
                 </div>
 
                 <div className="flex justify-end border-t pt-4">
-                  {report.question_id ? (
-                    <Link to={`/admin/questions/${report.chapter_id}`} className="px-4 py-2 bg-primary text-white rounded hover:bg-primary-light text-sm">
-                      Ir al Gestor de Preguntas de este Capítulo
-                    </Link>
-                  ) : (
-                    <span className="text-sm text-gray-500 italic">Ticket general</span>
-                  )}
+                  <Link to={`/admin/questions/${report.chapter_id}`} className="px-4 py-2 bg-primary text-white rounded hover:bg-primary-light text-sm">
+                    Ir al Gestor de Preguntas de este Capítulo
+                  </Link>
                 </div>
               </div>
             </div>

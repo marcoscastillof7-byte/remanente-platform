@@ -19,6 +19,7 @@ import AdminDashboard from './pages/admin/AdminDashboard';
 import UserPerformance from './pages/admin/UserPerformance';
 import QuestionManager from './pages/admin/QuestionManager';
 import AdminReports from './pages/admin/AdminReports';
+import AdminSuggestions from './pages/admin/AdminSuggestions';
 import GlobalBulkImport from './pages/admin/GlobalBulkImport';
 import DuelsPage from './pages/DuelsPage';
 import SurvivalPage from './pages/SurvivalPage';
@@ -61,6 +62,7 @@ const App = () => {
             <Route path="/admin/users/:userId" element={<Layout><UserPerformance /></Layout>} />
             <Route path="/admin/questions/:chapterId" element={<Layout><QuestionManager /></Layout>} />
             <Route path="/admin/reports" element={<Layout><AdminReports /></Layout>} />
+            <Route path="/admin/suggestions" element={<Layout><AdminSuggestions /></Layout>} />
             <Route path="/admin/global-bulk" element={<Layout><GlobalBulkImport /></Layout>} />
           </Route>
         </Routes>
