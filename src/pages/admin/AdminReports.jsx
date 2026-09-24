@@ -71,7 +71,9 @@ const AdminReports = () => {
                     }`}>
                       {report.status}
                     </span>
-                    <h3 className="font-bold text-primary-dark mt-2">{report.book_name} - Capítulo {report.chapter_number}</h3>
+                    <h3 className="font-bold text-primary-dark mt-2">
+                      {report.question_id ? `${report.book_name} - Capítulo ${report.chapter_number}` : 'Sugerencia General de Plataforma'}
+                    </h3>
                     <p className="text-sm text-gray-500">Reportado por: {report.username} el {new Date(report.created_at).toLocaleDateString('es')}</p>
                   </div>
                   <div className="flex gap-2">
@@ -88,20 +90,26 @@ const AdminReports = () => {
                   </div>
                 </div>
 
-                <div className="bg-gray-50 p-4 rounded-lg border mb-4">
-                  <p className="font-medium text-gray-800">Pregunta Original:</p>
-                  <p className="text-sm text-gray-600 italic">"{report.question_text}"</p>
-                </div>
+                {report.question_id && (
+                  <div className="bg-gray-50 p-4 rounded-lg border mb-4">
+                    <p className="font-medium text-gray-800">Pregunta Original:</p>
+                    <p className="text-sm text-gray-600 italic">"{report.question_text}"</p>
+                  </div>
+                )}
 
                 <div className="mb-4">
-                  <p className="font-bold text-danger">Problema: {report.reason}</p>
+                  <p className="font-bold text-danger">{report.question_id ? `Problema: ${report.reason}` : `Asunto: ${report.reason}`}</p>
                   {report.details && <p className="text-gray-700 mt-1">Detalles: {report.details}</p>}
                 </div>
 
                 <div className="flex justify-end border-t pt-4">
-                  <Link to={`/admin/questions/${report.chapter_id}`} className="px-4 py-2 bg-primary text-white rounded hover:bg-primary-light text-sm">
-                    Ir al Gestor de Preguntas de este Capítulo
-                  </Link>
+                  {report.question_id ? (
+                    <Link to={`/admin/questions/${report.chapter_id}`} className="px-4 py-2 bg-primary text-white rounded hover:bg-primary-light text-sm">
+                      Ir al Gestor de Preguntas de este Capítulo
+                    </Link>
+                  ) : (
+                    <span className="text-sm text-gray-500 italic">Ticket general</span>
+                  )}
                 </div>
               </div>
             </div>

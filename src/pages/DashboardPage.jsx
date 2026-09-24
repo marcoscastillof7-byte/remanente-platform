@@ -23,7 +23,33 @@ const DashboardPage = () => {
   const [loading, setLoading] = useState(true);
   const [streak, setStreak] = useState(null);
 
+  // Estados para sugerencias
+  const [showSuggestion, setShowSuggestion] = useState(false);
+  const [suggestionType, setSuggestionType] = useState('Sugerencia de Mejora');
+  const [suggestionText, setSuggestionText] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
   const dailyVerse = verses[new Date().getDate() % verses.length];
+
+  const handleSuggestionSubmit = async (e) => {
+    e.preventDefault();
+    setSubmitting(true);
+    try {
+      await api.post('/reports/general', {
+        reason: suggestionType,
+        details: suggestionText
+      });
+      alert('¡Sugerencia enviada! Muchas gracias por ayudarnos a mejorar.');
+      setShowSuggestion(false);
+      setSuggestionText('');
+      setSuggestionType('Sugerencia de Mejora');
+    } catch (err) {
+      console.error(err);
+      alert('Error al enviar sugerencia. Intenta de nuevo.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -134,6 +160,70 @@ const DashboardPage = () => {
           </div>
         ))}
       </div>
+
+      {/* Sugerencias Button */}
+      <div className="mt-12 text-center">
+        <button
+          onClick={() => setShowSuggestion(true)}
+          className="inline-flex items-center gap-2 px-6 py-3 bg-gray-200 text-gray-700 rounded-full hover:bg-gray-300 transition-colors font-medium text-sm shadow-sm"
+        >
+          💡 ¿Tienes una sugerencia o encontraste un error? Cuéntanos.
+        </button>
+      </div>
+
+      {/* Sugerencias Modal */}
+      {showSuggestion && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
+            <h2 className="font-[Cinzel] text-xl font-bold text-primary mb-2">Buzón de Sugerencias</h2>
+            <p className="text-sm text-gray-500 mb-4">Ayúdanos a mejorar. Si tienes una idea nueva o viste algo que no funciona bien, descríbelo aquí.</p>
+            
+            <form onSubmit={handleSuggestionSubmit}>
+              <div className="mb-4">
+                <label className="block text-sm font-bold text-gray-700 mb-1">Tipo</label>
+                <select 
+                  value={suggestionType} 
+                  onChange={(e) => setSuggestionType(e.target.value)}
+                  className="w-full p-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-gold text-sm"
+                >
+                  <option value="Sugerencia de Mejora">Sugerencia de Mejora</option>
+                  <option value="Reporte de Error / Bug">Reporte de Error / Bug</option>
+                  <option value="Idea Nueva">Idea Nueva</option>
+                  <option value="Otro">Otro</option>
+                </select>
+              </div>
+              <div className="mb-4">
+                <label className="block text-sm font-bold text-gray-700 mb-1">Detalles</label>
+                <textarea
+                  value={suggestionText}
+                  onChange={(e) => setSuggestionText(e.target.value)}
+                  className="w-full h-24 p-2 border border-gray-300 rounded resize-none focus:outline-none focus:ring-2 focus:ring-gold text-sm"
+                  placeholder="Explícanos tu idea o el problema que encontraste..."
+                  required
+                />
+              </div>
+              
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowSuggestion(false)}
+                  className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700"
+                  disabled={submitting}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting || !suggestionText.trim()}
+                  className="px-4 py-2 bg-primary text-white rounded hover:bg-primary-light text-sm font-bold disabled:opacity-50"
+                >
+                  {submitting ? 'Enviando...' : 'Enviar Sugerencia'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

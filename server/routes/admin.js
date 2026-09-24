@@ -12,7 +12,7 @@ router.get('/users', async (req, res) => {
         const supabase = getDb();
         const { data: users, error: uError } = await supabase.from('users').select('id, username, email, role, created_at');
         const { data: attempts, error: aError } = await supabase.from('quiz_attempts').select('user_id, score');
-        const { data: streaks, error: sError } = await supabase.from('study_streaks').select('user_id, current_streak');
+        const { data: streaks, error: sError } = await supabase.from('study_streaks').select('user_id, current_streak, last_study_date');
 
         if (uError) throw uError;
 
@@ -28,7 +28,8 @@ router.get('/users', async (req, res) => {
                 ...u,
                 total_quizzes,
                 avg_score,
-                current_streak: userStreak ? userStreak.current_streak : 0
+                current_streak: userStreak ? userStreak.current_streak : 0,
+                last_active: userStreak?.last_study_date || null
             };
         }).sort((a, b) => b.avg_score - a.avg_score);
 

@@ -94,30 +94,41 @@ const AdminDashboard = () => {
                 <th className="px-6 py-3 text-center">Quizzes</th>
                 <th className="px-6 py-3 text-center">Promedio</th>
                 <th className="px-6 py-3 text-center">Racha</th>
+                <th className="px-6 py-3 text-center">Última Conexión</th>
                 <th className="px-6 py-3 text-center">Acciones</th>
               </tr>
             </thead>
             <tbody>
-              {users.map(u => (
-                <tr key={u.id} className="border-t hover:bg-gray-50">
-                  <td className="px-6 py-4 font-medium">{u.username}</td>
-                  <td className="px-6 py-4 text-center">
-                    <span className={`px-2 py-1 rounded-full text-xs ${u.role === 'admin' ? 'bg-gold/20 text-gold-dark font-bold' : 'bg-gray-100 text-gray-600'}`}>
-                      {u.role === 'admin' ? 'Admin' : 'Usuario'}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-center">{u.total_quizzes || 0}</td>
-                  <td className="px-6 py-4 text-center font-bold">
-                    <span className={`${(u.avg_score || 0) >= 80 ? 'text-success' : (u.avg_score || 0) >= 60 ? 'text-warning' : 'text-danger'}`}>
-                      {Math.round(u.avg_score || 0)}%
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-center">
-                    <span className="flex items-center justify-center gap-1">
-                      <Flame className="w-4 h-4 text-orange-400" /> {u.current_streak || 0}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-center">
+              {users.map(u => {
+                const isOnline = u.last_active && (new Date() - new Date(u.last_active)) < 24 * 60 * 60 * 1000;
+                return (
+                  <tr key={u.id} className="border-t hover:bg-gray-50">
+                    <td className="px-6 py-4 font-medium">
+                      <div className="flex items-center gap-2">
+                        <div className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-500' : 'bg-gray-300'}`} title={isOnline ? 'Activo en las últimas 24h' : 'Inactivo'}></div>
+                        {u.username}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      <span className={`px-2 py-1 rounded-full text-xs ${u.role === 'admin' ? 'bg-gold/20 text-gold-dark font-bold' : 'bg-gray-100 text-gray-600'}`}>
+                        {u.role === 'admin' ? 'Admin' : 'Usuario'}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-center">{u.total_quizzes || 0}</td>
+                    <td className="px-6 py-4 text-center font-bold">
+                      <span className={`${(u.avg_score || 0) >= 80 ? 'text-success' : (u.avg_score || 0) >= 60 ? 'text-warning' : 'text-danger'}`}>
+                        {Math.round(u.avg_score || 0)}%
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      <span className="flex items-center justify-center gap-1">
+                        <Flame className="w-4 h-4 text-orange-400" /> {u.current_streak || 0}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-center text-sm text-gray-500">
+                      {u.last_active ? new Date(u.last_active).toLocaleDateString('es') : 'Nunca'}
+                    </td>
+                    <td className="px-6 py-4 text-center">
                     <Link
                       to={`/admin/users/${u.id}`}
                       className="inline-flex items-center gap-1 text-primary hover:text-primary-light text-sm font-medium"
@@ -126,7 +137,8 @@ const AdminDashboard = () => {
                     </Link>
                   </td>
                 </tr>
-              ))}
+              );
+              })}
             </tbody>
           </table>
         </div>

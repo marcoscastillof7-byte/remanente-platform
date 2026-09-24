@@ -5,6 +5,27 @@ import { auth } from '../middleware/auth.js';
 const router = express.Router();
 router.use(auth);
 
+// Enviar un reporte general (sugerencia de plataforma)
+router.post('/general', async (req, res) => {
+    try {
+        const supabase = getDb();
+        const { reason, details } = req.body;
+        
+        // Asumimos que question_id puede ser nulo para reportes generales
+        const { error } = await supabase.from('question_reports').insert([{
+            user_id: req.user.id,
+            reason: reason || 'Sugerencia de Plataforma',
+            details
+        }]);
+
+        if (error) throw error;
+        res.json({ message: 'Sugerencia enviada exitosamente' });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Error interno' });
+    }
+});
+
 // Enviar un reporte
 router.post('/:questionId', async (req, res) => {
     try {
