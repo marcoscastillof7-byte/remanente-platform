@@ -201,6 +201,24 @@ router.post('/questions/:chapterId/bulk', async (req, res) => {
         const { error: insError } = await supabase.from('questions').insert(questionsToInsert);
         if (insError) throw insError;
 
+        // --- NOTIFICATIONS ---
+        try {
+            const { data: allUsers } = await supabase.from('users').select('id');
+            const { data: c } = await supabase.from('chapters').select('id, title, chapter_number, books(name)').eq('id', chapterId).single();
+            if (allUsers && allUsers.length > 0 && c) {
+                const bookName = c.books?.name || 'Libro';
+                const notifsToInsert = allUsers.map(u => ({
+                    user_id: u.id,
+                    title: `Nuevas preguntas en ${bookName}`,
+                    message: `El administrador ha actualizado las preguntas del Capítulo ${c.chapter_number}.`,
+                    link: `/quiz/${c.id}`
+                }));
+                await supabase.from('notifications').insert(notifsToInsert);
+            }
+        } catch (notifErr) {
+            console.error("Error creating bulk notifications:", notifErr);
+        }
+
         res.json({ message: 'Importación masiva exitosa', count: questionsToInsert.length });
     } catch (error) {
         console.error(error);
@@ -228,6 +246,45 @@ router.post('/global-bulk', async (req, res) => {
 
         const { error: insError } = await supabase.from('questions').insert(questions);
         if (insError) throw insError;
+
+        // --- NOTIFICATIONS ---
+        // Generar notificación para todos los usuarios sobre los capítulos actualizados
+        try {
+            const { data: allUsers } = await supabase.from('users').select('id');
+            if (allUsers && allUsers.length > 0) {
+                const chapterIds = [...new Set(questions.map(q => q.chapter_id))];
+                const { data: chaps } = await supabase.from('chapters').select('id, title, chapter_number, books(name)').in('id', chapterIds);
+                
+                if (chaps && chaps.length > 0) {
+                    const notifsToInsert = [];
+                    const timeNow = new Date().toISOString();
+                    
+                    for (let c of chaps) {
+                        const bookName = c.books?.name || 'Libro';
+                        const notifTitle = `Nuevas preguntas en ${bookName}`;
+                        const notifMsg = `El administrador ha actualizado las preguntas del Capítulo ${c.chapter_number}. ¡Ve a repasarlas!`;
+                        const link = `/quiz/${c.id}`;
+                        
+                        for (let u of allUsers) {
+                            notifsToInsert.push({
+                                user_id: u.id,
+                                title: notifTitle,
+                                message: notifMsg,
+                                link,
+                                created_at: timeNow
+                            });
+                        }
+                    }
+                    
+                    if (notifsToInsert.length > 0) {
+                        // Insertar en chunks si son muchas
+                        await supabase.from('notifications').insert(notifsToInsert);
+                    }
+                }
+            }
+        } catch (notifErr) {
+            console.error("Error creating global-bulk notifications:", notifErr);
+        }
 
         res.json({ message: 'Importación global masiva exitosa', count: questions.length });
     } catch (error) {

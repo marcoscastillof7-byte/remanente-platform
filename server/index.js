@@ -12,6 +12,7 @@ import adminRoutes from './routes/admin.js';
 import notesRoutes from './routes/notes.js';
 import leaderboardRoutes from './routes/leaderboard.js';
 import reportsRoutes from './routes/reports.js';
+import notificationRoutes from './routes/notifications.js';
 
 const app = express();
 const httpServer = createServer(app);
@@ -45,7 +46,7 @@ router.use('/admin', adminRoutes);
 router.use('/notes', notesRoutes);
 router.use('/leaderboard', leaderboardRoutes);
 router.use('/reports', reportsRoutes);
-
+router.use('/notifications', notificationRoutes);
 // Usar el enrutador para el prefijo /api
 app.use('/api', router);
 
