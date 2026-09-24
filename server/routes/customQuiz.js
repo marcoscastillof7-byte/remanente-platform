@@ -131,7 +131,7 @@ router.post('/generate', async (req, res) => {
             }));
         } else {
             // FALLBACK
-            let query = supabase.from('questions').select('id, chapter_id, question_text, option_a, option_b, option_c, option_d, difficulty');
+            let query = supabase.from('questions').select('id, chapter_id, question_text, option_a, option_b, option_c, option_d, correct_answer, explanation, verse_reference, difficulty');
             
             if (difficulty && difficulty !== 'mixto') {
                 query = query.eq('difficulty', difficulty);

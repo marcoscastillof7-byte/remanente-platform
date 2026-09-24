@@ -11,7 +11,7 @@ router.get('/:chapterId', async (req, res) => {
         const supabase = getDb();
         const { data: questions, error } = await supabase
             .from('questions')
-            .select('id, chapter_id, question_text, option_a, option_b, option_c, option_d, difficulty')
+            .select('id, chapter_id, question_text, option_a, option_b, option_c, option_d, correct_answer, explanation, verse_reference, difficulty')
             .eq('chapter_id', req.params.chapterId);
             
         if (error) throw error;
