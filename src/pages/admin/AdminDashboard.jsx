@@ -38,9 +38,14 @@ const AdminDashboard = () => {
     <div className="max-w-6xl mx-auto">
       <div className="flex justify-between items-center mb-8">
         <h1 className="font-[Cinzel] text-3xl font-bold text-primary">👑 Panel de Administración</h1>
-        <Link to="/admin/reports" className="flex items-center gap-2 px-4 py-2 bg-danger text-white rounded hover:bg-red-600 transition-colors">
-          <Flag className="w-5 h-5" /> Ver Reportes de Usuarios
-        </Link>
+        <div className="flex gap-3">
+          <Link to="/admin/global-bulk" className="flex items-center gap-2 px-4 py-2 bg-gray-800 text-white rounded hover:bg-gray-900 transition-colors shadow-sm">
+            <BookOpen className="w-5 h-5" /> Importador Global
+          </Link>
+          <Link to="/admin/reports" className="flex items-center gap-2 px-4 py-2 bg-danger text-white rounded hover:bg-red-600 transition-colors shadow-sm">
+            <Flag className="w-5 h-5" /> Reportes
+          </Link>
+        </div>
       </div>
 
       {/* KPI Cards */}

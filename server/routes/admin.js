@@ -208,6 +208,25 @@ router.post('/questions/:chapterId/bulk', async (req, res) => {
     }
 });
 
+router.post('/global-bulk', async (req, res) => {
+    try {
+        const supabase = getDb();
+        const { questions } = req.body;
+
+        if (!Array.isArray(questions) || questions.length === 0) {
+            return res.status(400).json({ error: 'Lista de preguntas vacía o inválida' });
+        }
+
+        const { error: insError } = await supabase.from('questions').insert(questions);
+        if (insError) throw insError;
+
+        res.json({ message: 'Importación global masiva exitosa', count: questions.length });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Error interno en importación global masiva' });
+    }
+});
+
 router.put('/questions/:id', async (req, res) => {
     try {
         const supabase = getDb();
