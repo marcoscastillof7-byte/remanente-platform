@@ -58,6 +58,9 @@ app.use('/api', router);
 // En caso de usar Netlify functions, esta ruta atrapa la base de la API
 app.use('/.netlify/functions/api', router);
 
+// Fallback universal por si serverless-http recorta la ruta base automáticamente
+app.use('/', router);
+
 io.on('connection', (socket) => {
     console.log('User connected via Socket.io');
     socket.on('disconnect', () => {
