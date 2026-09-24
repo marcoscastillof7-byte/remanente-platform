@@ -88,4 +88,22 @@ router.put('/:id', async (req, res) => {
     }
 });
 
+// Admin: Eliminar un reporte (descartar)
+router.delete('/:id', async (req, res) => {
+    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Prohibido' });
+    try {
+        const supabase = getDb();
+        const { error } = await supabase
+            .from('question_reports')
+            .delete()
+            .eq('id', req.params.id);
+
+        if (error) throw error;
+        res.json({ message: 'Reporte eliminado' });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Error interno' });
+    }
+});
+
 export default router;
