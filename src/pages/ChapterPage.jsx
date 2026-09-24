@@ -111,12 +111,19 @@ const ChapterPage = () => {
 
       {/* Actions */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-        <Link
-          to={`/quiz/${chapterId}`}
-          className="flex items-center justify-center gap-2 p-6 bg-gold text-white rounded-xl text-lg font-bold hover:bg-gold-dark transition-colors shadow-md"
-        >
-          <FileText className="w-6 h-6" /> Iniciar Quiz
-        </Link>
+        {history.length >= 2 ? (
+          <div className="flex flex-col items-center justify-center gap-1 p-4 bg-gray-200 text-gray-500 rounded-xl font-bold shadow-sm cursor-not-allowed border border-gray-300">
+            <div className="flex items-center gap-2 text-lg"><FileText className="w-6 h-6" /> Iniciar Quiz</div>
+            <span className="text-xs font-normal opacity-80">Límite de intentos (2) alcanzado</span>
+          </div>
+        ) : (
+          <Link
+            to={`/quiz/${chapterId}`}
+            className="flex items-center justify-center gap-2 p-6 bg-gold text-white rounded-xl text-lg font-bold hover:bg-gold-dark transition-colors shadow-md"
+          >
+            <FileText className="w-6 h-6" /> Iniciar Quiz
+          </Link>
+        )}
         <Link
           to={`/flashcards/${chapterId}`}
           className="flex items-center justify-center gap-2 p-6 bg-primary text-white rounded-xl text-lg font-bold hover:bg-primary-light transition-colors shadow-md"

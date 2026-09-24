@@ -48,9 +48,14 @@ router.get('/users/:userId/performance', async (req, res) => {
         if (uError) throw uError;
 
         const { data: attempts } = await supabase.from('quiz_attempts').select('score, chapter_id, completed_at').eq('user_id', userId);
-        const { data: streak } = await supabase.from('study_streaks').select('current_streak').eq('user_id', userId).single();
+        const { data: streak } = await supabase.from('study_streaks').select('current_streak, last_study_date').eq('user_id', userId).single();
         const { data: books } = await supabase.from('books').select('*').order('order_index');
         const { data: chapters } = await supabase.from('chapters').select('id, chapter_number, title, book_id');
+        
+        // Cargar logros del usuario
+        const { data: achievements } = await supabase.from('user_achievements')
+            .select('earned_at, achievements(id, name, icon, description)')
+            .eq('user_id', userId);
 
         const total_quizzes = attempts ? attempts.length : 0;
         const totalScore = attempts ? attempts.reduce((sum, a) => sum + (a.score || 0), 0) : 0;
@@ -61,6 +66,14 @@ router.get('/users/:userId/performance', async (req, res) => {
             total_quizzes,
             avg_score,
             current_streak: streak ? streak.current_streak : 0,
+            last_active: streak?.last_study_date || null,
+            achievements: achievements ? achievements.map(a => ({
+                id: a.achievements.id,
+                name: a.achievements.name,
+                icon: a.achievements.icon,
+                description: a.achievements.description,
+                earned_at: a.earned_at
+            })) : [],
             books: books.map(book => {
                 const bookChapters = chapters.filter(c => c.book_id === book.id).sort((a, b) => a.chapter_number - b.chapter_number);
                 return {

@@ -38,6 +38,19 @@ router.post('/:chapterId/submit', async (req, res) => {
     }
 
     try {
+        // Enforce max 2 attempts limit
+        const { data: previousAttempts, error: countError } = await supabase
+            .from('quiz_attempts')
+            .select('id')
+            .eq('user_id', userId)
+            .eq('chapter_id', chapterId);
+            
+        if (countError) throw countError;
+        
+        if (previousAttempts && previousAttempts.length >= 2) {
+            return res.status(403).json({ error: 'Límite máximo de 2 intentos alcanzado para este capítulo.' });
+        }
+
         let correctCount = 0;
         const results = [];
 

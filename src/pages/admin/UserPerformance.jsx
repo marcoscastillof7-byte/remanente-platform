@@ -60,8 +60,33 @@ const UserPerformance = () => {
               <Flame className="w-5 h-5 text-orange-400" /> {data.current_streak || 0}
             </div>
           </div>
+          <div className="bg-white/10 rounded-lg p-3 border border-white/20">
+            <div className="text-xs opacity-80">Última Actividad</div>
+            <div className="text-xl font-bold">
+              {data.last_active ? new Date(data.last_active).toLocaleDateString('es') : 'Nunca'}
+            </div>
+          </div>
         </div>
       </div>
+
+      {/* Logros del Estudiante */}
+      {data.achievements && data.achievements.length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm border mb-8 p-6">
+          <h3 className="font-[Cinzel] text-xl font-bold text-primary mb-4">Logros Desbloqueados</h3>
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
+            {data.achievements.map(ach => (
+              <div key={ach.id} className="bg-gray-50 border rounded-lg p-4 text-center flex flex-col items-center">
+                <div className="text-3xl mb-2">{ach.icon}</div>
+                <div className="font-bold text-sm text-primary mb-1">{ach.name}</div>
+                <div className="text-xs text-gray-500 mb-2">{ach.description}</div>
+                <div className="text-[10px] text-gray-400 uppercase tracking-wide">
+                  {new Date(ach.earned_at).toLocaleDateString('es')}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Per-Book Stats */}
       {data.books && data.books.map(book => (

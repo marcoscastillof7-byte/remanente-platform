@@ -12,9 +12,19 @@ const QuizPage = () => {
   const startTimeRef = useRef(Date.now());
 
   useEffect(() => {
-    const fetchQuestions = async () => {
+    const fetchQuestionsAndHistory = async () => {
       try {
-        const data = await api.get(`/quiz/${chapterId}`);
+        const [data, historyData] = await Promise.all([
+          api.get(`/quiz/${chapterId}`),
+          api.get(`/quiz/history/${chapterId}`).catch(() => [])
+        ]);
+
+        if (historyData.length >= 2) {
+          setError('Has alcanzado el límite máximo de intentos (2) para este capítulo.');
+          setLoading(false);
+          return;
+        }
+
         setQuestions(data);
         startTimeRef.current = Date.now();
       } catch (err) {
@@ -24,7 +34,7 @@ const QuizPage = () => {
         setLoading(false);
       }
     };
-    fetchQuestions();
+    fetchQuestionsAndHistory();
   }, [chapterId]);
 
   if (loading) {
