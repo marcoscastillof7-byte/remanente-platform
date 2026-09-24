@@ -2,9 +2,6 @@ import express from 'express';
 import cors from 'cors';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
 import { getDb } from './db/database.js';
 import authRoutes from './routes/auth.js';
 import booksRoutes from './routes/books.js';
@@ -15,9 +12,6 @@ import adminRoutes from './routes/admin.js';
 import notesRoutes from './routes/notes.js';
 import leaderboardRoutes from './routes/leaderboard.js';
 import reportsRoutes from './routes/reports.js';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 const app = express();
 const httpServer = createServer(app);
