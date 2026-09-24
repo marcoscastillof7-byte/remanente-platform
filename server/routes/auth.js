@@ -74,6 +74,9 @@ router.post('/login', async (req, res) => {
         const userData = { id: user.id, username: user.username, role: user.role };
         const token = jwt.sign(userData, SECRET, { expiresIn: '24h' });
 
+        // Update last_active timestamp
+        await supabase.from('users').update({ last_active: new Date().toISOString() }).eq('id', user.id);
+
         res.json({ token, user: userData });
     } catch (error) {
         console.error(error);

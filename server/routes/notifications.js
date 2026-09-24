@@ -9,6 +9,10 @@ router.use(auth);
 router.get('/', async (req, res) => {
     try {
         const supabase = getDb();
+        
+        // Actualizar la última conexión del usuario (heartbeat)
+        await supabase.from('users').update({ last_active: new Date().toISOString() }).eq('id', req.user.id);
+
         const { data, error } = await supabase
             .from('notifications')
             .select('*')
