@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import FlashcardItem from './FlashcardItem';
 import { api } from '../../utils/api';
-import { ChevronLeft, ChevronRight, RotateCcw } from 'lucide-react';
+import { ChevronLeft, ChevronRight, RotateCcw, Flag } from 'lucide-react';
+import ReportModal from '../quiz/ReportModal';
 
 const FlashcardDeck = ({ flashcards, chapterId }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [confidences, setConfidences] = useState({});
+  const [reportingQ, setReportingQ] = useState(null);
 
   const handleConfidence = async (level) => {
     const fc = flashcards[currentIndex];
@@ -107,6 +109,23 @@ const FlashcardDeck = ({ flashcards, chapterId }) => {
             })}
           </div>
         </div>
+      )}
+
+      {/* Report Button */}
+      <div className="mt-6 flex justify-center border-t border-gray-100 pt-4">
+        <button 
+          onClick={() => setReportingQ({ id: current.id, question_text: current.front_text })} 
+          className="flex items-center gap-1 text-sm text-danger hover:text-red-700 font-medium bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg transition-colors"
+        >
+          <Flag className="w-4 h-4" /> Reportar Error en Tarjeta
+        </button>
+      </div>
+
+      {reportingQ && (
+        <ReportModal 
+          question={reportingQ} 
+          onClose={() => setReportingQ(null)} 
+        />
       )}
     </div>
   );
