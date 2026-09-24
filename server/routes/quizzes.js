@@ -105,14 +105,19 @@ router.post('/:chapterId/submit', async (req, res) => {
         }
 
         // Streak update
-        const { data: streak } = await supabase.from('study_streaks').select('*').eq('user_id', userId).single();
+        const { data: streakData } = await supabase.from('study_streaks').select('*').eq('user_id', userId).single();
+        let newStreak = 0;
+        let longestStreak = 0;
         
-        if (streak) {
+        if (streakData) {
             const today = new Date().toISOString().split('T')[0];
-            const lastStudy = streak.last_study_date ? streak.last_study_date.split('T')[0] : null;
+            const lastStudy = streakData.last_study_date ? streakData.last_study_date.split('T')[0] : null;
+
+            newStreak = streakData.current_streak;
+            longestStreak = streakData.longest_streak;
 
             if (lastStudy !== today) {
-                let newStreak = streak.current_streak + 1;
+                newStreak = streakData.current_streak + 1;
                 
                 if (lastStudy) {
                     const lastDate = new Date(lastStudy);
@@ -125,16 +130,53 @@ router.post('/:chapterId/submit', async (req, res) => {
                     }
                 }
 
-                const longest = Math.max(streak.longest_streak, newStreak);
+                longestStreak = Math.max(streakData.longest_streak, newStreak);
                 await supabase
                     .from('study_streaks')
                     .update({ 
                         current_streak: newStreak, 
-                        longest_streak: longest, 
+                        longest_streak: longestStreak, 
                         last_study_date: new Date().toISOString() 
                     })
                     .eq('user_id', userId);
             }
+        }
+
+        // --- EVALUAR LOGROS ---
+        try {
+            const { data: allAttempts } = await supabase.from('quiz_attempts').select('score').eq('user_id', userId);
+            const totalQuizzes = allAttempts ? allAttempts.length : 0;
+            
+            const { data: userAch } = await supabase.from('user_achievements').select('achievement_id').eq('user_id', userId);
+            const unlockedSet = new Set((userAch || []).map(a => a.achievement_id));
+            
+            const { data: achievements } = await supabase.from('achievements').select('*');
+            
+            const newlyUnlocked = [];
+            if (achievements) {
+                for (let a of achievements) {
+                    if (unlockedSet.has(a.id)) continue;
+                    
+                    let criteriaMet = false;
+                    if (a.criteria_type === 'total_quizzes' && totalQuizzes >= a.criteria_value) {
+                        criteriaMet = true;
+                    } else if (a.criteria_type === 'perfect_score' && score === 100) {
+                        criteriaMet = true;
+                    } else if (a.criteria_type === 'streak' && newStreak >= a.criteria_value) {
+                        criteriaMet = true;
+                    }
+                    
+                    if (criteriaMet) {
+                        newlyUnlocked.push({ user_id: userId, achievement_id: a.id });
+                    }
+                }
+            }
+            
+            if (newlyUnlocked.length > 0) {
+                await supabase.from('user_achievements').insert(newlyUnlocked);
+            }
+        } catch (achError) {
+            console.error("Error evaluando logros:", achError);
         }
         
         // Note: Emiting socket event would happen in index.js via app.get('io')

@@ -100,7 +100,40 @@ router.get('/profile', auth, async (req, res) => {
             .eq('user_id', req.user.id)
             .single();
 
-        res.json({ ...user, streak });
+        const { data: attempts } = await supabase
+            .from('quiz_attempts')
+            .select('score')
+            .eq('user_id', req.user.id);
+            
+        const total_quizzes = attempts ? attempts.length : 0;
+        const avg_score = total_quizzes > 0 ? Math.round(attempts.reduce((acc, curr) => acc + (curr.score || 0), 0) / total_quizzes) : 0;
+
+        // Obtain all system achievements
+        const { data: allAchievements } = await supabase.from('achievements').select('*');
+        
+        // Obtain user unlocked achievements
+        const { data: userAchievements } = await supabase
+            .from('user_achievements')
+            .select('achievement_id, earned_at')
+            .eq('user_id', req.user.id);
+            
+        const unlockedMap = {};
+        for (let ua of (userAchievements || [])) {
+            unlockedMap[ua.achievement_id] = ua.earned_at;
+        }
+
+        const achievementsList = (allAchievements || []).map(a => ({
+            ...a,
+            unlocked: !!unlockedMap[a.id],
+            earned_at: unlockedMap[a.id] || null
+        }));
+
+        res.json({ 
+            ...user, 
+            streak, 
+            stats: { total_quizzes, avg_score, current_streak: streak?.current_streak || 0 },
+            achievements: achievementsList 
+        });
     } catch (error) {
         console.error(error);
         res.status(500).json({ error: 'Error interno del servidor' });
