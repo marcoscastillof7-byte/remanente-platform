@@ -10,5 +10,30 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
+    <style>
+      /* Fuerza bruta CSS para cualquier contenedor conocido de Netlify */
+      #netlify-badge, .netlify-badge, netlify-badge, a[href^="https://www.netlify.com"] {
+        display: none !important;
+        opacity: 0 !important;
+        visibility: hidden !important;
+        pointer-events: none !important;
+        z-index: -9999 !important;
+      }
+    </style>
+    <script>
+      // Destrucción mediante JavaScript (Observer para cuando Netlify lo inyecte)
+      const observer = new MutationObserver(() => {
+        const badge1 = document.querySelector('#netlify-badge');
+        const badge2 = document.querySelector('.netlify-badge');
+        const badge3 = document.querySelector('netlify-badge');
+        const badge4 = document.querySelector('a[href*="netlify.com"]');
+        
+        if (badge1) badge1.remove();
+        if (badge2) badge2.remove();
+        if (badge3) badge3.remove();
+        if (badge4 && badge4.innerHTML.includes('Netlify')) badge4.remove();
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+    </script>
   </body>
 </html>
