@@ -1,52 +1,18 @@
-import { useState, useEffect } from 'react';
-import { api } from '../utils/api';
-import CustomQuizBuilder from '../components/custom/CustomQuizBuilder';
-import QuizEngine from '../components/quiz/QuizEngine';
-import { Loader } from 'lucide-react';
+import { Settings } from 'lucide-react';
 
 const CustomQuizPage = () => {
-  const [step, setStep] = useState('config'); // config | quiz
-  const [questions, setQuestions] = useState([]);
-  const [configId, setConfigId] = useState(null);
-  const [loading, setLoading] = useState(false);
-
-  const handleGenerate = async (config) => {
-    setLoading(true);
-    try {
-      const data = await api.post('/custom-quiz/generate', config);
-      setQuestions(data.questions || data);
-      setConfigId(data.configId);
-      setStep('quiz');
-    } catch (err) {
-      console.error(err);
-      alert('Error generando el quiz. Verifica la configuración.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center h-64 gap-4">
-        <Loader className="w-10 h-10 animate-spin text-gold" />
-        <p className="text-gray-600">Generando tu quiz personalizado...</p>
-      </div>
-    );
-  }
-
   return (
-    <div className="max-w-4xl mx-auto">
-      {step === 'config' && (
-        <>
-          <h1 className="font-[Cinzel] text-3xl font-bold text-primary mb-2">Quiz Personalizado</h1>
-          <p className="text-gray-600 mb-8">Configura tu propio quiz eligiendo libros, capítulos, dificultad y más.</p>
-          <CustomQuizBuilder onGenerate={handleGenerate} />
-        </>
-      )}
-
-      {step === 'quiz' && questions.length > 0 && (
-        <QuizEngine questions={questions} isCustom={true} configId={configId} />
-      )}
+    <div className="max-w-4xl mx-auto flex flex-col items-center justify-center py-20 text-center">
+      <div className="bg-gray-100 p-8 rounded-full mb-6">
+        <Settings className="w-16 h-16 text-gray-400" />
+      </div>
+      <h1 className="font-[Cinzel] text-3xl font-bold text-gray-800 mb-4">Quiz Personalizado</h1>
+      <div className="bg-yellow-50 border border-yellow-200 p-6 rounded-lg max-w-lg">
+        <h2 className="text-xl font-bold text-yellow-800 mb-2">No funcionando actualmente</h2>
+        <p className="text-yellow-700">
+          Esta sección está en mantenimiento y estará disponible próximamente. Por favor, realiza los quizzes directamente desde la página de cada capítulo.
+        </p>
+      </div>
     </div>
   );
 };
