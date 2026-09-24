@@ -18,8 +18,8 @@ const GlobalBulkImport = () => {
         const data = await api.get('/books');
         // Para cada libro, traemos sus capítulos
         const booksWithChapters = await Promise.all(data.map(async (book) => {
-          const chapters = await api.get(`/books/${book.id}/chapters`);
-          return { ...book, chapters };
+          const response = await api.get(`/books/${book.id}/chapters`);
+          return { ...book, chapters: response.chapters || [] };
         }));
         setBooks(booksWithChapters);
       } catch (err) {
@@ -46,16 +46,19 @@ const GlobalBulkImport = () => {
     let currentChapterId = null;
     let currentQ = null;
 
+    // Helper to remove accents for easy parsing
+    const removeAccents = (str) => str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
     // Remove empty lines and trim
     const cleanLines = lines.map(l => l.trim()).filter(l => l.length > 0);
 
     for (let i = 0; i < cleanLines.length; i++) {
       const line = cleanLines[i];
-      const upperLine = line.toUpperCase();
+      const upperLine = removeAccents(line.toUpperCase());
 
       if (upperLine.startsWith('LIBRO:')) {
         const bookName = line.substring(6).trim();
-        const foundBook = books.find(b => b.name.toLowerCase() === bookName.toLowerCase());
+        const foundBook = books.find(b => removeAccents(b.name.toLowerCase()) === removeAccents(bookName.toLowerCase()));
         if (foundBook) {
           currentBook = foundBook;
           currentChapterId = null; // reset chapter when book changes
@@ -92,13 +95,12 @@ const GlobalBulkImport = () => {
         }
 
         if (currentQ) {
-          // Push previous if it was valid (missing some checks, but let's be lenient)
           result.push(currentQ);
         }
 
         currentQ = {
           chapter_id: currentChapterId,
-          bookName: currentBook.name, // for display preview
+          bookName: currentBook.name,
           question_text: line.substring(9).trim(),
           difficulty: 'medio',
           explanation: '',
