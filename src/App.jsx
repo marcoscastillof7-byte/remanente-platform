@@ -20,6 +20,8 @@ import UserPerformance from './pages/admin/UserPerformance';
 import QuestionManager from './pages/admin/QuestionManager';
 import AdminReports from './pages/admin/AdminReports';
 import GlobalBulkImport from './pages/admin/GlobalBulkImport';
+import DuelsPage from './pages/DuelsPage';
+import SurvivalPage from './pages/SurvivalPage';
 
 const Layout = ({ children }) => (
   <div className="flex flex-col min-h-screen bg-[var(--color-parchment)]">
@@ -50,6 +52,8 @@ const App = () => {
             <Route path="/custom-quiz" element={<Layout><CustomQuizPage /></Layout>} />
             <Route path="/leaderboard" element={<Layout><LeaderboardPage /></Layout>} />
             <Route path="/profile" element={<Layout><ProfilePage /></Layout>} />
+            <Route path="/duels" element={<Layout><DuelsPage /></Layout>} />
+            <Route path="/survival" element={<Layout><SurvivalPage /></Layout>} />
           </Route>
 
           <Route element={<AdminRoute />}>

@@ -13,6 +13,9 @@ import notesRoutes from './routes/notes.js';
 import leaderboardRoutes from './routes/leaderboard.js';
 import reportsRoutes from './routes/reports.js';
 import notificationRoutes from './routes/notifications.js';
+import duelsRoutes from './routes/duels.js';
+import survivalRoutes from './routes/survival.js';
+import historicalRoutes from './routes/historical.js';
 
 const app = express();
 const httpServer = createServer(app);
@@ -47,6 +50,10 @@ router.use('/notes', notesRoutes);
 router.use('/leaderboard', leaderboardRoutes);
 router.use('/reports', reportsRoutes);
 router.use('/notifications', notificationRoutes);
+router.use('/duels', duelsRoutes);
+router.use('/survival', survivalRoutes);
+router.use('/historical-details', historicalRoutes);
+
 // Usar el enrutador para el prefijo /api
 app.use('/api', router);
 

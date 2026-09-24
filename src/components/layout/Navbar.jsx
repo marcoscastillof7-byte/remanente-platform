@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { Menu, User, LogOut, Shield, Bell, CheckCircle } from 'lucide-react';
+import { Menu, User, LogOut, Shield, Bell, CheckCircle, Swords, Flame } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { api } from '../../utils/api';
 
@@ -69,7 +69,8 @@ const Navbar = () => {
           
           <div className="hidden md:flex items-center space-x-6">
             <Link to="/" className="hover:text-[var(--color-gold)] transition-colors">Inicio</Link>
-            <Link to="/custom-quiz" className="hover:text-[var(--color-gold)] transition-colors">Quiz Personalizado</Link>
+            <Link to="/duels" className="hover:text-[var(--color-gold)] transition-colors flex items-center"><Swords className="w-4 h-4 mr-1"/> Duelos</Link>
+            <Link to="/survival" className="hover:text-[var(--color-gold)] transition-colors flex items-center"><Flame className="w-4 h-4 mr-1"/> Supervivencia</Link>
             <Link to="/leaderboard" className="hover:text-[var(--color-gold)] transition-colors">Tabla de Honor</Link>
             {isAdmin && (
               <Link to="/admin" className="flex items-center text-[var(--color-gold-light)] hover:text-white transition-colors">
@@ -157,7 +158,8 @@ const Navbar = () => {
       {menuOpen && (
         <div className="md:hidden bg-[var(--color-primary-dark)] px-2 pt-2 pb-3 space-y-1">
           <Link to="/" className="block px-3 py-2 rounded-md text-base hover:bg-[var(--color-primary-light)] text-white">Inicio</Link>
-          <Link to="/custom-quiz" className="block px-3 py-2 rounded-md text-base hover:bg-[var(--color-primary-light)] text-white">Quiz Personalizado</Link>
+          <Link to="/duels" className="block px-3 py-2 rounded-md text-base hover:bg-[var(--color-primary-light)] text-white flex items-center"><Swords className="w-4 h-4 mr-2"/> Duelos Bíblicos</Link>
+          <Link to="/survival" className="block px-3 py-2 rounded-md text-base hover:bg-[var(--color-primary-light)] text-white flex items-center"><Flame className="w-4 h-4 mr-2"/> Supervivencia</Link>
           <Link to="/leaderboard" className="block px-3 py-2 rounded-md text-base hover:bg-[var(--color-primary-light)] text-white">Tabla de Honor</Link>
           {isAdmin && (
             <Link to="/admin" className="block px-3 py-2 rounded-md text-base text-[var(--color-gold)] hover:bg-[var(--color-primary-light)]">Panel Admin</Link>

@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router';
 import { api } from '../utils/api';
-import { BookOpen, FileText, History, Loader, Save, ShieldAlert } from 'lucide-react';
+import { BookOpen, FileText, History, Loader, Save, ShieldAlert, BookType } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
+import HistoricalDetails from '../components/chapter/HistoricalDetails';
 
 const ChapterPage = () => {
   const { chapterId } = useParams();
-  const { isAdmin } = useAuth();
+  const { user, isAdmin } = useAuth();
   const [chapter, setChapter] = useState(null);
   const [history, setHistory] = useState([]);
   const [note, setNote] = useState('');
@@ -148,6 +149,11 @@ const ChapterPage = () => {
         >
           <Save className="w-4 h-4" /> {saving ? 'Guardando...' : 'Guardar Nota'}
         </button>
+      </div>
+
+      {/* Detalles Históricos */}
+      <div className="mb-8">
+        <HistoricalDetails chapterId={chapterId} user={user} />
       </div>
 
       {/* History */}
