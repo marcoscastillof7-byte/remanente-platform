@@ -103,7 +103,8 @@ const AdminDashboard = () => {
             </thead>
             <tbody>
               {users.map(u => {
-                const isOnline = u.last_active && (new Date() - new Date(u.last_active)) < 24 * 60 * 60 * 1000;
+                // Considerar activo si tuvo actividad en los últimos 3 minutos (180,000 ms)
+                const isOnline = u.last_active && (new Date() - new Date(u.last_active)) < 3 * 60 * 1000;
                 return (
                   <tr key={u.id} className="border-t hover:bg-gray-50">
                     <td className="px-6 py-4 font-medium">
