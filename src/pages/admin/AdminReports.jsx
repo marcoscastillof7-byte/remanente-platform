@@ -53,11 +53,11 @@ const AdminReports = () => {
   return (
     <div className="max-w-6xl mx-auto">
       <h1 className="font-[Cinzel] text-3xl font-bold text-primary mb-8 flex items-center gap-3">
-        <Flag className="w-8 h-8 text-danger" /> Reportes de Usuarios
+        <Flag className="w-8 h-8 text-danger" /> Reportes y Sugerencias
       </h1>
 
       {reports.length === 0 ? (
-        <p className="text-gray-500 text-center py-16">No hay reportes de usuarios en este momento.</p>
+        <p className="text-gray-500 text-center py-16">No hay reportes ni sugerencias en este momento.</p>
       ) : (
         <div className="space-y-6">
           {reports.map(report => (

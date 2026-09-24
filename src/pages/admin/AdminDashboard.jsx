@@ -43,7 +43,7 @@ const AdminDashboard = () => {
             <BookOpen className="w-5 h-5" /> Importador Global
           </Link>
           <Link to="/admin/reports" className="flex items-center gap-2 px-4 py-2 bg-danger text-white rounded hover:bg-red-600 transition-colors shadow-sm">
-            <Flag className="w-5 h-5" /> Reportes
+            <Flag className="w-5 h-5" /> Reportes y Sugerencias
           </Link>
         </div>
       </div>
