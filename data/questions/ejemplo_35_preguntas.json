@@ -1,0 +1,30 @@
+[
+  {
+    "book_id": 1,
+    "chapter_number": 1,
+    "questions": [
+      {
+        "question_text": "EJEMPLO: ¿Quién era la madre del profeta Samuel?",
+        "option_a": "Penina",
+        "option_b": "Ana",
+        "option_c": "Raquel",
+        "option_d": "Rut",
+        "correct_answer": "b",
+        "difficulty": "fácil",
+        "explanation": "Ana era la esposa de Elcana que oraba fervientemente por un hijo.",
+        "verse_reference": "1 Samuel 1:20"
+      },
+      {
+        "question_text": "EJEMPLO 2: ¿En qué ciudad estaba el templo donde servía el sacerdote Elí?",
+        "option_a": "Jerusalén",
+        "option_b": "Hebrón",
+        "option_c": "Silo",
+        "option_d": "Gilgal",
+        "correct_answer": "c",
+        "difficulty": "medio",
+        "explanation": "El arca y el tabernáculo estaban en Silo durante ese tiempo.",
+        "verse_reference": "1 Samuel 1:3"
+      }
+    ]
+  }
+]

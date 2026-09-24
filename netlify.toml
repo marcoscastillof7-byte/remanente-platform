@@ -1,0 +1,18 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[functions]
+  node_bundler = "esbuild"
+
+# Redirecciona las llamadas de la API a la función Serverless
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/api/:splat"
+  status = 200
+
+# Redirecciona el resto a index.html (Para React Router)
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
