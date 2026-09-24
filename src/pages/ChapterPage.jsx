@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router';
 import { api } from '../utils/api';
-import { BookOpen, FileText, History, Loader, Save } from 'lucide-react';
+import { BookOpen, FileText, History, Loader, Save, ShieldAlert } from 'lucide-react';
+import { useAuth } from '../hooks/useAuth';
 
 const ChapterPage = () => {
   const { chapterId } = useParams();
+  const { isAdmin } = useAuth();
   const [chapter, setChapter] = useState(null);
   const [history, setHistory] = useState([]);
   const [note, setNote] = useState('');
@@ -72,6 +74,24 @@ const ChapterPage = () => {
         </h1>
         <p className="text-gray-600">{chapter?.title}</p>
       </div>
+
+      {/* Admin Panel */}
+      {isAdmin && (
+        <div className="bg-red-50 border-l-4 border-danger rounded-r-xl p-4 mb-8 flex flex-col sm:flex-row justify-between items-start sm:items-center shadow-sm gap-4">
+          <div>
+            <h3 className="font-[Cinzel] text-lg font-bold text-danger flex items-center gap-2">
+              <ShieldAlert className="w-5 h-5" /> Acciones de Administrador
+            </h3>
+            <p className="text-sm text-red-700 mt-1">Gestiona o edita las preguntas de este capítulo directamente.</p>
+          </div>
+          <Link
+            to={`/admin/questions/${chapterId}`}
+            className="flex items-center gap-2 px-5 py-2 bg-danger text-white rounded-lg font-medium hover:bg-red-700 transition-colors shrink-0"
+          >
+            Gestor de Preguntas
+          </Link>
+        </div>
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-3 gap-4 mb-8">
