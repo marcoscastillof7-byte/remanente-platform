@@ -24,16 +24,15 @@ router.get('/:chapterId', async (req, res) => {
         const result = questions.map(q => {
             const correctLetter = q.correct_answer || 'a';
             const correctText = q[`option_${correctLetter}`] || '';
-            let back = `Respuesta: ${correctText}`;
-            if (q.explanation) back += `\n\nExpl: ${q.explanation}`;
 
             return {
-                id: q.id, // usamos el ID de la pregunta
+                id: q.id,
                 chapter_id: q.chapter_id,
                 front_text: q.question_text,
-                back_text: back,
+                back_text: correctText,
+                explanation: q.explanation,
                 verse_reference: q.verse_reference,
-                confidence_level: 0, // Reiniciamos o ignoramos el progreso para evitar FK errors
+                confidence_level: 0, 
                 review_count: 0
             };
         });
