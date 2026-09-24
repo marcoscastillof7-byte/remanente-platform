@@ -152,6 +152,13 @@ const SurvivalEngine = () => {
       {/* Game Area */}
       {currentQ ? (
         <div className={wrongAnswerTrigger ? 'opacity-80' : ''}>
+          {currentQ.chapters && (
+            <div className="flex justify-center mb-4">
+              <span className="bg-primary-light text-white px-4 py-1.5 rounded-full text-sm font-bold shadow-sm">
+                📖 {currentQ.chapters.books?.name} - Capítulo {currentQ.chapters.chapter_number}
+              </span>
+            </div>
+          )}
           <QuestionCard
             question={currentQ}
             selectedAnswer={null} // No mantenemos el estado porque avanza rápido

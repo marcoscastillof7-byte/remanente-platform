@@ -10,10 +10,16 @@ router.get('/start', async (req, res) => {
     try {
         const supabase = getDb();
         
-        // Obtenemos una muestra grande de preguntas (50) para el cliente
+        // Obtenemos una muestra grande de preguntas (50) para el cliente con la información de libro y capítulo
         const { data: questions, error } = await supabase
             .from('questions')
-            .select('id, question_text, option_a, option_b, option_c, option_d, correct_answer, explanation, verse_reference');
+            .select(`
+                id, question_text, option_a, option_b, option_c, option_d, correct_answer, explanation, verse_reference,
+                chapters (
+                    chapter_number,
+                    books ( name )
+                )
+            `);
             
         if (error) throw error;
 
