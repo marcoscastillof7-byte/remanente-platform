@@ -12,9 +12,6 @@ const QuizEngine = ({ questions, chapterId, isCustom = false, configId = null })
   const questionStartRef = useRef(Date.now());
 
   const handleSelectAnswer = (letter) => {
-    // If already answered, ignore (lock answer)
-    if (answers[questions[currentIndex].id]) return;
-
     const timeSpent = Math.round((Date.now() - questionStartRef.current) / 1000);
     setAnswers(prev => ({
       ...prev,
@@ -25,6 +22,13 @@ const QuizEngine = ({ questions, chapterId, isCustom = false, configId = null })
   const handleNext = () => {
     if (currentIndex < questions.length - 1) {
       setCurrentIndex(currentIndex + 1);
+      questionStartRef.current = Date.now();
+    }
+  };
+
+  const handlePrev = () => {
+    if (currentIndex > 0) {
+      setCurrentIndex(currentIndex - 1);
       questionStartRef.current = Date.now();
     }
   };
@@ -69,9 +73,6 @@ const QuizEngine = ({ questions, chapterId, isCustom = false, configId = null })
   const currentQ = questions[currentIndex];
   const progress = ((currentIndex + 1) / questions.length) * 100;
   const allAnswered = questions.every(q => answers[q.id]);
-  const currentAnswer = answers[currentQ.id];
-  const isAnswered = !!currentAnswer;
-  const isCorrect = isAnswered && currentAnswer.selectedAnswer === currentQ.correct_answer;
 
   return (
     <div className="bg-white p-6 rounded-xl shadow-md border border-parchment-dark flex-1 flex flex-col">
@@ -85,44 +86,22 @@ const QuizEngine = ({ questions, chapterId, isCustom = false, configId = null })
         </div>
       </div>
 
-      <div className="flex-1 flex flex-col py-4">
+      <div className="flex-1 flex items-center justify-center py-8">
         <QuestionCard
           question={currentQ}
-          selectedAnswer={currentAnswer?.selectedAnswer}
+          selectedAnswer={answers[currentQ.id]?.selectedAnswer}
           onSelect={handleSelectAnswer}
-          reviewMode={isAnswered}
-          correctAnswer={currentQ.correct_answer}
         />
-
-        {/* Feedback Section */}
-        {isAnswered && (
-          <div className={`mt-6 p-4 rounded-lg border ${isCorrect ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
-            <h4 className={`font-bold mb-2 flex items-center gap-2 ${isCorrect ? 'text-green-700' : 'text-red-700'}`}>
-              {isCorrect ? '¡Correcto! 🎉' : 'Incorrecto ❌'}
-            </h4>
-            
-            {!isCorrect && (
-              <p className="text-sm text-gray-700 mb-2">
-                La respuesta correcta era la <span className="font-bold uppercase">{currentQ.correct_answer}</span>.
-              </p>
-            )}
-            
-            {currentQ.explanation && (
-              <p className="text-sm text-gray-700 mb-2">
-                <span className="font-bold">Explicación:</span> {currentQ.explanation}
-              </p>
-            )}
-            
-            {currentQ.verse_reference && (
-              <p className="text-sm text-blue-700 font-medium">
-                📖 {currentQ.verse_reference}
-              </p>
-            )}
-          </div>
-        )}
       </div>
 
-      <div className="mt-auto pt-4 border-t border-gray-100 flex justify-end">
+      <div className="mt-auto pt-4 border-t border-gray-100 flex justify-between">
+        <button
+          onClick={handlePrev}
+          disabled={currentIndex === 0}
+          className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md disabled:opacity-50 hover:bg-gray-200 transition-colors"
+        >
+          Anterior
+        </button>
         {currentIndex === questions.length - 1 ? (
           <button
             onClick={handleFinish}
@@ -135,8 +114,7 @@ const QuizEngine = ({ questions, chapterId, isCustom = false, configId = null })
         ) : (
           <button
             onClick={handleNext}
-            disabled={!isAnswered}
-            className="px-6 py-2 bg-primary text-white rounded-md disabled:opacity-50 hover:bg-primary-light font-bold transition-colors"
+            className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary-light transition-colors"
           >
             Siguiente
           </button>
