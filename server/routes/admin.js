@@ -170,6 +170,44 @@ router.post('/questions', async (req, res) => {
     }
 });
 
+router.post('/questions/:chapterId/bulk', async (req, res) => {
+    try {
+        const supabase = getDb();
+        const { chapterId } = req.params;
+        const { questions, mode } = req.body;
+
+        if (!Array.isArray(questions) || questions.length === 0) {
+            return res.status(400).json({ error: 'Lista de preguntas vacía o inválida' });
+        }
+
+        if (mode === 'replace') {
+            const { error: delError } = await supabase.from('questions').delete().eq('chapter_id', chapterId);
+            if (delError) throw delError;
+        }
+
+        const questionsToInsert = questions.map(q => ({
+            chapter_id: chapterId,
+            question_text: q.question_text,
+            option_a: q.option_a,
+            option_b: q.option_b,
+            option_c: q.option_c,
+            option_d: q.option_d,
+            correct_answer: q.correct_answer,
+            difficulty: q.difficulty || 'medio',
+            explanation: q.explanation || '',
+            verse_reference: q.verse_reference || ''
+        }));
+
+        const { error: insError } = await supabase.from('questions').insert(questionsToInsert);
+        if (insError) throw insError;
+
+        res.json({ message: 'Importación masiva exitosa', count: questionsToInsert.length });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Error interno en importación masiva' });
+    }
+});
+
 router.put('/questions/:id', async (req, res) => {
     try {
         const supabase = getDb();
