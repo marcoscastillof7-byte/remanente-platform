@@ -21,19 +21,23 @@
       }
     </style>
     <script>
-      // Destrucción mediante JavaScript (Observer para cuando Netlify lo inyecte)
-      const observer = new MutationObserver(() => {
-        const badge1 = document.querySelector('#netlify-badge');
-        const badge2 = document.querySelector('.netlify-badge');
-        const badge3 = document.querySelector('netlify-badge');
-        const badge4 = document.querySelector('a[href*="netlify.com"]');
-        
-        if (badge1) badge1.remove();
-        if (badge2) badge2.remove();
-        if (badge3) badge3.remove();
-        if (badge4 && badge4.innerHTML.includes('Netlify')) badge4.remove();
-      });
-      observer.observe(document.body, { childList: true, subtree: true });
+      // Destrucción total: se ejecuta cada 100ms durante los primeros 10 segundos
+      const killBadge = () => {
+        // 1. Matar por etiqueta personalizada o IDs clásicos
+        const targets = document.querySelectorAll('#netlify-badge, .netlify-badge, netlify-badge');
+        targets.forEach(t => t.remove());
+
+        // 2. Matar por URL (busca cualquier enlace hacia netlify.com)
+        document.querySelectorAll('a').forEach(a => {
+          if (a.href && a.href.toLowerCase().includes('netlify.com')) {
+            a.remove();
+          }
+        });
+      };
+
+      killBadge();
+      const interval = setInterval(killBadge, 100);
+      setTimeout(() => clearInterval(interval), 15000); // Detener a los 15 segundos
     </script>
   </body>
 </html>
