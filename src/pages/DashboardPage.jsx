@@ -8,7 +8,7 @@ const verses = [
   '"Procura con diligencia presentarte a Dios aprobado, como obrero que no tiene de qué avergonzarse." — 2 Timoteo 2:15',
   '"Lámpara es a mis pies tu palabra, y lumbrera a mi camino." — Salmo 119:105',
   '"Toda la Escritura es inspirada por Dios, y útil para enseñar." — 2 Timoteo 3:16',
-  '"Bienaventurado el que lee, y los que oyen las palabras de esta profecía." — Apocalipsis 1:3',
+  '"Solamente temed a Jehová y servidle de verdad con todo vuestro corazón, pues considerad cuán grandes cosas ha hecho por vosotros." — 1 Samuel 12:24',
   '"El principio de la sabiduría es el temor de Jehová." — Proverbios 9:10',
   '"Porque la palabra de Dios es viva y eficaz." — Hebreos 4:12',
   '"Tu palabra es verdad." — Juan 17:17',
