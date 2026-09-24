@@ -11,6 +11,7 @@ const GlobalBulkImport = () => {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [importMode, setImportMode] = useState('append');
 
   useEffect(() => {
     const fetchBooksAndChapters = async () => {
@@ -142,7 +143,7 @@ const GlobalBulkImport = () => {
         return dbQ;
       });
 
-      await api.post('/admin/global-bulk', { questions: payload });
+      await api.post('/admin/global-bulk', { questions: payload, mode: importMode });
       setSuccess(true);
       setText('');
       setParsedQuestions([]);
@@ -228,7 +229,34 @@ CAPITULO: 1
 
       {parsedQuestions.length > 0 && (
         <div className="bg-white p-6 rounded-lg border shadow-sm">
-          <h2 className="font-bold text-xl mb-4 text-primary">Vista Previa ({parsedQuestions.length} preguntas)</h2>
+          <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-6 border-b pb-4">
+            <h2 className="font-bold text-xl text-primary mb-4 md:mb-0">Vista Previa ({parsedQuestions.length} preguntas)</h2>
+            
+            <div className="flex gap-4">
+              <label className="flex items-center cursor-pointer">
+                <input
+                  type="radio"
+                  name="importMode"
+                  value="append"
+                  checked={importMode === 'append'}
+                  onChange={(e) => setImportMode(e.target.value)}
+                  className="w-4 h-4 text-primary focus:ring-primary"
+                />
+                <span className="ml-2 text-sm font-medium text-gray-700">Agregar a las existentes</span>
+              </label>
+              <label className="flex items-center cursor-pointer">
+                <input
+                  type="radio"
+                  name="importMode"
+                  value="replace"
+                  checked={importMode === 'replace'}
+                  onChange={(e) => setImportMode(e.target.value)}
+                  className="w-4 h-4 text-primary focus:ring-primary"
+                />
+                <span className="ml-2 text-sm font-medium text-gray-700">Reemplazar todas</span>
+              </label>
+            </div>
+          </div>
           
           <div className="max-h-96 overflow-y-auto mb-6 space-y-4 pr-2">
             {parsedQuestions.map((q, i) => (

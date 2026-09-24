@@ -211,10 +211,19 @@ router.post('/questions/:chapterId/bulk', async (req, res) => {
 router.post('/global-bulk', async (req, res) => {
     try {
         const supabase = getDb();
-        const { questions } = req.body;
+        const { questions, mode } = req.body;
 
         if (!Array.isArray(questions) || questions.length === 0) {
             return res.status(400).json({ error: 'Lista de preguntas vacía o inválida' });
+        }
+
+        if (mode === 'replace') {
+            // Eliminar solo de los capítulos que están en esta lista de importación
+            const chapterIds = [...new Set(questions.map(q => q.chapter_id))];
+            if (chapterIds.length > 0) {
+                const { error: delError } = await supabase.from('questions').delete().in('chapter_id', chapterIds);
+                if (delError) throw delError;
+            }
         }
 
         const { error: insError } = await supabase.from('questions').insert(questions);
