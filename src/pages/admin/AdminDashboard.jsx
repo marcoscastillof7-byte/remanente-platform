@@ -36,17 +36,17 @@ const AdminDashboard = () => {
 
   return (
     <div className="max-w-6xl mx-auto">
-      <div className="flex justify-between items-center mb-8">
-        <h1 className="font-[Cinzel] text-3xl font-bold text-primary">👑 Panel de Administración</h1>
-        <div className="flex gap-3">
-          <Link to="/admin/global-bulk" className="flex items-center gap-2 px-4 py-2 bg-gray-800 text-white rounded hover:bg-gray-900 transition-colors shadow-sm">
-            <BookOpen className="w-5 h-5" /> Importador Global
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
+        <h1 className="font-[Cinzel] text-2xl md:text-3xl font-bold text-primary">👑 Panel de Administración</h1>
+        <div className="flex flex-wrap gap-2 md:gap-3 w-full md:w-auto">
+          <Link to="/admin/global-bulk" className="flex-1 md:flex-none flex items-center justify-center gap-2 px-3 py-2 bg-gray-800 text-white rounded hover:bg-gray-900 transition-colors shadow-sm text-sm">
+            <BookOpen className="w-4 h-4" /> Importador
           </Link>
-          <Link to="/admin/suggestions" className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors shadow-sm">
-            <MessageSquare className="w-5 h-5" /> Sugerencias
+          <Link to="/admin/suggestions" className="flex-1 md:flex-none flex items-center justify-center gap-2 px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors shadow-sm text-sm">
+            <MessageSquare className="w-4 h-4" /> Sugerencias
           </Link>
-          <Link to="/admin/reports" className="flex items-center gap-2 px-4 py-2 bg-danger text-white rounded hover:bg-red-600 transition-colors shadow-sm">
-            <Flag className="w-5 h-5" /> Reportes
+          <Link to="/admin/reports" className="flex-1 md:flex-none flex items-center justify-center gap-2 px-3 py-2 bg-danger text-white rounded hover:bg-red-600 transition-colors shadow-sm text-sm">
+            <Flag className="w-4 h-4" /> Reportes
           </Link>
         </div>
       </div>
