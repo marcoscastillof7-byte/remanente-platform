@@ -46,22 +46,20 @@ const GlobalBulkImport = () => {
     let currentChapterId = null;
     let currentQ = null;
 
-    // Helper to remove accents for easy parsing
     const removeAccents = (str) => str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
-    // Remove empty lines and trim
     const cleanLines = lines.map(l => l.trim()).filter(l => l.length > 0);
 
     for (let i = 0; i < cleanLines.length; i++) {
       const line = cleanLines[i];
-      const upperLine = removeAccents(line.toUpperCase());
-
-      if (upperLine.startsWith('LIBRO:')) {
-        const bookName = line.substring(6).trim();
+      
+      const matchLibro = line.match(/^LIBRO\s*[:\-]?\s*(.+)$/i);
+      if (matchLibro) {
+        const bookName = matchLibro[1].trim();
         const foundBook = books.find(b => removeAccents(b.name.toLowerCase()) === removeAccents(bookName.toLowerCase()));
         if (foundBook) {
           currentBook = foundBook;
-          currentChapterId = null; // reset chapter when book changes
+          currentChapterId = null; 
         } else {
           localErrors.push(`Libro no encontrado: "${bookName}" en la línea ${i+1}`);
           currentBook = null;
@@ -69,9 +67,9 @@ const GlobalBulkImport = () => {
         continue;
       }
 
-      if (upperLine.startsWith('CAPITULO:')) {
-        const chapterNumStr = line.substring(9).trim();
-        const chapterNum = parseInt(chapterNumStr, 10);
+      const matchCapitulo = line.match(/^CAP[IÍ]TULO\s*[:\-]?\s*(\d+)/i);
+      if (matchCapitulo) {
+        const chapterNum = parseInt(matchCapitulo[1], 10);
         
         if (!currentBook) {
           localErrors.push(`Capítulo ${chapterNum} declarado sin un libro válido arriba (Línea ${i+1})`);
@@ -88,20 +86,18 @@ const GlobalBulkImport = () => {
         continue;
       }
 
-      if (upperLine.startsWith('PREGUNTA:')) {
+      const matchPregunta = line.match(/^PREGUNTA\s*[:\-]?\s*(.+)$/i);
+      if (matchPregunta) {
         if (!currentChapterId) {
-          localErrors.push(`Pregunta encontrada sin un capítulo y libro válidos arriba: "${line}"`);
+          localErrors.push(`Pregunta encontrada sin un capítulo y libro válidos arriba (Línea ${i+1})`);
           continue;
         }
-
-        if (currentQ) {
-          result.push(currentQ);
-        }
+        if (currentQ) result.push(currentQ);
 
         currentQ = {
           chapter_id: currentChapterId,
           bookName: currentBook.name,
-          question_text: line.substring(9).trim(),
+          question_text: matchPregunta[1].trim(),
           difficulty: 'medio',
           explanation: '',
           verse_reference: ''
@@ -110,16 +106,21 @@ const GlobalBulkImport = () => {
       }
 
       if (currentQ) {
-        if (upperLine.startsWith('A.')) currentQ.option_a = line.substring(2).trim();
-        else if (upperLine.startsWith('B.')) currentQ.option_b = line.substring(2).trim();
-        else if (upperLine.startsWith('C.')) currentQ.option_c = line.substring(2).trim();
-        else if (upperLine.startsWith('D.')) currentQ.option_d = line.substring(2).trim();
-        else if (upperLine.startsWith('RESPUESTA:')) {
-          const val = line.substring(10).trim().toLowerCase();
-          currentQ.correct_answer = val;
-        }
-        else if (upperLine.startsWith('EXPLICACION:')) currentQ.explanation = line.substring(12).trim();
-        else if (upperLine.startsWith('VERSICULO:')) currentQ.verse_reference = line.substring(10).trim();
+        const matchA = line.match(/^[A]\s*[.)\-]\s*(.+)$/i);
+        const matchB = line.match(/^[B]\s*[.)\-]\s*(.+)$/i);
+        const matchC = line.match(/^[C]\s*[.)\-]\s*(.+)$/i);
+        const matchD = line.match(/^[D]\s*[.)\-]\s*(.+)$/i);
+        const matchResp = line.match(/^RESPUESTA\s*[:\-]?\s*([A-D])/i);
+        const matchExp = line.match(/^EXPLICACI[OÓ]N\s*[:\-]?\s*(.+)$/i);
+        const matchVer = line.match(/^VERS[IÍ]CULO\s*[:\-]?\s*(.+)$/i);
+
+        if (matchA) currentQ.option_a = matchA[1].trim();
+        else if (matchB) currentQ.option_b = matchB[1].trim();
+        else if (matchC) currentQ.option_c = matchC[1].trim();
+        else if (matchD) currentQ.option_d = matchD[1].trim();
+        else if (matchResp) currentQ.correct_answer = matchResp[1].trim().toLowerCase();
+        else if (matchExp) currentQ.explanation = matchExp[1].trim();
+        else if (matchVer) currentQ.verse_reference = matchVer[1].trim();
       }
     }
 

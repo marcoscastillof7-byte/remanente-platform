@@ -104,9 +104,16 @@ const QuizEngine = ({ questions, chapterId, isCustom = false, configId = null })
         </button>
         {currentIndex === questions.length - 1 ? (
           <button
-            onClick={handleFinish}
-            disabled={!allAnswered || submitting}
-            className="px-6 py-2 bg-primary text-white rounded-md disabled:opacity-50 hover:bg-primary-light font-bold transition-colors flex items-center gap-2"
+            onClick={() => {
+              if (!allAnswered) {
+                const missing = questions.findIndex(q => !answers[q.id]) + 1;
+                alert(`Te falta responder la pregunta ${missing}. Por favor, regresa y respóndela antes de finalizar.`);
+                return;
+              }
+              handleFinish();
+            }}
+            disabled={submitting}
+            className={`px-6 py-2 text-white rounded-md font-bold transition-colors flex items-center gap-2 ${!allAnswered ? 'bg-gray-400 cursor-not-allowed' : 'bg-primary hover:bg-primary-light'}`}
           >
             {submitting && <Loader className="w-4 h-4 animate-spin" />}
             Finalizar Quiz
