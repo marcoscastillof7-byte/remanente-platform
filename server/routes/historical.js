@@ -43,5 +43,48 @@ router.post('/:chapterId', async (req, res) => {
         res.status(500).json({ error: 'Error interno' });
     }
 });
+router.put('/:id', async (req, res) => {
+    try {
+        const supabase = getDb();
+        const { content } = req.body;
+        
+        // Verificar si es dueño o admin
+        const { data: post, error: fetchError } = await supabase.from('historical_details').select('user_id').eq('id', req.params.id).single();
+        if (fetchError || !post) return res.status(404).json({ error: 'Detalle no encontrado' });
+        
+        if (post.user_id !== req.user.id && req.user.role !== 'admin') {
+            return res.status(403).json({ error: 'No tienes permiso para editar esto' });
+        }
 
+        const { error } = await supabase.from('historical_details').update({ content }).eq('id', req.params.id);
+        if (error) throw error;
+        
+        res.json({ message: 'Detalle actualizado' });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Error interno' });
+    }
+});
+
+router.delete('/:id', async (req, res) => {
+    try {
+        const supabase = getDb();
+        
+        // Verificar si es dueño o admin
+        const { data: post, error: fetchError } = await supabase.from('historical_details').select('user_id').eq('id', req.params.id).single();
+        if (fetchError || !post) return res.status(404).json({ error: 'Detalle no encontrado' });
+        
+        if (post.user_id !== req.user.id && req.user.role !== 'admin') {
+            return res.status(403).json({ error: 'No tienes permiso para eliminar esto' });
+        }
+
+        const { error } = await supabase.from('historical_details').delete().eq('id', req.params.id);
+        if (error) throw error;
+        
+        res.json({ message: 'Detalle eliminado' });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Error interno' });
+    }
+});
 export default router;
