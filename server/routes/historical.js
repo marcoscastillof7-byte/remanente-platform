@@ -48,12 +48,12 @@ router.put('/:id', async (req, res) => {
         const supabase = getDb();
         const { content } = req.body;
         
-        // Verificar si es dueño o admin
+        // Verificar que sea el dueño exacto
         const { data: post, error: fetchError } = await supabase.from('historical_details').select('user_id').eq('id', req.params.id).single();
         if (fetchError || !post) return res.status(404).json({ error: 'Detalle no encontrado' });
         
-        if (post.user_id !== req.user.id && req.user.role !== 'admin') {
-            return res.status(403).json({ error: 'No tienes permiso para editar esto' });
+        if (post.user_id !== req.user.id) {
+            return res.status(403).json({ error: 'No tienes permiso para editar el mensaje de otra persona' });
         }
 
         const { error } = await supabase.from('historical_details').update({ content }).eq('id', req.params.id);
@@ -70,12 +70,12 @@ router.delete('/:id', async (req, res) => {
     try {
         const supabase = getDb();
         
-        // Verificar si es dueño o admin
+        // Verificar que sea el dueño exacto
         const { data: post, error: fetchError } = await supabase.from('historical_details').select('user_id').eq('id', req.params.id).single();
         if (fetchError || !post) return res.status(404).json({ error: 'Detalle no encontrado' });
         
-        if (post.user_id !== req.user.id && req.user.role !== 'admin') {
-            return res.status(403).json({ error: 'No tienes permiso para eliminar esto' });
+        if (post.user_id !== req.user.id) {
+            return res.status(403).json({ error: 'No tienes permiso para eliminar el mensaje de otra persona' });
         }
 
         const { error } = await supabase.from('historical_details').delete().eq('id', req.params.id);

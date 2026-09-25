@@ -132,13 +132,11 @@ const HistoricalDetails = ({ chapterId, user }) => {
                   </div>
                 </div>
                 
-                {(item.user_id === user?.id || user?.role === 'admin') && editingId !== item.id && (
+                {item.user_id === user?.id && editingId !== item.id && (
                   <div className="flex items-center gap-2">
-                    {item.user_id === user?.id && (
-                      <button onClick={() => startEdit(item)} disabled={actionLoading} className="text-gray-400 hover:text-blue-500 transition-colors" title="Editar">
-                        <Edit2 className="w-4 h-4" />
-                      </button>
-                    )}
+                    <button onClick={() => startEdit(item)} disabled={actionLoading} className="text-gray-400 hover:text-blue-500 transition-colors" title="Editar">
+                      <Edit2 className="w-4 h-4" />
+                    </button>
                     <button onClick={() => handleDelete(item.id)} disabled={actionLoading} className="text-gray-400 hover:text-red-500 transition-colors" title="Eliminar">
                       <Trash2 className="w-4 h-4" />
                     </button>
