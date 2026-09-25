@@ -48,7 +48,7 @@ const HistoricalDetails = ({ chapterId, user }) => {
     if (!confirm('¿Seguro que quieres eliminar este aporte?')) return;
     setActionLoading(true);
     try {
-      await api.delete(`/historical-details/${id}`);
+      await api.del(`/historical-details/${id}`);
       setDetails(details.filter(d => d.id !== id));
     } catch (err) {
       console.error(err);
