@@ -23,6 +23,7 @@ import AdminSuggestions from './pages/admin/AdminSuggestions';
 import GlobalBulkImport from './pages/admin/GlobalBulkImport';
 import DuelsPage from './pages/DuelsPage';
 import SurvivalPage from './pages/SurvivalPage';
+import AgoraPage from './pages/AgoraPage';
 
 const Layout = ({ children }) => (
   <div className="flex flex-col min-h-screen bg-[var(--color-parchment)]">
@@ -55,6 +56,7 @@ const App = () => {
             <Route path="/profile" element={<Layout><ProfilePage /></Layout>} />
             <Route path="/duels" element={<Layout><DuelsPage /></Layout>} />
             <Route path="/survival" element={<Layout><SurvivalPage /></Layout>} />
+            <Route path="/agora" element={<Layout><AgoraPage /></Layout>} />
           </Route>
 
           <Route element={<AdminRoute />}>

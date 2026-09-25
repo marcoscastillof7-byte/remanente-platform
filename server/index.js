@@ -16,6 +16,7 @@ import notificationRoutes from './routes/notifications.js';
 import duelsRoutes from './routes/duels.js';
 import survivalRoutes from './routes/survival.js';
 import historicalRoutes from './routes/historical.js';
+import meetingsRoutes from './routes/meetings.js';
 
 const app = express();
 const httpServer = createServer(app);
@@ -53,6 +54,7 @@ router.use('/notifications', notificationRoutes);
 router.use('/duels', duelsRoutes);
 router.use('/survival', survivalRoutes);
 router.use('/historical-details', historicalRoutes);
+router.use('/meetings', meetingsRoutes);
 
 // Usar el enrutador para el prefijo /api
 app.use('/api', router);

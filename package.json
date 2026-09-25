@@ -15,6 +15,7 @@
     "migrate-db": "node scripts/migrateToSupabase.js"
   },
   "dependencies": {
+    "@jitsi/react-sdk": "^1.4.4",
     "@supabase/supabase-js": "^2.117.1",
     "bcryptjs": "^3.0.2",
     "better-sqlite3": "^12.2.0",
