@@ -2,7 +2,7 @@ import React, { useState, useEffect, useContext } from 'react';
 import { JitsiMeeting } from '@jitsi/react-sdk';
 import { AuthContext } from '../contexts/AuthContext';
 import { api } from '../utils/api';
-import { Calendar, Video, Users, Plus, Loader, LogOut } from 'lucide-react';
+import { Calendar, Video, Users, Plus, Loader, LogOut, Trash2 } from 'lucide-react';
 
 const AgoraPage = () => {
   const { user } = useContext(AuthContext);
@@ -43,6 +43,17 @@ const AgoraPage = () => {
     } catch (err) {
       console.error(err);
       alert('Error al programar');
+    }
+  };
+
+  const deleteMeeting = async (id) => {
+    if (!window.confirm('¿Estás seguro de que deseas cancelar y eliminar esta reunión?')) return;
+    try {
+      await api.del(`/meetings/${id}`);
+      fetchMeetings();
+    } catch (err) {
+      console.error(err);
+      alert('Error al eliminar la reunión');
     }
   };
 
@@ -152,13 +163,20 @@ const AgoraPage = () => {
                   )}
                   
                   <div className="flex justify-between items-start mb-4">
-                    <h3 className="font-bold text-xl text-[var(--color-primary)]">{m.title}</h3>
-                    {isLive && (
-                      <span className="bg-red-100 text-red-600 text-xs font-bold px-2 py-1 rounded-full flex items-center gap-1 animate-pulse">
-                        <span className="w-2 h-2 bg-red-600 rounded-full" />
-                        EN VIVO
-                      </span>
-                    )}
+                    <h3 className="font-bold text-xl pr-2 text-[var(--color-primary)]">{m.title}</h3>
+                    <div className="flex flex-col items-end gap-2">
+                      {isLive && (
+                        <span className="bg-red-100 text-red-600 text-xs font-bold px-2 py-1 rounded-full flex items-center gap-1 animate-pulse">
+                          <span className="w-2 h-2 bg-red-600 rounded-full" />
+                          EN VIVO
+                        </span>
+                      )}
+                      {user?.role === 'admin' && (
+                        <button onClick={() => deleteMeeting(m.id)} className="text-gray-400 hover:text-red-500 transition-colors" title="Cancelar Reunión">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                   
                   <p className="text-sm text-gray-600 mb-6 flex-grow">{m.description}</p>

@@ -77,4 +77,23 @@ router.put('/:id/status', async (req, res) => {
     }
 });
 
+// Eliminar/Cancelar reunion (Solo admin)
+router.delete('/:id', async (req, res) => {
+    try {
+        if (req.user.role !== 'admin') return res.status(403).json({ error: 'Solo los administradores pueden eliminar reuniones' });
+        
+        const supabase = getDb();
+        const { error } = await supabase
+            .from('meetings')
+            .delete()
+            .eq('id', req.params.id);
+            
+        if (error) throw error;
+        res.json({ message: 'Reunion eliminada exitosamente' });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Error interno' });
+    }
+});
+
 export default router;
