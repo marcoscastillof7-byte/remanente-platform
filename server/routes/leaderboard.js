@@ -3,8 +3,20 @@ import { getDb } from '../db/database.js';
 
 const router = express.Router();
 
+// Caché en memoria para evitar colapsar la DB y la RAM del servidor
+const CACHE_TTL = 60000; // 1 minuto
+const cache = {
+    global: { data: null, lastUpdated: 0 },
+    books: {}
+};
+
 router.get('/', async (req, res) => {
     try {
+        const now = Date.now();
+        if (cache.global.data && (now - cache.global.lastUpdated < CACHE_TTL)) {
+            return res.json(cache.global.data);
+        }
+
         const supabase = getDb();
         const { data: users, error: uError } = await supabase.from('users').select('id, username');
         const { data: attempts, error: aError } = await supabase.from('quiz_attempts').select('user_id, score');
@@ -31,18 +43,26 @@ router.get('/', async (req, res) => {
           .sort((a, b) => b.total_score - a.total_score)
           .slice(0, 20);
 
+        cache.global.data = leaderboard;
+        cache.global.lastUpdated = now;
+
         res.json(leaderboard);
     } catch (error) {
-        console.error(error);
+        console.error('Error in /leaderboard:', error);
         res.status(500).json({ error: 'Error interno' });
     }
 });
 
 router.get('/:bookId', async (req, res) => {
     try {
-        const supabase = getDb();
         const bookId = parseInt(req.params.bookId, 10);
+        const now = Date.now();
         
+        if (cache.books[bookId] && (now - cache.books[bookId].lastUpdated < CACHE_TTL)) {
+            return res.json(cache.books[bookId].data);
+        }
+
+        const supabase = getDb();
         const { data: users, error: uError } = await supabase.from('users').select('id, username');
         const { data: attempts, error: aError } = await supabase
             .from('quiz_attempts')
@@ -68,9 +88,14 @@ router.get('/:bookId', async (req, res) => {
           .sort((a, b) => b.total_score - a.total_score)
           .slice(0, 20);
 
+        cache.books[bookId] = {
+            data: leaderboard,
+            lastUpdated: now
+        };
+
         res.json(leaderboard);
     } catch (error) {
-        console.error(error);
+        console.error('Error in /leaderboard/:bookId:', error);
         res.status(500).json({ error: 'Error interno' });
     }
 });

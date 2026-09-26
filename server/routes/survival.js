@@ -54,9 +54,21 @@ router.post('/submit', async (req, res) => {
     }
 });
 
+// Caché para leaderboard de supervivencia
+const SURVIVAL_CACHE_TTL = 60000; // 1 minuto
+const cache = {
+    leaderboard: null,
+    lastUpdated: 0
+};
+
 // Tabla de posiciones de supervivencia
 router.get('/leaderboard', async (req, res) => {
     try {
+        const now = Date.now();
+        if (cache.leaderboard && (now - cache.lastUpdated < SURVIVAL_CACHE_TTL)) {
+            return res.json(cache.leaderboard);
+        }
+
         const supabase = getDb();
         
         // Obtener los mejores scores únicos por usuario
@@ -79,9 +91,12 @@ router.get('/leaderboard', async (req, res) => {
             .sort((a, b) => b.score - a.score)
             .slice(0, 10);
             
+        cache.leaderboard = top10;
+        cache.lastUpdated = now;
+        
         res.json(top10);
     } catch (error) {
-        console.error(error);
+        console.error('Error in /survival/leaderboard:', error);
         res.status(500).json({ error: 'Error interno' });
     }
 });
