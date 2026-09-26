@@ -3,8 +3,6 @@ import { JitsiMeeting } from '@jitsi/react-sdk';
 import { AuthContext } from '../contexts/AuthContext';
 import { api } from '../utils/api';
 import { Calendar, Video, Users, Plus, Loader, LogOut } from 'lucide-react';
-import { format } from 'date-fns';
-import { es } from 'date-fns/locale';
 
 const AgoraPage = () => {
   const { user } = useContext(AuthContext);
@@ -167,7 +165,14 @@ const AgoraPage = () => {
                   
                   <div className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-4 bg-gray-50 p-2 rounded-lg">
                     <Calendar className="w-4 h-4 text-[var(--color-secondary)]" />
-                    {format(new Date(m.scheduled_for), "EEEE d 'de' MMMM, h:mm a", { locale: es })}
+                    {new Intl.DateTimeFormat('es-ES', { 
+                      weekday: 'long', 
+                      day: 'numeric', 
+                      month: 'long', 
+                      hour: 'numeric', 
+                      minute: '2-digit', 
+                      hour12: true 
+                    }).format(new Date(m.scheduled_for))}
                   </div>
                   
                   <button 
