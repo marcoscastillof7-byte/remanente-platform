@@ -1,4 +1,5 @@
-import { Flame, Wrench } from 'lucide-react';
+import SurvivalEngine from '../components/survival/SurvivalEngine';
+import { Flame } from 'lucide-react';
 
 const SurvivalPage = () => {
   return (
@@ -13,16 +14,7 @@ const SurvivalPage = () => {
         </p>
       </div>
 
-      <div className="bg-white rounded-xl shadow-md border p-12 text-center">
-        <div className="flex justify-center mb-4">
-          <Wrench className="w-16 h-16 text-gray-400" />
-        </div>
-        <h2 className="text-2xl font-bold text-gray-800 mb-2">En Mantenimiento 🚧</h2>
-        <p className="text-gray-600">
-          Estamos ajustando y mejorando el código interno de este modo para darte la mejor experiencia. 
-          ¡Estará disponible para el público muy pronto!
-        </p>
-      </div>
+      <SurvivalEngine />
     </div>
   );
 };

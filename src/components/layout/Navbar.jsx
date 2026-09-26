@@ -94,8 +94,8 @@ const Navbar = () => {
           
           <div className="hidden md:flex items-center space-x-6">
             <Link to="/" className="hover:text-[var(--color-gold)] transition-colors">Inicio</Link>
-            <Link to="/duels" className="text-gray-400 hover:text-gray-300 transition-colors flex items-center" title="En Mantenimiento"><Swords className="w-4 h-4 mr-1"/> Duelos 🚧</Link>
-            <Link to="/survival" className="text-gray-400 hover:text-gray-300 transition-colors flex items-center" title="En Mantenimiento"><Flame className="w-4 h-4 mr-1"/> Supervivencia 🚧</Link>
+            <Link to="/duels" className="hover:text-[var(--color-gold)] transition-colors flex items-center"><Swords className="w-4 h-4 mr-1"/> Duelos</Link>
+            <Link to="/survival" className="hover:text-[var(--color-gold)] transition-colors flex items-center"><Flame className="w-4 h-4 mr-1"/> Supervivencia</Link>
             <Link to="/agora" className="hover:text-[var(--color-gold)] transition-colors">El Ágora</Link>
             <Link to="/leaderboard" className="hover:text-[var(--color-gold)] transition-colors">Tabla de Honor</Link>
             <button onClick={() => setShowSuggestion(true)} className="hover:text-[var(--color-gold)] transition-colors flex items-center">
@@ -187,8 +187,8 @@ const Navbar = () => {
       {menuOpen && (
         <div className="md:hidden bg-[var(--color-primary-dark)] px-2 pt-2 pb-3 space-y-1">
           <Link to="/" className="block px-3 py-2 rounded-md text-base hover:bg-[var(--color-primary-light)] text-white">Inicio</Link>
-          <Link to="/duels" className="block px-3 py-2 rounded-md text-base hover:bg-[var(--color-primary-light)] text-gray-400 flex items-center"><Swords className="w-4 h-4 mr-2"/> Duelos Bíblicos 🚧</Link>
-          <Link to="/survival" className="block px-3 py-2 rounded-md text-base hover:bg-[var(--color-primary-light)] text-gray-400 flex items-center"><Flame className="w-4 h-4 mr-2"/> Supervivencia 🚧</Link>
+          <Link to="/duels" className="block px-3 py-2 rounded-md text-base hover:bg-[var(--color-primary-light)] text-white flex items-center"><Swords className="w-4 h-4 mr-2"/> Duelos Bíblicos</Link>
+          <Link to="/survival" className="block px-3 py-2 rounded-md text-base hover:bg-[var(--color-primary-light)] text-white flex items-center"><Flame className="w-4 h-4 mr-2"/> Supervivencia</Link>
           <Link to="/agora" className="block px-3 py-2 rounded-md text-base hover:bg-[var(--color-primary-light)] text-white flex items-center"><span className="mr-2">🏛️</span> El Ágora</Link>
           <Link to="/leaderboard" className="block px-3 py-2 rounded-md text-base hover:bg-[var(--color-primary-light)] text-white">Tabla de Honor</Link>
           <button onClick={() => { setShowSuggestion(true); setMenuOpen(false); }} className="w-full text-left block px-3 py-2 rounded-md text-base hover:bg-[var(--color-primary-light)] text-[var(--color-gold)] flex items-center">
