@@ -40,9 +40,7 @@ const RegisterPage = () => {
       <div className="w-full max-w-md bg-[var(--color-parchment)] p-8 rounded-xl shadow-2xl border-2 border-[var(--color-gold)]">
         <div className="text-center mb-8">
           <h1 className="font-cinzel text-3xl font-bold text-[var(--color-primary)] mb-2">Crear Cuenta</h1>
-          <p className="text-gray-600 font-medium">
-            Únete a {(formData.username !== 'Rowlis' && formData.username !== 'Rangelis') ? 'Remanente Platform' : 'la Plataforma'}
-          </p>
+          <p className="text-gray-600 font-medium">Únete a Remanente Platform</p>
         </div>
 
         {error && <div className="bg-red-100 text-red-700 p-3 rounded-md mb-4 text-sm">{error}</div>}

@@ -1,7 +1,5 @@
-import { useEffect } from 'react';
 import { Routes, Route } from 'react-router';
 import { AuthProvider } from './contexts/AuthContext';
-import { useAuth } from './hooks/useAuth';
 import { ToastProvider } from './components/shared/Toast';
 import { ProtectedRoute, AdminRoute } from './components/layout/ProtectedRoute';
 import Navbar from './components/layout/Navbar';
@@ -43,25 +41,7 @@ const App = () => {
   return (
     <ToastProvider>
       <AuthProvider>
-        <AppContent />
-      </AuthProvider>
-    </ToastProvider>
-  );
-};
-
-const AppContent = () => {
-  const { user } = useAuth();
-  
-  useEffect(() => {
-    if (user && (user.username === 'Rowlis' || user.username === 'Rangelis')) {
-      document.title = "Plataforma de Estudio Bíblico";
-    } else {
-      document.title = "Remanente Platform — Estudio Bíblico";
-    }
-  }, [user]);
-
-  return (
-    <Routes>
+        <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
           
@@ -88,6 +68,8 @@ const AppContent = () => {
             <Route path="/admin/global-bulk" element={<Layout><GlobalBulkImport /></Layout>} />
           </Route>
         </Routes>
+      </AuthProvider>
+    </ToastProvider>
   );
 };
 
