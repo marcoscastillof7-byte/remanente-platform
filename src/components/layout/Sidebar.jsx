@@ -81,15 +81,6 @@ const Sidebar = () => {
           ))}
         </div>
       </div>
-      <div className="p-4 mt-auto border-t border-parchment-dark">
-        <Link 
-          to="/agora"
-          className={`flex items-center p-2 rounded-md transition-colors ${location.pathname === '/agora' ? 'bg-primary text-white' : 'text-gray-700 hover:bg-parchment'}`}
-        >
-          <span className="mr-2">🏛️</span>
-          <span className="font-medium text-sm">El Ágora</span>
-        </Link>
-      </div>
     </aside>
   );
 };

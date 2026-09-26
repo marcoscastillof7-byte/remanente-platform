@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router';
 import { useAuth } from '../hooks/useAuth';
 import { api } from '../utils/api';
-import { Flame, Target, Award, ArrowRight, BookOpen, Loader, Swords } from 'lucide-react';
+import { Flame, Target, Award, ArrowRight, BookOpen, Loader } from 'lucide-react';
 
 const verses = [
   '"Procura con diligencia presentarte a Dios aprobado, como obrero que no tiene de qué avergonzarse." — 2 Timoteo 2:15',
@@ -91,14 +91,6 @@ const DashboardPage = () => {
                 <div className="font-bold text-xl">{avgScore}%</div>
               </div>
             </div>
-          </div>
-          <div className="mt-6 flex gap-4">
-            <Link to="/duels" className="bg-danger hover:bg-red-700 text-white font-bold py-2 px-6 rounded-lg transition-colors flex items-center shadow-lg">
-              <Swords className="w-5 h-5 mr-2" /> Ir a Duelos
-            </Link>
-            <Link to="/survival" className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 px-6 rounded-lg transition-colors flex items-center shadow-lg">
-              <Flame className="w-5 h-5 mr-2" /> Ir a Supervivencia
-            </Link>
           </div>
         </div>
       </div>
