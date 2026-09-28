@@ -5,13 +5,13 @@ import { auth } from '../middleware/auth.js';
 const router = express.Router();
 router.use(auth);
 
-// Obtener usuarios a los que puedes retar (excluyendo a ti mismo y admins si quieres)
+// Obtener usuarios a los que puedes retar
 router.get('/users', async (req, res) => {
     try {
         const supabase = getDb();
         const { data, error } = await supabase
             .from('users')
-            .select('id, username')
+            .select('id, username, points')
             .neq('id', req.user.id)
             .order('username');
             
@@ -53,11 +53,22 @@ router.get('/', async (req, res) => {
 router.post('/challenge', async (req, res) => {
     try {
         const supabase = getDb();
-        const { opponent_id } = req.body;
+        const { opponent_id, wager = 0, message = '' } = req.body;
         const challenger_id = req.user.id;
         
         if (opponent_id === challenger_id) {
             return res.status(400).json({ error: 'No puedes retarte a ti mismo' });
+        }
+        if (wager < 0) {
+            return res.status(400).json({ error: 'Los puntos no pueden ser negativos' });
+        }
+
+        // Verificar puntos del retador
+        const { data: cUser, error: cErr } = await supabase.from('users').select('points').eq('id', challenger_id).single();
+        if (cErr) throw cErr;
+        
+        if (cUser.points < wager) {
+            return res.status(400).json({ error: 'No tienes suficientes puntos para esta apuesta' });
         }
 
         // Generar 5 preguntas aleatorias
@@ -75,6 +86,11 @@ router.post('/challenge', async (req, res) => {
         const shuffled = questions.sort(() => 0.5 - Math.random());
         const selectedIds = shuffled.slice(0, 5).map(q => q.id);
 
+        // Descontar puntos al retador
+        if (wager > 0) {
+            await supabase.from('users').update({ points: cUser.points - wager }).eq('id', challenger_id);
+        }
+
         // Crear duelo
         const { data: duel, error: dError } = await supabase
             .from('duels')
@@ -82,22 +98,98 @@ router.post('/challenge', async (req, res) => {
                 challenger_id,
                 opponent_id,
                 questions: JSON.stringify(selectedIds),
-                status: 'pending'
+                status: 'pending_acceptance',
+                wager: wager,
+                message: message
             }])
             .select()
             .single();
 
-        if (dError) throw dError;
+        if (dError) {
+            // Reembolsar si falla
+            if (wager > 0) await supabase.from('users').update({ points: cUser.points }).eq('id', challenger_id);
+            throw dError;
+        }
         
         // Notificar al oponente
         await supabase.from('notifications').insert([{
             user_id: opponent_id,
             title: '¡Nuevo Reto!',
-            message: 'Has sido desafiado a un Duelo Bíblico. ¡Demuestra lo que sabes!',
+            message: `Has sido desafiado a un Duelo Bíblico. Apuesta: ${wager} pts.`,
             link: '/duels'
         }]);
 
         res.json(duel);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Error interno' });
+    }
+});
+
+// Aceptar un duelo
+router.post('/:id/accept', async (req, res) => {
+    try {
+        const supabase = getDb();
+        const userId = req.user.id;
+        const duelId = req.params.id;
+
+        const { data: duel, error: dError } = await supabase.from('duels').select('*').eq('id', duelId).single();
+        if (dError) throw dError;
+
+        if (duel.status !== 'pending_acceptance' || duel.opponent_id !== userId) {
+            return res.status(400).json({ error: 'No puedes aceptar este duelo' });
+        }
+
+        // Check puntos oponente
+        const { data: userRecord, error: uErr } = await supabase.from('users').select('points').eq('id', userId).single();
+        if (uErr) throw uErr;
+
+        if (userRecord.points < duel.wager) {
+            return res.status(400).json({ error: 'No tienes suficientes puntos para aceptar este duelo' });
+        }
+
+        // Descontar puntos y actualizar estado
+        if (duel.wager > 0) {
+            await supabase.from('users').update({ points: userRecord.points - duel.wager }).eq('id', userId);
+        }
+
+        const { error: updErr } = await supabase.from('duels').update({ status: 'pending' }).eq('id', duelId);
+        if (updErr) throw updErr;
+
+        res.json({ message: 'Duelo aceptado' });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Error interno' });
+    }
+});
+
+// Rechazar un duelo
+router.post('/:id/reject', async (req, res) => {
+    try {
+        const supabase = getDb();
+        const userId = req.user.id;
+        const duelId = req.params.id;
+
+        const { data: duel, error: dError } = await supabase.from('duels').select('*').eq('id', duelId).single();
+        if (dError) throw dError;
+
+        if (duel.status !== 'pending_acceptance' || duel.opponent_id !== userId) {
+            return res.status(400).json({ error: 'No puedes rechazar este duelo' });
+        }
+
+        // Actualizar estado a rechazado
+        const { error: updErr } = await supabase.from('duels').update({ status: 'rejected' }).eq('id', duelId);
+        if (updErr) throw updErr;
+
+        // Reembolsar al retador
+        if (duel.wager > 0) {
+            const { data: cUser } = await supabase.from('users').select('points').eq('id', duel.challenger_id).single();
+            if (cUser) {
+                await supabase.from('users').update({ points: cUser.points + duel.wager }).eq('id', duel.challenger_id);
+            }
+        }
+
+        res.json({ message: 'Duelo rechazado' });
     } catch (error) {
         console.error(error);
         res.status(500).json({ error: 'Error interno' });
@@ -118,6 +210,10 @@ router.get('/:id/play', async (req, res) => {
             .single();
             
         if (dError) throw dError;
+
+        if (duel.status === 'pending_acceptance') {
+             return res.status(400).json({ error: 'Este duelo aún no ha sido aceptado' });
+        }
 
         // Verificar permisos
         if (duel.challenger_id !== userId && duel.opponent_id !== userId) {
@@ -204,13 +300,32 @@ router.post('/:id/submit', async (req, res) => {
                 else updates.winner_id = null; // Empate total
             }
             
+            // Pagar apuesta!
+            const wager = duel.wager || 0;
+            if (wager > 0) {
+                if (updates.winner_id) {
+                    const { data: wUser } = await supabase.from('users').select('points').eq('id', updates.winner_id).single();
+                    if (wUser) {
+                        // El ganador se lleva lo de ambos
+                        await supabase.from('users').update({ points: wUser.points + (wager * 2) }).eq('id', updates.winner_id);
+                    }
+                } else {
+                    // Empate: devolver apuesta a ambos
+                    const { data: cUser } = await supabase.from('users').select('points').eq('id', duel.challenger_id).single();
+                    if (cUser) await supabase.from('users').update({ points: cUser.points + wager }).eq('id', duel.challenger_id);
+                    
+                    const { data: oUser } = await supabase.from('users').select('points').eq('id', duel.opponent_id).single();
+                    if (oUser) await supabase.from('users').update({ points: oUser.points + wager }).eq('id', duel.opponent_id);
+                }
+            }
+
             // Notificar al perdedor/ganador
             const notifUser = isChallenger ? duel.opponent_id : duel.challenger_id;
             const resultMsg = updates.winner_id === duel.challenger_id ? 'El Retador ganó.' : updates.winner_id === duel.opponent_id ? 'El Oponente ganó.' : 'Fue un empate.';
             await supabase.from('notifications').insert([{
                 user_id: notifUser,
                 title: 'Duelo Finalizado',
-                message: `El duelo ha terminado. ${resultMsg}`,
+                message: `El duelo ha terminado. ${resultMsg} Apuesta: ${wager} pts.`,
                 link: '/duels'
             }]);
         } else if (!isChallenger) {
