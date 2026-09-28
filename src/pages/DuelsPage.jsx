@@ -351,6 +351,7 @@ const DuelsPage = () => {
       {/* Modal de Reto */}
       {isModalOpen && selectedUser && (
         <Modal 
+          isOpen={true}
           title={`Retar a ${selectedUser.username}`} 
           onClose={() => setIsModalOpen(false)}
         >
