@@ -58,7 +58,7 @@ router.get('/:bookId/chapters', optionalAuth, async (req, res) => {
         const supabase = getDb();
         const bookId = req.params.bookId;
         
-        const { data: book } = await supabase.from('books').select('name').eq('id', bookId).single();
+        const { data: book } = await supabase.from('books').select('name, video_url').eq('id', bookId).single();
         const { data: chapters, error: chaptersError } = await supabase
             .from('chapters')
             .select('*')
@@ -89,7 +89,7 @@ router.get('/:bookId/chapters', optionalAuth, async (req, res) => {
             }
         }
 
-        res.json({ bookName: book?.name || 'Libro', chapters });
+        res.json({ bookName: book?.name || 'Libro', videoUrl: book?.video_url, chapters });
     } catch (error) {
         console.error(error);
         res.status(500).json({ error: 'Error interno' });

@@ -364,7 +364,30 @@ router.post('/chapter-videos', async (req, res) => {
             .in('id', chapterIds);
             
         if (error) throw error;
-        res.json({ message: 'Videos asignados exitosamente' });
+        res.json({ message: 'Videos asignados a capítulos exitosamente' });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Error interno asignando videos' });
+    }
+});
+
+// Endpoint para guardar video_url masivamente en libros
+router.post('/book-videos', async (req, res) => {
+    try {
+        const supabase = getDb();
+        const { videoUrl, bookIds } = req.body;
+        
+        if (!Array.isArray(bookIds) || bookIds.length === 0) {
+            return res.status(400).json({ error: 'Lista de libros vacía' });
+        }
+        
+        const { error } = await supabase
+            .from('books')
+            .update({ video_url: videoUrl })
+            .in('id', bookIds);
+            
+        if (error) throw error;
+        res.json({ message: 'Videos asignados a libros exitosamente' });
     } catch (error) {
         console.error(error);
         res.status(500).json({ error: 'Error interno asignando videos' });

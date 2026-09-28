@@ -7,6 +7,7 @@ const BookPage = () => {
   const { bookId } = useParams();
   const [chapters, setChapters] = useState([]);
   const [bookName, setBookName] = useState('');
+  const [videoUrl, setVideoUrl] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -15,6 +16,7 @@ const BookPage = () => {
         const data = await api.get(`/books/${bookId}/chapters`);
         setChapters(data.chapters || data);
         setBookName(data.bookName || `Libro ${bookId}`);
+        setVideoUrl(data.videoUrl || null);
       } catch (err) {
         console.error('Error cargando capítulos:', err);
       } finally {
@@ -47,6 +49,22 @@ const BookPage = () => {
         </h1>
         <p className="text-gray-600">Selecciona un capítulo para comenzar tu estudio.</p>
       </div>
+
+      {videoUrl && (
+        <div className="bg-blue-50 rounded-xl p-6 shadow-sm border border-blue-100 mb-8">
+          <h3 className="font-[Cinzel] text-lg font-bold text-blue-800 mb-2 flex items-center gap-2">
+            📺 Mira este video sobre el libro completo:
+          </h3>
+          <a 
+            href={videoUrl} 
+            target="_blank" 
+            rel="noopener noreferrer" 
+            className="text-blue-600 hover:underline hover:text-blue-800 font-medium break-all"
+          >
+            {videoUrl}
+          </a>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {chapters.map((chapter) => (
