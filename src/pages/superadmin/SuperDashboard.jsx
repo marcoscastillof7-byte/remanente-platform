@@ -311,7 +311,25 @@ const SuperDashboard = () => {
                     />
                   </div>
                 </div>
-                <div className="pt-4 flex justify-end gap-3">
+                <div className="pt-4 flex justify-between gap-3">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (window.confirm('🚨 ¡ADVERTENCIA EXTREMA!\n\n¿Estás absolutamente seguro de que quieres eliminar este grupo?\n\n¡ESTO ELIMINARÁ PERMANENTEMENTE A TODOS LOS USUARIOS DENTRO DEL GRUPO Y TODO SU PROGRESO!\n\nEsta acción NO se puede deshacer.')) {
+                        try {
+                          await api.del(`/superadmin/groups/${editGroup.id}`);
+                          addToast('Grupo y usuarios eliminados', 'success');
+                          setIsEditModalOpen(false);
+                          fetchGroups();
+                        } catch (error) {
+                          addToast(error.error || 'Error al eliminar grupo', 'error');
+                        }
+                      }
+                    }}
+                    className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors flex items-center gap-2 font-bold"
+                  >
+                    <Trash2 className="w-4 h-4" /> Eliminar Grupo
+                  </button>
                   <button
                     type="submit"
                     className="px-4 py-2 bg-primary text-white rounded hover:bg-primary-light transition-colors flex items-center gap-2"

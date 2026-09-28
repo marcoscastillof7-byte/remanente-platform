@@ -126,4 +126,63 @@ router.put('/users/:userId', async (req, res) => {
     }
 });
 
+// Eliminar un grupo y TODOS sus usuarios y datos (Cascada manual)
+router.delete('/groups/:id', async (req, res) => {
+    try {
+        const supabase = getDb();
+        const groupId = req.params.id;
+
+        // 1. Obtener usuarios del grupo
+        const { data: users } = await supabase.from('users').select('id').eq('group_id', groupId);
+        
+        if (users && users.length > 0) {
+            const userIds = users.map(u => u.id);
+
+            // Eliminar datos relacionados con usuarios
+            await supabase.from('essay_responses').delete().in('user_id', userIds);
+            await supabase.from('flashcard_progress').delete().in('user_id', userIds);
+            await supabase.from('user_achievements').delete().in('user_id', userIds);
+            await supabase.from('user_notes').delete().in('user_id', userIds);
+            await supabase.from('study_streaks').delete().in('user_id', userIds);
+            await supabase.from('custom_quiz_configs').delete().in('user_id', userIds);
+
+            // Quizzes normales
+            const { data: attempts } = await supabase.from('quiz_attempts').select('id').in('user_id', userIds);
+            if (attempts && attempts.length > 0) {
+                const attemptIds = attempts.map(a => a.id);
+                await supabase.from('quiz_answers').delete().in('attempt_id', attemptIds);
+            }
+            await supabase.from('quiz_attempts').delete().in('user_id', userIds);
+
+            // Quizzes personalizados
+            const { data: cAttempts } = await supabase.from('custom_quiz_attempts').select('id').in('user_id', userIds);
+            if (cAttempts && cAttempts.length > 0) {
+                const cAttemptIds = cAttempts.map(a => a.id);
+                await supabase.from('custom_quiz_answers').delete().in('attempt_id', cAttemptIds);
+            }
+            await supabase.from('custom_quiz_attempts').delete().in('user_id', userIds);
+
+            // Finalmente, eliminar los usuarios
+            await supabase.from('users').delete().in('id', userIds);
+        }
+
+        // 2. Eliminar Preguntas Extendidas del grupo
+        const { data: questions } = await supabase.from('essay_questions').select('id').eq('group_id', groupId);
+        if (questions && questions.length > 0) {
+            const questionIds = questions.map(q => q.id);
+            await supabase.from('essay_responses').delete().in('question_id', questionIds);
+            await supabase.from('essay_questions').delete().eq('group_id', groupId);
+        }
+
+        // 3. Eliminar el grupo
+        const { error: groupError } = await supabase.from('groups').delete().eq('id', groupId);
+        if (groupError) throw groupError;
+
+        res.json({ message: 'Grupo y todos sus datos fueron eliminados exitosamente' });
+    } catch (error) {
+        console.error('Error al eliminar grupo:', error);
+        res.status(500).json({ error: 'Error interno al eliminar el grupo y sus datos' });
+    }
+});
+
 export default router;
