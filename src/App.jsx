@@ -1,7 +1,7 @@
 import { Routes, Route } from 'react-router';
 import { AuthProvider } from './contexts/AuthContext';
 import { ToastProvider } from './components/shared/Toast';
-import { ProtectedRoute, AdminRoute } from './components/layout/ProtectedRoute';
+import { ProtectedRoute, AdminRoute, SuperAdminRoute } from './components/layout/ProtectedRoute';
 import Navbar from './components/layout/Navbar';
 
 import LoginPage from './pages/LoginPage';
@@ -25,6 +25,7 @@ import DuelsPage from './pages/DuelsPage';
 import SurvivalPage from './pages/SurvivalPage';
 import EssaysPage from './pages/EssaysPage';
 import AdminEssays from './pages/admin/AdminEssays';
+import SuperDashboard from './pages/superadmin/SuperDashboard';
 
 
 const Layout = ({ children }) => (
@@ -70,6 +71,10 @@ const App = () => {
             <Route path="/admin/global-bulk" element={<Layout><GlobalBulkImport /></Layout>} />
             <Route path="/admin/videos" element={<Layout><VideoManager /></Layout>} />
             <Route path="/admin/essays" element={<Layout><AdminEssays /></Layout>} />
+          </Route>
+          
+          <Route element={<SuperAdminRoute />}>
+            <Route path="/superadmin" element={<Layout><SuperDashboard /></Layout>} />
           </Route>
         </Routes>
       </AuthProvider>

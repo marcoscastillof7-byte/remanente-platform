@@ -18,6 +18,8 @@ import survivalRoutes from './routes/survival.js';
 import historicalRoutes from './routes/historical.js';
 import meetingsRoutes from './routes/meetings.js';
 import essaysRoutes from './routes/essays.js';
+import superAdminRoutes from './routes/superadmin.js';
+import groupsRoutes from './routes/groups.js';
 
 const app = express();
 const httpServer = createServer(app);
@@ -57,6 +59,8 @@ router.use('/survival', survivalRoutes);
 router.use('/historical-details', historicalRoutes);
 router.use('/meetings', meetingsRoutes);
 router.use('/essays', essaysRoutes);
+router.use('/superadmin', superAdminRoutes);
+router.use('/groups', groupsRoutes);
 
 // Usar el enrutador para el prefijo /api
 app.use('/api', router);

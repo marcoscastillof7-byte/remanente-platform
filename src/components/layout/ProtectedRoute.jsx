@@ -19,3 +19,12 @@ export const AdminRoute = () => {
 
   return <Outlet />;
 };
+
+export const SuperAdminRoute = () => {
+  const { user, loading, isSuperAdmin } = useAuth();
+
+  if (loading) return <div className="flex h-screen items-center justify-center"><LoadingSpinner /></div>;
+  if (!user || !isSuperAdmin) return <Navigate to="/" replace />;
+
+  return <Outlet />;
+};

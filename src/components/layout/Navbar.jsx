@@ -6,7 +6,7 @@ import { api } from '../../utils/api';
 import { getRankInfo } from '../../utils/ranks';
 
 const Navbar = () => {
-  const { user, logout, isAdmin } = useAuth();
+  const { user, logout, isAdmin, isSuperAdmin } = useAuth();
   const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -114,6 +114,12 @@ const Navbar = () => {
                 Panel Admin
               </Link>
             )}
+            {isSuperAdmin && (
+              <Link to="/superadmin" className="flex items-center text-red-400 font-bold hover:text-red-300 transition-colors bg-white/10 px-2 py-1 rounded">
+                <Shield className="w-4 h-4 mr-1" />
+                Súper Panel
+              </Link>
+            )}
           </div>
 
           <div className="flex items-center space-x-4 relative">
@@ -211,6 +217,9 @@ const Navbar = () => {
           </button>
           {isAdmin && (
             <Link to="/admin" className="block px-3 py-2 rounded-md text-base text-[var(--color-gold)] hover:bg-[var(--color-primary-light)]">Panel Admin</Link>
+          )}
+          {isSuperAdmin && (
+            <Link to="/superadmin" className="block px-3 py-2 rounded-md text-base font-bold text-red-400 bg-white/5 hover:bg-white/10">Súper Panel MegaAdmin</Link>
           )}
         </div>
       )}
