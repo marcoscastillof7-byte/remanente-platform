@@ -79,13 +79,6 @@ const LoginPage = () => {
             {loading ? <LoadingSpinner size="sm" /> : 'Ingresar'}
           </button>
         </form>
-
-        <div className="mt-6 text-center text-sm">
-          <span className="text-gray-600">¿No tienes cuenta? </span>
-          <Link to="/register" className="font-semibold text-[var(--color-primary)] hover:text-[var(--color-primary-light)]">
-            Regístrate aquí
-          </Link>
-        </div>
       </div>
     </div>
   );
