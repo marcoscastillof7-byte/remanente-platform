@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { api } from '../../utils/api';
-import { BookOpen, Check, X, Loader, Plus, ToggleLeft, ToggleRight } from 'lucide-react';
+import { BookOpen, Check, X, Loader, Plus, ToggleLeft, ToggleRight, Trash2 } from 'lucide-react';
 import Modal from '../../components/shared/Modal';
 
 const AdminEssays = () => {
@@ -54,6 +54,17 @@ const AdminEssays = () => {
     } catch (err) {
       console.error(err);
       alert('Error al cambiar estado');
+    }
+  };
+
+  const deleteQuestion = async (id) => {
+    if (!confirm('¿Estás seguro de que deseas eliminar esta pregunta para todos? Se borrarán también las respuestas asociadas.')) return;
+    try {
+      await api.del(`/essays/admin/questions/${id}`);
+      fetchData();
+    } catch (err) {
+      console.error(err);
+      alert('Error al eliminar la pregunta');
     }
   };
 
@@ -120,9 +131,12 @@ const AdminEssays = () => {
                         {q.is_active ? 'ACTIVA' : 'INACTIVA'}
                       </span>
                     </td>
-                    <td className="p-4 text-center">
+                    <td className="p-4 flex justify-center items-center gap-4">
                       <button onClick={() => toggleQuestionStatus(q.id, q.is_active)} className="text-gray-500 hover:text-primary">
                         {q.is_active ? <ToggleRight className="w-6 h-6 text-success" /> : <ToggleLeft className="w-6 h-6 text-gray-400" />}
+                      </button>
+                      <button onClick={() => deleteQuestion(q.id)} className="text-gray-400 hover:text-danger">
+                        <Trash2 className="w-5 h-5" />
                       </button>
                     </td>
                   </tr>

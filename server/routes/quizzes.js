@@ -150,8 +150,8 @@ router.post('/:chapterId/submit', async (req, res) => {
                 if (lastStudy) {
                     const lastDate = new Date(lastStudy);
                     const currDate = new Date(today);
-                    const diffTime = Math.abs(currDate - lastDate);
-                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+                    // Use round instead of ceil and ignore hours for accurate day diff
+                    const diffDays = Math.round(Math.abs(currDate - lastDate) / (1000 * 60 * 60 * 24)); 
                     
                     if (diffDays > 1) {
                         newStreak = 1;
@@ -163,7 +163,7 @@ router.post('/:chapterId/submit', async (req, res) => {
                 else if (newStreak === 2) streakPointsEarned = 20;
                 else if (newStreak === 3) streakPointsEarned = 30;
                 else if (newStreak >= 7) streakPointsEarned = 50;
-                else streakPointsEarned = 10; // default for 4, 5, 6
+                else streakPointsEarned = 40; // For days 4, 5, 6
                 
                 totalPointsEarned += streakPointsEarned;
 
@@ -177,6 +177,18 @@ router.post('/:chapterId/submit', async (req, res) => {
                     })
                     .eq('user_id', userId);
             }
+        } else {
+            // First time studying ever
+            newStreak = 1;
+            longestStreak = 1;
+            streakPointsEarned = 10;
+            totalPointsEarned += streakPointsEarned;
+            await supabase.from('study_streaks').insert({
+                user_id: userId,
+                current_streak: 1,
+                longest_streak: 1,
+                last_study_date: new Date().toISOString()
+            });
         }
 
         // --- EVALUAR LOGROS & ACHIEVEMENT POINTS ---

@@ -36,22 +36,22 @@ const AdminDashboard = () => {
 
   return (
     <div className="max-w-6xl mx-auto">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
+      <div className="mb-8 flex flex-col gap-4 border-b border-gray-200 pb-6">
         <h1 className="font-[Cinzel] text-2xl md:text-3xl font-bold text-primary">🛡️ Panel de Administración</h1>
-        <div className="flex flex-wrap gap-2 md:gap-3 w-full md:w-auto">
-          <Link to="/admin/essays" className="flex-1 md:flex-none flex items-center justify-center gap-2 px-3 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 transition-colors shadow-sm text-sm">
+        <div className="flex flex-wrap items-center gap-3">
+          <Link to="/admin/essays" className="flex items-center justify-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-sm text-sm font-medium">
             <BookOpen className="w-4 h-4" /> Preguntas Extendidas
           </Link>
-          <Link to="/admin/videos" className="flex-1 md:flex-none flex items-center justify-center gap-2 px-3 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors shadow-sm text-sm">
+          <Link to="/admin/videos" className="flex items-center justify-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors shadow-sm text-sm font-medium">
             <Video className="w-4 h-4" /> Videos
           </Link>
-          <Link to="/admin/global-bulk" className="flex-1 md:flex-none flex items-center justify-center gap-2 px-3 py-2 bg-gray-800 text-white rounded hover:bg-gray-900 transition-colors shadow-sm text-sm">
+          <Link to="/admin/global-bulk" className="flex items-center justify-center gap-2 px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-900 transition-colors shadow-sm text-sm font-medium">
             <BookOpen className="w-4 h-4" /> Importador
           </Link>
-          <Link to="/admin/suggestions" className="flex-1 md:flex-none flex items-center justify-center gap-2 px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors shadow-sm text-sm">
+          <Link to="/admin/suggestions" className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm text-sm font-medium">
             <MessageSquare className="w-4 h-4" /> Sugerencias
           </Link>
-          <Link to="/admin/reports" className="flex-1 md:flex-none flex items-center justify-center gap-2 px-3 py-2 bg-danger text-white rounded hover:bg-red-600 transition-colors shadow-sm text-sm">
+          <Link to="/admin/reports" className="flex items-center justify-center gap-2 px-4 py-2 bg-danger text-white rounded-lg hover:bg-red-600 transition-colors shadow-sm text-sm font-medium">
             <Flag className="w-4 h-4" /> Reportes
           </Link>
         </div>

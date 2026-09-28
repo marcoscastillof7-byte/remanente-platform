@@ -98,6 +98,16 @@ router.post('/admin/questions', async (req, res) => {
     } catch (err) { res.status(500).json({error: 'Error'}) }
 });
 
+// Eliminar pregunta
+router.delete('/admin/questions/:id', async (req, res) => {
+    try {
+        const supabase = getDb();
+        const { error } = await supabase.from('essay_questions').delete().eq('id', req.params.id);
+        if (error) throw error;
+        res.json({ message: 'Pregunta eliminada' });
+    } catch (err) { res.status(500).json({error: 'Error'}) }
+});
+
 // Activar/Desactivar pregunta
 router.put('/admin/questions/:id/toggle', async (req, res) => {
     try {
