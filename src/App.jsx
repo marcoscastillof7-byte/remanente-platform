@@ -23,6 +23,8 @@ import GlobalBulkImport from './pages/admin/GlobalBulkImport';
 import VideoManager from './pages/admin/VideoManager';
 import DuelsPage from './pages/DuelsPage';
 import SurvivalPage from './pages/SurvivalPage';
+import EssaysPage from './pages/EssaysPage';
+import AdminEssays from './pages/admin/AdminEssays';
 
 
 const Layout = ({ children }) => (
@@ -55,6 +57,7 @@ const App = () => {
             <Route path="/profile" element={<Layout><ProfilePage /></Layout>} />
             <Route path="/duels" element={<Layout><DuelsPage /></Layout>} />
             <Route path="/survival" element={<Layout><SurvivalPage /></Layout>} />
+            <Route path="/essays" element={<Layout><EssaysPage /></Layout>} />
 
           </Route>
 
@@ -66,6 +69,7 @@ const App = () => {
             <Route path="/admin/suggestions" element={<Layout><AdminSuggestions /></Layout>} />
             <Route path="/admin/global-bulk" element={<Layout><GlobalBulkImport /></Layout>} />
             <Route path="/admin/videos" element={<Layout><VideoManager /></Layout>} />
+            <Route path="/admin/essays" element={<Layout><AdminEssays /></Layout>} />
           </Route>
         </Routes>
       </AuthProvider>
