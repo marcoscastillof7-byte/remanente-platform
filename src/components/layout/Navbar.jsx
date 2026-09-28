@@ -90,7 +90,7 @@ const Navbar = () => {
               <Menu className="w-6 h-6 text-[var(--color-gold)]" />
             </button>
             <Link to="/" className="flex items-center">
-              <span className="font-cinzel text-xl md:text-2xl text-[var(--color-gold)] font-bold">📖 Remanente</span>
+              <span className="font-[Cinzel] text-xl md:text-2xl text-[var(--color-gold)] font-bold">📖 {user?.groups?.name || 'Olimpiadas GVY'}</span>
             </Link>
           </div>
           
