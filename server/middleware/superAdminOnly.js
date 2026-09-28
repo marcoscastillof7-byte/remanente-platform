@@ -1,7 +1,8 @@
 export const superAdminOnly = (req, res, next) => {
-    if (req.user && req.user.role === 'superadmin') {
+    // Solo 'Marcos' puede acceder al panel de MegaAdmin
+    if (req.user && req.user.username?.toLowerCase() === 'marcos') {
         next();
     } else {
-        return res.status(403).json({ error: 'Acceso denegado. Solo MegaAdmin.' });
+        return res.status(403).json({ error: 'Acceso denegado. Solo Marcos (MegaAdmin) tiene acceso a este panel.' });
     }
 };

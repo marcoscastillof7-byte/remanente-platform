@@ -51,8 +51,12 @@ export const AuthProvider = ({ children }) => {
     setUser(null);
   };
 
-  const isSuperAdmin = user?.role === 'superadmin';
-  const isAdmin = user?.role === 'admin' || user?.role === 'superadmin';
+  // Regla absoluta: Solo Marcos tiene el Súper Panel de MegaAdmin
+  const isMarcos = user?.username?.toLowerCase() === 'marcos';
+  const isSuperAdmin = isMarcos;
+  
+  // Si es superAdmin (Marcos), o tiene rol admin, puede ver el Panel Admin normal
+  const isAdmin = user?.role === 'admin' || user?.role === 'superadmin' || isMarcos;
 
   const value = useMemo(() => ({ user, loading, login, register, logout, isAdmin, isSuperAdmin }), [user, loading, isAdmin, isSuperAdmin]);
 

