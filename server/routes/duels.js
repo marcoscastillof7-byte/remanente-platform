@@ -13,6 +13,7 @@ router.get('/users', async (req, res) => {
             .from('users')
             .select('id, username, points')
             .neq('id', req.user.id)
+            .eq('group_id', req.user.group_id)
             .order('username');
             
         if (error) throw error;

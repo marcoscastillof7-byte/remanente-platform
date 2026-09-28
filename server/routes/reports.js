@@ -50,19 +50,25 @@ router.post('/:questionId', async (req, res) => {
 
 // Admin: Obtener reportes
 router.get('/', async (req, res) => {
-    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Prohibido' });
+    if (req.user.role !== 'admin' && req.user.role !== 'superadmin') return res.status(403).json({ error: 'Prohibido' });
     try {
         const supabase = getDb();
         
-        const { data: reports, error } = await supabase
+        let query = supabase
             .from('question_reports')
             .select(`
                 *,
                 questions (question_text, chapter_id, chapters (chapter_number, books (name))),
-                users (username)
+                users!inner (username, group_id)
             `)
             .order('status', { ascending: true })
             .order('created_at', { ascending: false });
+
+        if (req.user.role !== 'superadmin') {
+            query = query.eq('users.group_id', req.user.group_id);
+        }
+
+        const { data: reports, error } = await query;
 
         if (error) throw error;
 
@@ -91,7 +97,7 @@ router.get('/', async (req, res) => {
 
 // Admin: Actualizar estado del reporte
 router.put('/:id', async (req, res) => {
-    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Prohibido' });
+    if (req.user.role !== 'admin' && req.user.role !== 'superadmin') return res.status(403).json({ error: 'Prohibido' });
     try {
         const supabase = getDb();
         const { status } = req.body;
@@ -111,7 +117,7 @@ router.put('/:id', async (req, res) => {
 
 // Admin: Eliminar un reporte (descartar)
 router.delete('/:id', async (req, res) => {
-    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Prohibido' });
+    if (req.user.role !== 'admin' && req.user.role !== 'superadmin') return res.status(403).json({ error: 'Prohibido' });
     try {
         const supabase = getDb();
         const { error } = await supabase

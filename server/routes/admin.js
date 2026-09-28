@@ -23,7 +23,13 @@ const autoPublishChapter = async (supabase, chapterId) => {
 router.get('/users', async (req, res) => {
     try {
         const supabase = getDb();
-        const { data: users, error: uError } = await supabase.from('users').select('id, username, email, role, created_at, last_active, points');
+        let query = supabase.from('users').select('id, username, email, role, created_at, last_active, points, group_id');
+        
+        if (req.user.role !== 'superadmin') {
+            query = query.eq('group_id', req.user.group_id);
+        }
+
+        const { data: users, error: uError } = await query;
         const { data: attempts, error: aError } = await supabase.from('quiz_attempts').select('user_id, score');
         const { data: streaks, error: sError } = await supabase.from('study_streaks').select('user_id, current_streak, last_study_date');
 
@@ -122,8 +128,26 @@ router.get('/users/:userId/performance', async (req, res) => {
 router.get('/stats', async (req, res) => {
     try {
         const supabase = getDb();
-        const { count: total_users } = await supabase.from('users').select('*', { count: 'exact', head: true });
-        const { data: attempts } = await supabase.from('quiz_attempts').select('score, user_id, completed_at');
+        
+        let usersQuery = supabase.from('users').select('id', { count: 'exact' });
+        if (req.user.role !== 'superadmin') {
+            usersQuery = usersQuery.eq('group_id', req.user.group_id);
+        }
+        
+        const { data: usersList, count: total_users } = await usersQuery;
+        
+        // Only get attempts for the users in the current scope
+        let attemptsQuery = supabase.from('quiz_attempts').select('score, user_id, completed_at');
+        
+        if (req.user.role !== 'superadmin' && usersList && usersList.length > 0) {
+            const userIds = usersList.map(u => u.id);
+            attemptsQuery = attemptsQuery.in('user_id', userIds);
+        } else if (req.user.role !== 'superadmin' && (!usersList || usersList.length === 0)) {
+            // No users in group, so no attempts
+            return res.json({ total_users: 0, total_quizzes: 0, avg_score: 0, active_users: 0 });
+        }
+
+        const { data: attempts } = await attemptsQuery;
 
         let total_quizzes = 0;
         let avg_score = 0;

@@ -71,7 +71,7 @@ router.post('/:questionId/submit', async (req, res) => {
 
 // RUTAS DE ADMIN (Protegidas)
 router.use(async (req, res, next) => {
-    if (req.user.role !== 'admin') {
+    if (req.user.role !== 'admin' && req.user.role !== 'superadmin') {
         return res.status(403).json({ error: 'Acceso denegado' });
     }
     next();
@@ -90,6 +90,7 @@ router.get('/admin/questions', async (req, res) => {
 // Crear pregunta
 router.post('/admin/questions', async (req, res) => {
     try {
+        if (req.user.role !== 'superadmin') return res.status(403).json({ error: 'Solo MegaAdmin puede crear' });
         const supabase = getDb();
         const { question_text, points_reward } = req.body;
         const { error } = await supabase.from('essay_questions').insert([{ question_text, points_reward }]);
@@ -101,6 +102,7 @@ router.post('/admin/questions', async (req, res) => {
 // Eliminar pregunta
 router.delete('/admin/questions/:id', async (req, res) => {
     try {
+        if (req.user.role !== 'superadmin') return res.status(403).json({ error: 'Solo MegaAdmin puede eliminar' });
         const supabase = getDb();
         const { error } = await supabase.from('essay_questions').delete().eq('id', req.params.id);
         if (error) throw error;
@@ -111,6 +113,7 @@ router.delete('/admin/questions/:id', async (req, res) => {
 // Activar/Desactivar pregunta
 router.put('/admin/questions/:id/toggle', async (req, res) => {
     try {
+        if (req.user.role !== 'superadmin') return res.status(403).json({ error: 'Solo MegaAdmin puede modificar' });
         const supabase = getDb();
         const { is_active } = req.body;
         const { error } = await supabase.from('essay_questions').update({ is_active }).eq('id', req.params.id);
@@ -119,21 +122,30 @@ router.put('/admin/questions/:id/toggle', async (req, res) => {
     } catch (err) { res.status(500).json({error: 'Error'}) }
 });
 
-// Obtener todas las respuestas
+// Obtener todas las respuestas (Filtradas por group_id del Admin)
 router.get('/admin/responses', async (req, res) => {
     try {
         const supabase = getDb();
-        const { data, error } = await supabase
+        let query = supabase
             .from('essay_responses')
             .select(`
                 *,
-                user:users!user_id(username),
+                user:users!inner(username, group_id),
                 question:essay_questions!question_id(question_text, points_reward)
             `)
             .order('created_at', { ascending: false });
+
+        if (req.user.role !== 'superadmin') {
+            query = query.eq('user.group_id', req.user.group_id);
+        }
+
+        const { data, error } = await query;
         if (error) throw error;
         res.json(data);
-    } catch (err) { res.status(500).json({error: 'Error'}) }
+    } catch (err) { 
+        console.error(err);
+        res.status(500).json({error: 'Error'}) 
+    }
 });
 
 // Evaluar respuesta
