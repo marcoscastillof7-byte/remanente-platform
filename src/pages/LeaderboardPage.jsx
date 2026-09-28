@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { api } from '../utils/api';
+import { getRankInfo } from '../utils/ranks';
 import { Loader, Trophy, Medal, Flame, Target } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 
@@ -107,34 +108,57 @@ const LeaderboardPage = () => {
               <tr className="bg-primary text-white text-sm">
                 <th className="px-4 py-3 text-left">#</th>
                 <th className="px-4 py-3 text-left">Usuario</th>
-                <th className="px-4 py-3 text-center">Puntaje</th>
+                {activeTab === 'global' ? (
+                  <th className="px-4 py-3 text-center">Puntos</th>
+                ) : (
+                  <th className="px-4 py-3 text-center">Score Total</th>
+                )}
+                {activeTab === 'global' && <th className="px-4 py-3 text-left hidden sm:table-cell">Rango</th>}
                 <th className="px-4 py-3 text-center hidden md:table-cell">Quizzes</th>
                 <th className="px-4 py-3 text-center hidden md:table-cell">Promedio</th>
-                <th className="px-4 py-3 text-center hidden md:table-cell">Racha</th>
+                {activeTab === 'global' && <th className="px-4 py-3 text-center hidden md:table-cell">Racha</th>}
               </tr>
             </thead>
             <tbody>
-              {leaderboard.map((entry, i) => (
+              {leaderboard.map((entry, i) => {
+                const isUser = entry.username === user?.username;
+                const points = entry.points || 0;
+                const rank = getRankInfo(points);
+                return (
                 <tr
                   key={entry.username}
-                  className={`border-t ${entry.username === user?.username ? 'bg-gold/10 font-bold' : 'hover:bg-gray-50'}`}
+                  className={`border-t ${isUser ? 'bg-gold/10 font-bold' : 'hover:bg-gray-50'}`}
                 >
                   <td className="px-4 py-3 text-lg">{getMedal(i + 1)}</td>
                   <td className="px-4 py-3">
-                    <span className={entry.username === user?.username ? 'text-primary font-bold' : ''}>
+                    <span className={isUser ? 'text-primary font-bold' : ''}>
                       {entry.username}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-center font-bold text-primary">{entry.total_score || 0}</td>
+                  <td className="px-4 py-3 text-center font-bold text-primary">
+                    {activeTab === 'global' ? points : (entry.total_score || 0)}
+                  </td>
+                  
+                  {activeTab === 'global' && (
+                    <td className="px-4 py-3 text-left hidden sm:table-cell text-sm" title={rank.name}>
+                      <span className="flex items-center gap-1">{rank.icon} <span className="hidden lg:inline text-xs text-gray-500 font-normal">{rank.name}</span></span>
+                    </td>
+                  )}
+                  
                   <td className="px-4 py-3 text-center text-gray-600 hidden md:table-cell">{entry.quizzes_completed || 0}</td>
                   <td className="px-4 py-3 text-center text-gray-600 hidden md:table-cell">{Math.round(entry.avg_score || 0)}%</td>
-                  <td className="px-4 py-3 text-center hidden md:table-cell">
-                    <span className="flex items-center justify-center gap-1">
-                      <Flame className="w-4 h-4 text-orange-400" /> {entry.current_streak || 0}
-                    </span>
-                  </td>
+                  
+                  {activeTab === 'global' && (
+                    <td className="px-4 py-3 text-center hidden md:table-cell">
+                      {entry.current_streak > 0 ? (
+                        <span className="flex items-center justify-center gap-1 text-orange-500 font-bold">
+                          <Flame className="w-4 h-4" /> {entry.current_streak}
+                        </span>
+                      ) : '-'}
+                    </td>
+                  )}
                 </tr>
-              ))}
+              )})}
             </tbody>
           </table>
         </div>

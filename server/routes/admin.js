@@ -23,7 +23,7 @@ const autoPublishChapter = async (supabase, chapterId) => {
 router.get('/users', async (req, res) => {
     try {
         const supabase = getDb();
-        const { data: users, error: uError } = await supabase.from('users').select('id, username, email, role, created_at, last_active');
+        const { data: users, error: uError } = await supabase.from('users').select('id, username, email, role, created_at, last_active, points');
         const { data: attempts, error: aError } = await supabase.from('quiz_attempts').select('user_id, score');
         const { data: streaks, error: sError } = await supabase.from('study_streaks').select('user_id, current_streak, last_study_date');
 

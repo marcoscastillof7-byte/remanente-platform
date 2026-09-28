@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { api } from '../utils/api';
-import { User, Mail, Shield, Award, Calendar, Loader, Lock } from 'lucide-react';
+import { getRankInfo } from '../utils/ranks';
+import { User, Mail, Shield, Award, Calendar, Loader, Lock, TrendingUp } from 'lucide-react';
 
 const ProfilePage = () => {
   const { user, logout } = useAuth();
@@ -32,22 +33,37 @@ const ProfilePage = () => {
 
   const { stats, achievements } = profileData || { stats: { total_quizzes: 0, avg_score: 0, current_streak: 0 }, achievements: [] };
   const unlockedCount = achievements ? achievements.filter(a => a.unlocked).length : 0;
+  
+  const points = profileData?.points || 0;
+  const rank = getRankInfo(points);
 
   return (
     <div className="max-w-4xl mx-auto">
       <div className="bg-white rounded-xl shadow-md overflow-hidden border border-gray-100">
         <div className="bg-[var(--color-primary)] p-8 text-white flex flex-col md:flex-row items-center gap-6">
-          <div className="w-24 h-24 rounded-full bg-[var(--color-gold)] flex items-center justify-center text-4xl font-bold uppercase border-4 border-[var(--color-parchment)] shadow-lg">
+          <div className="w-24 h-24 rounded-full bg-[var(--color-gold)] flex items-center justify-center text-4xl font-bold uppercase border-4 border-[var(--color-parchment)] shadow-lg relative">
             {profileData?.username?.slice(0, 2) || 'US'}
-          </div>
-          <div className="text-center md:text-left">
-            <h1 className="font-cinzel text-3xl font-bold">{profileData?.username}</h1>
-            <div className="flex flex-wrap items-center justify-center md:justify-start gap-4 mt-2 opacity-90">
-              <span className="flex items-center"><Mail className="w-4 h-4 mr-1" /> {profileData?.email || 'No especificado'}</span>
-              <span className="flex items-center"><Shield className="w-4 h-4 mr-1" /> {profileData?.role === 'admin' ? 'Administrador' : 'Estudiante'}</span>
+            <div className="absolute -bottom-2 -right-2 bg-white text-xl rounded-full p-1 shadow-md">
+              {rank.icon}
             </div>
           </div>
-          <button onClick={logout} className="md:ml-auto mt-4 md:mt-0 px-6 py-2 bg-red-500/20 text-red-100 rounded-md hover:bg-red-500 hover:text-white transition-colors border border-red-500/50">
+          <div className="text-center md:text-left flex-1">
+            <h1 className="font-cinzel text-3xl font-bold">{profileData?.username}</h1>
+            <div className="text-[var(--color-gold)] font-bold text-lg mt-1">{rank.name}</div>
+            <div className="flex flex-wrap items-center justify-center md:justify-start gap-4 mt-2 opacity-90 text-sm">
+              <span className="flex items-center"><Mail className="w-4 h-4 mr-1" /> {profileData?.email || 'No especificado'}</span>
+              <span className="flex items-center"><Shield className="w-4 h-4 mr-1" /> {profileData?.role === 'admin' ? 'Administrador' : 'Estudiante'}</span>
+              <span className="flex items-center font-bold text-white bg-black/20 px-2 py-1 rounded"><TrendingUp className="w-4 h-4 mr-1" /> {points} Puntos</span>
+            </div>
+            
+            {rank.next && (
+              <div className="mt-4 bg-black/20 rounded-full h-2 w-full max-w-md relative overflow-hidden">
+                <div className="bg-[var(--color-gold)] h-full" style={{ width: `${Math.min(100, (points / rank.next) * 100)}%` }}></div>
+                <div className="text-[10px] absolute w-full text-center top-0 mt-3">Faltan {rank.next - points} pts para el siguiente rango</div>
+              </div>
+            )}
+          </div>
+          <button onClick={logout} className="md:ml-auto mt-6 md:mt-0 px-6 py-2 bg-red-500/20 text-red-100 rounded-md hover:bg-red-500 hover:text-white transition-colors border border-red-500/50">
             Cerrar Sesión
           </button>
         </div>

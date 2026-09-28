@@ -28,7 +28,7 @@ router.get('/:chapterId', async (req, res) => {
 });
 
 router.post('/:chapterId/submit', async (req, res) => {
-    const { answers } = req.body; // [{questionId, selectedAnswer, timeSpent}]
+    const { answers } = req.body;
     const chapterId = req.params.chapterId;
     const userId = req.user.id;
     const supabase = getDb();
@@ -38,19 +38,6 @@ router.post('/:chapterId/submit', async (req, res) => {
     }
 
     try {
-        // Enforce max 2 attempts limit
-        const { data: previousAttempts, error: countError } = await supabase
-            .from('quiz_attempts')
-            .select('id')
-            .eq('user_id', userId)
-            .eq('chapter_id', chapterId);
-            
-        if (countError) throw countError;
-        
-        if (previousAttempts && previousAttempts.length >= 2) {
-            return res.status(403).json({ error: 'Límite máximo de 2 intentos alcanzado para este capítulo.' });
-        }
-
         let correctCount = 0;
         const results = [];
 
@@ -88,6 +75,34 @@ router.post('/:chapterId/submit', async (req, res) => {
 
         const score = Math.round((correctCount / answers.length) * 100);
 
+        // --- POINTS LOGIC (ANTI-SPAM) ---
+        let totalPointsEarned = 0;
+        let quizPointsEarned = 0;
+        let streakPointsEarned = 0;
+        let achievementPointsEarned = 0;
+
+        const baseQuizPoints = 10 + (correctCount * 5) + (score === 100 ? 15 : 0);
+
+        // Check past attempts for this chapter
+        const { data: pastAttempts } = await supabase
+            .from('quiz_attempts')
+            .select('score')
+            .eq('user_id', userId)
+            .eq('chapter_id', chapterId);
+            
+        let highestPastPoints = 0;
+        if (pastAttempts && pastAttempts.length > 0) {
+            highestPastPoints = pastAttempts.reduce((max, att) => {
+                // Approximate past correct answers (since 15 questions is standard)
+                const pastCorrect = Math.round((att.score / 100) * answers.length);
+                const pts = 10 + (pastCorrect * 5) + (att.score === 100 ? 15 : 0);
+                return pts > max ? pts : max;
+            }, 0);
+        }
+        
+        quizPointsEarned = Math.max(0, baseQuizPoints - highestPastPoints);
+        totalPointsEarned += quizPointsEarned;
+
         // Insert attempt
         const { data: attemptData, error: attemptError } = await supabase
             .from('quiz_attempts')
@@ -117,7 +132,7 @@ router.post('/:chapterId/submit', async (req, res) => {
             if (answersError) console.error("Error guardando respuestas:", answersError);
         }
 
-        // Streak update
+        // --- STREAK & STREAK POINTS ---
         const { data: streakData } = await supabase.from('study_streaks').select('*').eq('user_id', userId).single();
         let newStreak = 0;
         let longestStreak = 0;
@@ -142,6 +157,15 @@ router.post('/:chapterId/submit', async (req, res) => {
                         newStreak = 1;
                     }
                 }
+                
+                // Add streak points if it's a new day
+                if (newStreak === 1) streakPointsEarned = 10;
+                else if (newStreak === 2) streakPointsEarned = 20;
+                else if (newStreak === 3) streakPointsEarned = 30;
+                else if (newStreak >= 7) streakPointsEarned = 50;
+                else streakPointsEarned = 10; // default for 4, 5, 6
+                
+                totalPointsEarned += streakPointsEarned;
 
                 longestStreak = Math.max(streakData.longest_streak, newStreak);
                 await supabase
@@ -155,7 +179,7 @@ router.post('/:chapterId/submit', async (req, res) => {
             }
         }
 
-        // --- EVALUAR LOGROS ---
+        // --- EVALUAR LOGROS & ACHIEVEMENT POINTS ---
         try {
             const { data: allAttempts } = await supabase.from('quiz_attempts').select('score').eq('user_id', userId);
             const totalQuizzes = allAttempts ? allAttempts.length : 0;
@@ -163,6 +187,7 @@ router.post('/:chapterId/submit', async (req, res) => {
             const { data: userAch } = await supabase.from('user_achievements').select('achievement_id').eq('user_id', userId);
             const unlockedSet = new Set((userAch || []).map(a => a.achievement_id));
             
+            // Assume we added points_reward to achievements in db, fallback to 100
             const { data: achievements } = await supabase.from('achievements').select('*');
             
             const newlyUnlocked = [];
@@ -181,9 +206,12 @@ router.post('/:chapterId/submit', async (req, res) => {
                     
                     if (criteriaMet) {
                         newlyUnlocked.push({ user_id: userId, achievement_id: a.id });
+                        achievementPointsEarned += (a.points_reward || 100);
                     }
                 }
             }
+            
+            totalPointsEarned += achievementPointsEarned;
             
             if (newlyUnlocked.length > 0) {
                 await supabase.from('user_achievements').insert(newlyUnlocked);
@@ -192,12 +220,29 @@ router.post('/:chapterId/submit', async (req, res) => {
             console.error("Error evaluando logros:", achError);
         }
         
-        // Note: Emiting socket event would happen in index.js via app.get('io')
+        // --- ADD TOTAL POINTS TO USER ---
+        if (totalPointsEarned > 0) {
+            // First get current points
+            const { data: u } = await supabase.from('users').select('points').eq('id', userId).single();
+            const currentPoints = (u && u.points) ? u.points : 0;
+            
+            await supabase.from('users').update({ points: currentPoints + totalPointsEarned }).eq('id', userId);
+        }
+
         if (req.app.get('io')) {
             req.app.get('io').emit('leaderboard-update');
         }
 
-        res.json({ score, correctCount, totalQuestions: answers.length, results });
+        res.json({ 
+            score, 
+            correctCount, 
+            totalQuestions: answers.length, 
+            results,
+            pointsEarned: totalPointsEarned,
+            quizPointsEarned,
+            streakPointsEarned,
+            achievementPointsEarned
+        });
     } catch (error) {
         console.error(error);
         res.status(500).json({ error: 'Error interno' });

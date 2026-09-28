@@ -38,7 +38,7 @@ router.post('/register', async (req, res) => {
             
         if (streakError) throw streakError;
 
-        const user = { id: userId, username, role: 'user', email };
+        const user = { id: userId, username, role: 'user', email, points: 0 };
         const token = jwt.sign(user, SECRET, { expiresIn: '24h' });
 
         res.status(201).json({ token, user });
@@ -71,7 +71,7 @@ router.post('/login', async (req, res) => {
             return res.status(401).json({ error: 'Credenciales inválidas' });
         }
 
-        const userData = { id: user.id, username: user.username, role: user.role };
+        const userData = { id: user.id, username: user.username, role: user.role, points: user.points || 0 };
         const token = jwt.sign(userData, SECRET, { expiresIn: '24h' });
 
         // Update last_active timestamp
@@ -89,7 +89,7 @@ router.get('/profile', auth, async (req, res) => {
         const supabase = getDb();
         const { data: user, error: userError } = await supabase
             .from('users')
-            .select('id, username, email, role, created_at')
+            .select('id, username, email, role, created_at, points')
             .eq('id', req.user.id)
             .single();
 

@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router';
 import { Menu, User, LogOut, Shield, Bell, CheckCircle, Swords, Flame, MessageSquare } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { api } from '../../utils/api';
+import { getRankInfo } from '../../utils/ranks';
 
 const Navbar = () => {
   const { user, logout, isAdmin } = useAuth();
@@ -166,6 +167,9 @@ const Navbar = () => {
                 onClick={() => { setDropdownOpen(!dropdownOpen); setNotifOpen(false); }}
                 className="flex items-center space-x-2 p-2 rounded-md hover:bg-[var(--color-primary-light)] transition-colors"
               >
+                <div className="flex flex-col items-end mr-1 hidden sm:flex">
+                  <span className="text-xs text-[var(--color-gold)] font-bold">{user.points || 0} pts {getRankInfo(user.points).icon}</span>
+                </div>
                 <User className="w-5 h-5 text-[var(--color-gold)]" />
                 <span className="hidden sm:block text-sm">{user.username}</span>
               </button>

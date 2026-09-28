@@ -18,7 +18,7 @@ router.get('/', async (req, res) => {
         }
 
         const supabase = getDb();
-        const { data: users, error: uError } = await supabase.from('users').select('id, username');
+        const { data: users, error: uError } = await supabase.from('users').select('id, username, points');
         const { data: attempts, error: aError } = await supabase.from('quiz_attempts').select('user_id, score');
         const { data: streaks, error: sError } = await supabase.from('study_streaks').select('user_id, current_streak');
 
@@ -31,16 +31,18 @@ router.get('/', async (req, res) => {
             const quizzes_completed = userAttempts.length;
             const total_score = userAttempts.reduce((sum, a) => sum + (a.score || 0), 0);
             const avg_score = quizzes_completed > 0 ? total_score / quizzes_completed : 0;
+            const points = u.points || 0;
             
             return {
                 username: u.username,
+                points,
                 total_score,
                 quizzes_completed,
                 avg_score,
                 current_streak: userStreak ? userStreak.current_streak : 0
             };
-        }).filter(u => u.quizzes_completed > 0)
-          .sort((a, b) => b.total_score - a.total_score)
+        }).filter(u => u.points > 0 || u.quizzes_completed > 0)
+          .sort((a, b) => b.points - a.points)
           .slice(0, 20);
 
         cache.global.data = leaderboard;

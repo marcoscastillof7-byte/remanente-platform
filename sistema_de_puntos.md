@@ -36,16 +36,7 @@ La Biblia nos enseña la importancia de meditar en la Palabra *de día y de noch
 
 ---
 
-## 3. 🧠 Repaso de Flashcards
-Las flashcards están diseñadas para la memorización rápida. Para evitar abusos, tienen un límite diario:
-
-* **Por cada Flashcard estudiada:** `+2 puntos`
-* **Límite diario:** `+40 puntos al día` (Equivalente a 20 flashcards). 
-Puedes seguir estudiando todas las que quieras para aprender, pero el sistema de puntos se detiene en 40 al día por esta actividad.
-
----
-
-## 4. 🎖️ Logros Desbloqueables
+## 3. 🎖️ Logros Desbloqueables
 Existen hitos que, al alcanzarlos por primera vez, te inyectarán una gran cantidad de puntos de golpe. ¡Son ideales para dar un salto en la Tabla de Honor!
 
 **Nivel Bronce:**
