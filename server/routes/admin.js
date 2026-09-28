@@ -279,6 +279,24 @@ router.post('/global-bulk', async (req, res) => {
         const { error: insError } = await supabase.from('questions').insert(questions);
         if (insError) throw insError;
 
+        // Activar (publicar) automáticamente los capítulos y libros importados
+        try {
+            const chapterIds = [...new Set(questions.map(q => q.chapter_id))];
+            if (chapterIds.length > 0) {
+                // Activar los capítulos
+                await supabase.from('chapters').update({ is_published: true }).in('id', chapterIds);
+                
+                // Buscar los book_ids de esos capítulos y activarlos también
+                const { data: chapsData } = await supabase.from('chapters').select('book_id').in('id', chapterIds);
+                if (chapsData && chapsData.length > 0) {
+                    const bookIds = [...new Set(chapsData.map(c => c.book_id))];
+                    await supabase.from('books').update({ is_published: true }).in('id', bookIds);
+                }
+            }
+        } catch (pubErr) {
+            console.error("Error activando capítulos y libros:", pubErr);
+        }
+
         // --- NOTIFICATIONS ---
         // Generar notificación para todos los usuarios sobre los capítulos actualizados
         try {
