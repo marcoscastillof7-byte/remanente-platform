@@ -14,6 +14,11 @@ const QuestionCard = ({ question, selectedAnswer, onSelect, reviewMode = false, 
 
   return (
     <div className="w-full max-w-2xl">
+      {question.verse_reference && (
+        <div className="mb-2 text-sm text-[var(--color-gold-dark)] font-bold italic border-b border-gray-100 pb-1">
+          📖 {question.verse_reference}
+        </div>
+      )}
       <h2 className="text-xl font-medium text-primary-dark mb-6 leading-relaxed">
         {question.question_text}
       </h2>

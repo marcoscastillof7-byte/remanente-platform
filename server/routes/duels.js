@@ -63,7 +63,9 @@ router.post('/challenge', async (req, res) => {
         // Generar 5 preguntas aleatorias
         const { data: questions, error: qError } = await supabase
             .from('questions')
-            .select('id');
+            .select('id, chapters!inner(is_published, books!inner(is_published))')
+            .eq('chapters.is_published', true)
+            .eq('chapters.books.is_published', true);
             
         if (qError) throw qError;
         if (!questions || questions.length < 5) {
@@ -134,7 +136,7 @@ router.get('/:id/play', async (req, res) => {
         
         const { data: questions, error: qError } = await supabase
             .from('questions')
-            .select('id, question_text, option_a, option_b, option_c, option_d, correct_answer')
+            .select('id, question_text, option_a, option_b, option_c, option_d, correct_answer, verse_reference')
             .in('id', questionIds);
 
         if (qError) throw qError;

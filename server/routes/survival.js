@@ -15,11 +15,14 @@ router.get('/start', async (req, res) => {
             .from('questions')
             .select(`
                 id, question_text, option_a, option_b, option_c, option_d, correct_answer, explanation, verse_reference,
-                chapters (
+                chapters!inner (
+                    is_published,
                     chapter_number,
-                    books ( name )
+                    books!inner ( name, is_published )
                 )
-            `);
+            `)
+            .eq('chapters.is_published', true)
+            .eq('chapters.books.is_published', true);
             
         if (error) throw error;
 
