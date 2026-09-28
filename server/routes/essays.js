@@ -103,6 +103,10 @@ router.post('/admin/questions', async (req, res) => {
         // Si es superadmin puede crear globales (group_id = null), de lo contrario es de su grupo
         const group_id = req.user.role === 'superadmin' ? null : req.user.group_id;
         
+        if (req.user.role !== 'superadmin' && !group_id) {
+            return res.status(403).json({ error: 'No tienes un grupo asignado. Vuelve a iniciar sesión si acabas de ser asignado a un grupo.' });
+        }
+        
         const { error } = await supabase.from('essay_questions').insert([{ question_text, points_reward, group_id }]);
         if (error) throw error;
         res.json({ message: 'Pregunta creada' });

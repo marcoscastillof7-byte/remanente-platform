@@ -17,9 +17,12 @@ export const auth = (req, res, next) => {
         const decoded = jwt.verify(token, SECRET);
         req.user = decoded;
         
-        // Regla absoluta: Si el usuario es Marcos, forzar su rol a superadmin en el backend
-        if (req.user.username && req.user.username.toLowerCase() === 'marcos') {
+        // Regla absoluta: Solo Marcos es superadmin
+        const isMarcos = req.user.username && req.user.username.toLowerCase() === 'marcos';
+        if (isMarcos) {
             req.user.role = 'superadmin';
+        } else if (req.user.role === 'superadmin') {
+            req.user.role = 'admin';
         }
 
         next();
