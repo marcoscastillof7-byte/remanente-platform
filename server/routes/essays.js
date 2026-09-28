@@ -13,6 +13,7 @@ router.get('/active', async (req, res) => {
             .from('essay_questions')
             .select('*')
             .eq('is_active', true)
+            .or(`group_id.eq.${req.user.group_id},group_id.is.null`)
             .order('created_at', { ascending: false });
         if (qErr) throw qErr;
 
@@ -81,7 +82,13 @@ router.use(async (req, res, next) => {
 router.get('/admin/questions', async (req, res) => {
     try {
         const supabase = getDb();
-        const { data, error } = await supabase.from('essay_questions').select('*').order('created_at', { ascending: false });
+        let query = supabase.from('essay_questions').select('*').order('created_at', { ascending: false });
+        
+        if (req.user.role !== 'superadmin') {
+            query = query.eq('group_id', req.user.group_id);
+        }
+        
+        const { data, error } = await query;
         if (error) throw error;
         res.json(data);
     } catch (err) { res.status(500).json({error: 'Error'}) }
@@ -90,10 +97,13 @@ router.get('/admin/questions', async (req, res) => {
 // Crear pregunta
 router.post('/admin/questions', async (req, res) => {
     try {
-        if (req.user.role !== 'superadmin') return res.status(403).json({ error: 'Solo MegaAdmin puede crear' });
         const supabase = getDb();
         const { question_text, points_reward } = req.body;
-        const { error } = await supabase.from('essay_questions').insert([{ question_text, points_reward }]);
+        
+        // Si es superadmin puede crear globales (group_id = null), de lo contrario es de su grupo
+        const group_id = req.user.role === 'superadmin' ? null : req.user.group_id;
+        
+        const { error } = await supabase.from('essay_questions').insert([{ question_text, points_reward, group_id }]);
         if (error) throw error;
         res.json({ message: 'Pregunta creada' });
     } catch (err) { res.status(500).json({error: 'Error'}) }
@@ -102,8 +112,16 @@ router.post('/admin/questions', async (req, res) => {
 // Eliminar pregunta
 router.delete('/admin/questions/:id', async (req, res) => {
     try {
-        if (req.user.role !== 'superadmin') return res.status(403).json({ error: 'Solo MegaAdmin puede eliminar' });
         const supabase = getDb();
+        
+        // Verificar si es dueño (o superadmin)
+        if (req.user.role !== 'superadmin') {
+            const { data: q } = await supabase.from('essay_questions').select('group_id').eq('id', req.params.id).single();
+            if (!q || q.group_id !== req.user.group_id) {
+                return res.status(403).json({ error: 'Prohibido: Esta pregunta no es de tu grupo' });
+            }
+        }
+        
         const { error } = await supabase.from('essay_questions').delete().eq('id', req.params.id);
         if (error) throw error;
         res.json({ message: 'Pregunta eliminada' });
@@ -113,8 +131,16 @@ router.delete('/admin/questions/:id', async (req, res) => {
 // Activar/Desactivar pregunta
 router.put('/admin/questions/:id/toggle', async (req, res) => {
     try {
-        if (req.user.role !== 'superadmin') return res.status(403).json({ error: 'Solo MegaAdmin puede modificar' });
         const supabase = getDb();
+        
+        // Verificar si es dueño (o superadmin)
+        if (req.user.role !== 'superadmin') {
+            const { data: q } = await supabase.from('essay_questions').select('group_id').eq('id', req.params.id).single();
+            if (!q || q.group_id !== req.user.group_id) {
+                return res.status(403).json({ error: 'Prohibido: Esta pregunta no es de tu grupo' });
+            }
+        }
+        
         const { is_active } = req.body;
         const { error } = await supabase.from('essay_questions').update({ is_active }).eq('id', req.params.id);
         if (error) throw error;
@@ -157,11 +183,17 @@ router.post('/admin/responses/:id/evaluate', async (req, res) => {
         
         const { data: responseInfo, error: rErr } = await supabase
             .from('essay_responses')
-            .select('*, question:essay_questions!question_id(points_reward)')
+            .select('*, question:essay_questions!question_id(points_reward), user:users!user_id(group_id)')
             .eq('id', responseId)
             .single();
             
         if (rErr || !responseInfo) throw rErr;
+        
+        // Verificación de seguridad de grupo
+        if (req.user.role !== 'superadmin' && responseInfo.user.group_id !== req.user.group_id) {
+            return res.status(403).json({ error: 'No puedes evaluar respuestas de otros grupos' });
+        }
+        
         if (responseInfo.status !== 'pending') return res.status(400).json({error: 'Esta respuesta ya fue evaluada'});
 
         // Dar puntos si se aprueba
