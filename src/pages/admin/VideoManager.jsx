@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { api } from '../../utils/api';
-import { Video, Loader, Save, CheckSquare, Square, Layers, Book } from 'lucide-react';
+import { Video, Loader, Save, CheckSquare, Square, Layers, Book, Trash2 } from 'lucide-react';
 import { useToast } from '../../components/shared/Toast';
 
 const VideoManager = () => {
@@ -63,6 +63,52 @@ const VideoManager = () => {
     if (newSet.has(bookId)) newSet.delete(bookId);
     else newSet.add(bookId);
     setSelectedBooks(newSet);
+  };
+
+  const handleDelete = async () => {
+    if (mode === 'chapter') {
+      if (selectedChapters.size === 0) {
+        showToast('Selecciona al menos un capítulo para eliminar su video', 'warning');
+        return;
+      }
+      if (!window.confirm('¿Seguro que deseas eliminar los videos de los capítulos seleccionados?')) return;
+      
+      setSaving(true);
+      try {
+        await api.post('/admin/chapter-videos', {
+          videoUrl: null,
+          chapterIds: Array.from(selectedChapters)
+        });
+        showToast('Videos eliminados de los capítulos exitosamente', 'success');
+        setSelectedChapters(new Set());
+      } catch (err) {
+        console.error(err);
+        showToast('Error al eliminar los videos', 'error');
+      } finally {
+        setSaving(false);
+      }
+    } else {
+      if (selectedBooks.size === 0) {
+        showToast('Selecciona al menos un libro para eliminar su video', 'warning');
+        return;
+      }
+      if (!window.confirm('¿Seguro que deseas eliminar los videos principales de los libros seleccionados?')) return;
+      
+      setSaving(true);
+      try {
+        await api.post('/admin/book-videos', {
+          videoUrl: null,
+          bookIds: Array.from(selectedBooks)
+        });
+        showToast('Videos eliminados de los libros exitosamente', 'success');
+        setSelectedBooks(new Set());
+      } catch (err) {
+        console.error(err);
+        showToast('Error al eliminar los videos', 'error');
+      } finally {
+        setSaving(false);
+      }
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -228,11 +274,21 @@ const VideoManager = () => {
           </div>
         )}
 
-        <div className="flex justify-end">
+        <div className="flex justify-between items-center mt-8 pt-4 border-t">
+          <button 
+            type="button" 
+            onClick={handleDelete}
+            disabled={saving || (mode === 'chapter' ? selectedChapters.size === 0 : selectedBooks.size === 0)}
+            className="flex items-center gap-2 px-4 py-2 border-2 border-red-200 text-red-600 font-bold rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50"
+          >
+            <Trash2 className="w-5 h-5" />
+            Eliminar de Seleccionados
+          </button>
+
           <button 
             type="submit" 
-            disabled={saving}
-            className="flex items-center gap-2 px-6 py-3 bg-red-600 text-white font-bold rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
+            disabled={saving || (mode === 'chapter' ? selectedChapters.size === 0 : selectedBooks.size === 0)}
+            className="flex items-center gap-2 px-6 py-3 bg-red-600 text-white font-bold rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 shadow-md"
           >
             {saving ? <Loader className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
             {mode === 'chapter' 
