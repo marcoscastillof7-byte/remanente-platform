@@ -117,7 +117,9 @@ const AdminDashboard = () => {
                 <th className="px-6 py-3 text-center">Quizzes</th>
                 <th className="px-6 py-3 text-center">Promedio</th>
                 <th className="px-6 py-3 text-center">Racha</th>
-                <th className="px-6 py-3 text-center">Acciones</th>
+                {(isSuperAdmin || isGroupAdmin) && (
+                  <th className="px-6 py-3 text-center">Acciones</th>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -146,15 +148,17 @@ const AdminDashboard = () => {
                         <Flame className="w-4 h-4 text-orange-400" /> {u.current_streak || 0}
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-center">
-                    <Link
-                      to={`/admin/users/${u.id}`}
-                      className="inline-flex items-center gap-1 text-[var(--color-primary)] hover:text-[var(--color-primary-light)] text-sm font-medium"
-                    >
-                      Ver Detalles <ChevronRight className="w-4 h-4" />
-                    </Link>
-                  </td>
-                </tr>
+                    {(isSuperAdmin || isGroupAdmin) && (
+                      <td className="px-6 py-4 text-center">
+                        <Link
+                          to={`/admin/users/${u.id}`}
+                          className="inline-flex items-center gap-1 text-[var(--color-primary)] hover:text-[var(--color-primary-light)] text-sm font-medium"
+                        >
+                          Ver Detalles <ChevronRight className="w-4 h-4" />
+                        </Link>
+                      </td>
+                    )}
+                  </tr>
               );
               })}
             </tbody>
