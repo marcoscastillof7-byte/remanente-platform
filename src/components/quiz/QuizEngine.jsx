@@ -9,6 +9,7 @@ const QuizEngine = ({ questions, chapterId, isCustom = false, configId = null })
   const [answers, setAnswers] = useState({});
   const [results, setResults] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [instantMode, setInstantMode] = useState(false);
   const questionStartRef = useRef(Date.now());
 
   const handleSelectAnswer = (letter) => {
@@ -76,6 +77,14 @@ const QuizEngine = ({ questions, chapterId, isCustom = false, configId = null })
 
   return (
     <div className="bg-white p-6 rounded-xl shadow-md border border-parchment-dark flex-1 flex flex-col">
+      <div className="mb-4 flex justify-between items-center bg-gray-50 p-3 rounded-lg border border-gray-100">
+        <span className="text-sm font-medium text-gray-700">Respuesta al instante</span>
+        <label className="relative inline-flex items-center cursor-pointer">
+          <input type="checkbox" className="sr-only peer" checked={instantMode} onChange={() => setInstantMode(!instantMode)} />
+          <div className="w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[var(--color-primary)]"></div>
+        </label>
+      </div>
+
       <div className="mb-4">
         <div className="flex justify-between text-sm text-gray-500 mb-2">
           <span>Pregunta {currentIndex + 1} de {questions.length}</span>
@@ -91,6 +100,8 @@ const QuizEngine = ({ questions, chapterId, isCustom = false, configId = null })
           question={currentQ}
           selectedAnswer={answers[currentQ.id]?.selectedAnswer}
           onSelect={handleSelectAnswer}
+          reviewMode={instantMode && !!answers[currentQ.id]}
+          correctAnswer={currentQ.correct_answer}
         />
       </div>
 

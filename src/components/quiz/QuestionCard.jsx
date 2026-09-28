@@ -60,6 +60,17 @@ const QuestionCard = ({ question, selectedAnswer, onSelect, reviewMode = false, 
           );
         })}
       </div>
+
+      {reviewMode && (question.explanation || question.verse_reference) && (
+        <div className="mt-6 p-4 bg-blue-50 border border-blue-100 rounded-lg animate-fade-in text-sm">
+          {question.explanation && (
+            <p className="text-blue-900 mb-1"><strong>Explicación:</strong> {question.explanation}</p>
+          )}
+          {question.verse_reference && (
+            <p className="text-blue-700 italic">Ref: {question.verse_reference}</p>
+          )}
+        </div>
+      )}
     </div>
   );
 };
