@@ -69,9 +69,12 @@ const DashboardPage = () => {
           <BookOpen className="w-64 h-64 text-gold" />
         </div>
         <div className="relative z-10">
-          <h1 className="font-[Cinzel] text-3xl md:text-4xl font-bold text-gold mb-2">
-            Bienvenido, {user?.username}
+          <h1 className="font-[Cinzel] text-3xl md:text-4xl font-bold text-gold mb-1">
+            {user?.groups?.name || 'Olimpiadas GVY'}
           </h1>
+          <p className="text-xl text-white font-medium mb-4">
+            Hola, {user?.username}
+          </p>
           <p className="text-lg opacity-90 max-w-2xl italic">
             {dailyVerse}
           </p>

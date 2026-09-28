@@ -5,7 +5,6 @@ import { adminOnly } from '../middleware/adminOnly.js';
 
 const router = express.Router();
 router.use(auth);
-router.use(adminOnly);
 
 // Auto-enable chapter and book when questions are updated
 const autoPublishChapter = async (supabase, chapterId) => {
@@ -203,6 +202,11 @@ router.get('/chapter-stats/:chapterId', async (req, res) => {
         res.status(500).json({ error: 'Error interno' });
     }
 });
+
+// ==========================================
+// RUTAS DE GESTIÓN (Solo Admins)
+// ==========================================
+router.use(adminOnly);
 
 router.post('/questions', async (req, res) => {
     try {

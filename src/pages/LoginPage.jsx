@@ -30,11 +30,11 @@ const LoginPage = () => {
     <div className="min-h-screen flex items-center justify-center bg-[var(--color-primary-dark)] px-4">
       <div className="w-full max-w-md bg-[var(--color-parchment)] p-8 rounded-xl shadow-2xl border-2 border-[var(--color-gold)]">
         <div className="text-center mb-8">
-          <h1 className="font-cinzel text-3xl font-bold text-[var(--color-primary)] mb-2">📖 Remanente</h1>
+          <h1 className="font-[Cinzel] text-3xl font-bold text-[var(--color-primary)] mb-2">📖 Olimpiadas GVY</h1>
           <p className="text-gray-600 font-medium">Plataforma de Estudio Bíblico</p>
         </div>
 
-        {error && <div className="bg-red-100 text-red-700 p-3 rounded-md mb-4 text-sm">{error}</div>}
+        {error && <div className="bg-red-100 text-red-700 p-3 rounded-md mb-4 text-sm font-semibold">{error}</div>}
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>

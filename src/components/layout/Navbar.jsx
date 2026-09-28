@@ -108,12 +108,10 @@ const Navbar = () => {
             <button onClick={() => setShowSuggestion(true)} className="hover:text-[var(--color-gold)] transition-colors flex items-center">
               <MessageSquare className="w-4 h-4 mr-1"/> Sugerencias
             </button>
-            {isAdmin && (
-              <Link to="/admin" className="flex items-center text-[var(--color-gold-light)] hover:text-white transition-colors">
-                <Shield className="w-4 h-4 mr-1" />
-                Panel Admin
-              </Link>
-            )}
+            <Link to="/admin" className="flex items-center text-[var(--color-gold-light)] hover:text-white transition-colors">
+              <Shield className="w-4 h-4 mr-1" />
+              Panel
+            </Link>
             {isSuperAdmin && (
               <Link to="/superadmin" className="flex items-center text-red-400 font-bold hover:text-red-300 transition-colors bg-white/10 px-2 py-1 rounded">
                 <Shield className="w-4 h-4 mr-1" />
@@ -215,9 +213,7 @@ const Navbar = () => {
           <button onClick={() => { setShowSuggestion(true); setMenuOpen(false); }} className="w-full text-left block px-3 py-2 rounded-md text-base hover:bg-[var(--color-primary-light)] text-[var(--color-gold)] flex items-center">
             <MessageSquare className="w-4 h-4 mr-2"/> Sugerencias
           </button>
-          {isAdmin && (
-            <Link to="/admin" className="block px-3 py-2 rounded-md text-base text-[var(--color-gold)] hover:bg-[var(--color-primary-light)]">Panel Admin</Link>
-          )}
+          <Link to="/admin" className="block px-3 py-2 rounded-md text-base text-[var(--color-gold)] hover:bg-[var(--color-primary-light)]">Panel</Link>
           {isSuperAdmin && (
             <Link to="/superadmin" className="block px-3 py-2 rounded-md text-base font-bold text-red-400 bg-white/5 hover:bg-white/10">Súper Panel MegaAdmin</Link>
           )}
