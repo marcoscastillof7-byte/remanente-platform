@@ -7,6 +7,17 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // Efecto para inyectar el tema visual dinámicamente
+  useEffect(() => {
+    if (user && user.group) {
+      document.documentElement.style.setProperty('--color-primary', user.group.primary_color);
+      document.documentElement.style.setProperty('--color-gold', user.group.secondary_color);
+    } else {
+      document.documentElement.style.setProperty('--color-primary', '#1e3a5f');
+      document.documentElement.style.setProperty('--color-gold', '#d4af37');
+    }
+  }, [user]);
+
   useEffect(() => {
     const initAuth = async () => {
       const token = localStorage.getItem('token');
@@ -29,8 +40,8 @@ export const AuthProvider = ({ children }) => {
     setUser(userData);
   };
 
-  const register = async (username, password, email) => {
-    const { token, user: userData } = await api.post('/auth/register', { username, password, email });
+  const register = async (username, password, email, groupId) => {
+    const { token, user: userData } = await api.post('/auth/register', { username, password, email, groupId });
     localStorage.setItem('token', token);
     setUser(userData);
   };
@@ -40,9 +51,10 @@ export const AuthProvider = ({ children }) => {
     setUser(null);
   };
 
-  const isAdmin = user?.role === 'admin';
+  const isSuperAdmin = user?.role === 'superadmin';
+  const isAdmin = user?.role === 'admin' || user?.role === 'superadmin';
 
-  const value = useMemo(() => ({ user, loading, login, register, logout, isAdmin }), [user, loading, isAdmin]);
+  const value = useMemo(() => ({ user, loading, login, register, logout, isAdmin, isSuperAdmin }), [user, loading, isAdmin, isSuperAdmin]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
