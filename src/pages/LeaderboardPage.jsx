@@ -113,7 +113,7 @@ const LeaderboardPage = () => {
                 ) : (
                   <th className="px-4 py-3 text-center">Score Total</th>
                 )}
-                {activeTab === 'global' && <th className="px-4 py-3 text-left hidden sm:table-cell">Rango</th>}
+                {activeTab === 'global' && <th className="px-4 py-3 text-left">Rango</th>}
                 <th className="px-4 py-3 text-center hidden md:table-cell">Quizzes</th>
                 <th className="px-4 py-3 text-center hidden md:table-cell">Promedio</th>
                 {activeTab === 'global' && <th className="px-4 py-3 text-center hidden md:table-cell">Racha</th>}
@@ -140,8 +140,8 @@ const LeaderboardPage = () => {
                   </td>
                   
                   {activeTab === 'global' && (
-                    <td className="px-4 py-3 text-left hidden sm:table-cell text-sm" title={rank.name}>
-                      <span className="flex items-center gap-1">{rank.icon} <span className="hidden lg:inline text-xs text-gray-500 font-normal">{rank.name}</span></span>
+                    <td className="px-4 py-3 text-left text-sm" title={rank.name}>
+                      <span className="flex items-center gap-1">{rank.icon} <span className="hidden sm:inline text-xs text-gray-500 font-normal">{rank.name}</span></span>
                     </td>
                   )}
                   

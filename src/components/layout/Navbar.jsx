@@ -165,12 +165,14 @@ const Navbar = () => {
             <div className="relative">
               <button 
                 onClick={() => { setDropdownOpen(!dropdownOpen); setNotifOpen(false); }}
-                className="flex items-center space-x-2 p-2 rounded-md hover:bg-[var(--color-primary-light)] transition-colors"
+                className="flex items-center space-x-1 sm:space-x-2 p-1 sm:p-2 rounded-md hover:bg-[var(--color-primary-light)] transition-colors"
               >
-                <div className="flex flex-col items-end mr-1 hidden sm:flex">
-                  <span className="text-xs text-[var(--color-gold)] font-bold">{user.points || 0} pts {getRankInfo(user.points).icon}</span>
+                <div className="flex flex-col items-end mr-1">
+                  <span className="text-[11px] sm:text-xs text-[var(--color-gold)] font-bold whitespace-nowrap">
+                    {user.points || 0} pts {getRankInfo(user.points).icon}
+                  </span>
                 </div>
-                <User className="w-5 h-5 text-[var(--color-gold)]" />
+                <User className="w-5 h-5 text-[var(--color-gold)] hidden sm:block" />
                 <span className="hidden sm:block text-sm">{user.username}</span>
               </button>
 
