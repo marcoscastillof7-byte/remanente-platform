@@ -3,7 +3,6 @@ import { AuthProvider } from './contexts/AuthContext';
 import { ToastProvider } from './components/shared/Toast';
 import { ProtectedRoute, AdminRoute } from './components/layout/ProtectedRoute';
 import Navbar from './components/layout/Navbar';
-import Sidebar from './components/layout/Sidebar';
 
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
@@ -30,7 +29,6 @@ const Layout = ({ children }) => (
   <div className="flex flex-col min-h-screen bg-[var(--color-parchment)]">
     <Navbar />
     <div className="flex flex-1 overflow-hidden">
-      <Sidebar />
       <main className="flex-1 overflow-y-auto p-4 md:p-8">
         {children}
       </main>
