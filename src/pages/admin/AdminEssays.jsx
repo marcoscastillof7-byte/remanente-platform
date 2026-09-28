@@ -74,7 +74,7 @@ const AdminEssays = () => {
     <div className="space-y-6">
       <div className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-gray-100">
         <h2 className="text-2xl font-bold text-primary flex items-center gap-2">
-          <BookOpen className="w-6 h-6" /> Reflexiones / Retos
+          <BookOpen className="w-6 h-6" /> Preguntas Extendidas
         </h2>
         <div className="flex gap-2">
           <button 
@@ -180,7 +180,7 @@ const AdminEssays = () => {
       )}
 
       {isModalOpen && (
-        <Modal isOpen={true} title="Nueva Pregunta de Desarrollo" onClose={() => setIsModalOpen(false)}>
+        <Modal isOpen={true} title="Nueva Pregunta Extendida" onClose={() => setIsModalOpen(false)}>
           <form onSubmit={handleCreateQuestion} className="space-y-4">
             <div>
               <label className="block text-sm font-bold text-gray-700 mb-1">Pregunta / Tema a desarrollar</label>

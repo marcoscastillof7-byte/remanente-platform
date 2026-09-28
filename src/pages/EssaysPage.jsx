@@ -60,7 +60,7 @@ const EssaysPage = () => {
     <div className="max-w-4xl mx-auto space-y-8">
       <div className="bg-primary rounded-xl p-8 text-white text-center shadow-lg">
         <BookOpen className="w-16 h-16 text-gold mx-auto mb-4" />
-        <h1 className="font-[Cinzel] text-3xl font-bold mb-2">Reflexiones y Retos</h1>
+        <h1 className="font-[Cinzel] text-3xl font-bold mb-2">Preguntas Extendidas</h1>
         <p className="text-gray-200">
           Responde a las preguntas de análisis planteadas por los líderes. ¡Escribe de forma detallada y gana puntos extra (500+ pts)!
         </p>
@@ -69,7 +69,7 @@ const EssaysPage = () => {
       <div className="space-y-6">
         {questions.length === 0 ? (
           <div className="bg-white p-6 rounded-xl border text-center text-gray-500 shadow-sm">
-            No hay preguntas de reflexión activas en este momento.
+            No hay preguntas extendidas activas en este momento.
           </div>
         ) : (
           questions.map(q => {

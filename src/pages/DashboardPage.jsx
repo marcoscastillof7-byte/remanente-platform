@@ -95,7 +95,7 @@ const DashboardPage = () => {
           <div className="mt-6">
             <Link to="/essays" className="inline-flex items-center gap-2 bg-gold hover:bg-yellow-500 text-primary font-bold px-6 py-3 rounded-lg shadow-lg transition-transform hover:scale-105">
               <BookOpen className="w-5 h-5" />
-              Retos de Reflexión (Gana +500 pts)
+              Preguntas Extendidas (Gana +500 pts)
             </Link>
           </div>
         </div>

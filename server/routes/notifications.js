@@ -33,7 +33,7 @@ router.put('/:id/read', async (req, res) => {
         const supabase = getDb();
         const { error } = await supabase
             .from('notifications')
-            .update({ is_read: true })
+            .delete()
             .eq('id', req.params.id)
             .eq('user_id', req.user.id);
 
@@ -51,7 +51,7 @@ router.put('/read-all', async (req, res) => {
         const supabase = getDb();
         const { error } = await supabase
             .from('notifications')
-            .update({ is_read: true })
+            .delete()
             .eq('user_id', req.user.id);
 
         if (error) throw error;

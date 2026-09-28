@@ -142,11 +142,11 @@ router.post('/admin/responses/:id/evaluate', async (req, res) => {
         if (rErr || !responseInfo) throw rErr;
         if (responseInfo.status !== 'pending') return res.status(400).json({error: 'Esta respuesta ya fue evaluada'});
 
-        // Actualizar respuesta
-        await supabase.from('essay_responses').update({ status }).eq('id', responseId);
-
         // Dar puntos si se aprueba
         if (status === 'approved') {
+            // Eliminar de la base de datos según requerimiento
+            await supabase.from('essay_responses').delete().eq('id', responseId);
+            
             const pointsToAward = responseInfo.question.points_reward || 500;
             const { data: uData } = await supabase.from('users').select('points').eq('id', responseInfo.user_id).single();
             if (uData) {
@@ -156,15 +156,18 @@ router.post('/admin/responses/:id/evaluate', async (req, res) => {
             // Notificar
             await supabase.from('notifications').insert([{
                 user_id: responseInfo.user_id,
-                title: '¡Reflexión Aprobada!',
+                title: '¡Respuesta Aprobada!',
                 message: `Tu respuesta extendida fue aprobada. Ganaste ${pointsToAward} pts.`,
                 link: '/essays'
             }]);
         } else {
+            // Actualizar respuesta a rechazada
+            await supabase.from('essay_responses').update({ status }).eq('id', responseId);
+            
             // Notificar rechazo
             await supabase.from('notifications').insert([{
                 user_id: responseInfo.user_id,
-                title: 'Reflexión Evaluada',
+                title: 'Respuesta Evaluada',
                 message: `Tu respuesta ha sido leída pero no cumplió con los criterios para los puntos esta vez. ¡Sigue intentando!`,
                 link: '/essays'
             }]);
