@@ -348,4 +348,27 @@ router.get('/questions/:chapterId', async (req, res) => {
     }
 });
 
+// Endpoint para guardar video_url masivamente en capitulos
+router.post('/chapter-videos', async (req, res) => {
+    try {
+        const supabase = getDb();
+        const { videoUrl, chapterIds } = req.body;
+        
+        if (!Array.isArray(chapterIds) || chapterIds.length === 0) {
+            return res.status(400).json({ error: 'Lista de capítulos vacía' });
+        }
+        
+        const { error } = await supabase
+            .from('chapters')
+            .update({ video_url: videoUrl })
+            .in('id', chapterIds);
+            
+        if (error) throw error;
+        res.json({ message: 'Videos asignados exitosamente' });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Error interno asignando videos' });
+    }
+});
+
 export default router;

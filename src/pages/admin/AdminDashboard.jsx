@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router';
 import { api } from '../../utils/api';
-import { Users, BarChart3, BookOpen, Flame, Loader, ChevronRight, Flag, MessageSquare } from 'lucide-react';
+import { Users, BarChart3, BookOpen, Flame, Loader, ChevronRight, Flag, MessageSquare, Video } from 'lucide-react';
 
 const AdminDashboard = () => {
   const [stats, setStats] = useState(null);
@@ -39,6 +39,9 @@ const AdminDashboard = () => {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
         <h1 className="font-[Cinzel] text-2xl md:text-3xl font-bold text-primary">👑 Panel de Administración</h1>
         <div className="flex flex-wrap gap-2 md:gap-3 w-full md:w-auto">
+          <Link to="/admin/videos" className="flex-1 md:flex-none flex items-center justify-center gap-2 px-3 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors shadow-sm text-sm">
+            <Video className="w-4 h-4" /> Videos
+          </Link>
           <Link to="/admin/global-bulk" className="flex-1 md:flex-none flex items-center justify-center gap-2 px-3 py-2 bg-gray-800 text-white rounded hover:bg-gray-900 transition-colors shadow-sm text-sm">
             <BookOpen className="w-4 h-4" /> Importador
           </Link>

@@ -21,6 +21,7 @@ import QuestionManager from './pages/admin/QuestionManager';
 import AdminReports from './pages/admin/AdminReports';
 import AdminSuggestions from './pages/admin/AdminSuggestions';
 import GlobalBulkImport from './pages/admin/GlobalBulkImport';
+import VideoManager from './pages/admin/VideoManager';
 import DuelsPage from './pages/DuelsPage';
 import SurvivalPage from './pages/SurvivalPage';
 import AgoraPage from './pages/AgoraPage';
@@ -66,6 +67,7 @@ const App = () => {
             <Route path="/admin/reports" element={<Layout><AdminReports /></Layout>} />
             <Route path="/admin/suggestions" element={<Layout><AdminSuggestions /></Layout>} />
             <Route path="/admin/global-bulk" element={<Layout><GlobalBulkImport /></Layout>} />
+            <Route path="/admin/videos" element={<Layout><VideoManager /></Layout>} />
           </Route>
         </Routes>
       </AuthProvider>

@@ -151,6 +151,23 @@ const ChapterPage = () => {
         </button>
       </div>
 
+      {/* Mensaje de Video / Anuncio */}
+      {chapter?.video_url && (
+        <div className="bg-blue-50 rounded-xl p-6 shadow-sm border border-blue-100 mb-8">
+          <h3 className="font-[Cinzel] text-lg font-bold text-blue-800 mb-2 flex items-center gap-2">
+            📺 Mira este video según este libro:
+          </h3>
+          <a 
+            href={chapter.video_url} 
+            target="_blank" 
+            rel="noopener noreferrer" 
+            className="text-blue-600 hover:underline hover:text-blue-800 font-medium break-all"
+          >
+            {chapter.video_url}
+          </a>
+        </div>
+      )}
+
       {/* Detalles Históricos */}
       <div className="mb-8">
         <HistoricalDetails chapterId={chapterId} user={user} />
