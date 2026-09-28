@@ -3,14 +3,14 @@ import { getDb } from './server/db/database.js';
 async function deleteUsers() {
     const supabase = getDb();
 
-    console.log(`Buscando usuarios con username: user`);
+    console.log(`Buscando usuarios con username: newuser1`);
     const { data: users, error: userError } = await supabase
         .from('users')
         .select('id, username')
-        .eq('username', 'user');
+        .eq('username', 'newuser1');
         
     if (userError || !users || users.length === 0) {
-        console.log(`Usuario 'user' no encontrado o error:`, userError?.message);
+        console.log(`Usuario 'newuser1' no encontrado o error:`, userError?.message);
         return;
     }
     

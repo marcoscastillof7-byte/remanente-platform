@@ -7,6 +7,19 @@ const router = express.Router();
 router.use(auth);
 router.use(adminOnly);
 
+// Auto-enable chapter and book when questions are updated
+const autoPublishChapter = async (supabase, chapterId) => {
+    try {
+        await supabase.from('chapters').update({ is_published: true }).eq('id', chapterId);
+        const { data: chapter } = await supabase.from('chapters').select('book_id').eq('id', chapterId).single();
+        if (chapter) {
+            await supabase.from('books').update({ is_published: true }).eq('id', chapter.book_id);
+        }
+    } catch (e) {
+        console.error('Error auto-publishing chapter:', e);
+    }
+};
+
 router.get('/users', async (req, res) => {
     try {
         const supabase = getDb();
@@ -177,6 +190,9 @@ router.post('/questions', async (req, res) => {
         }]).select().single();
 
         if (error) throw error;
+        
+        await autoPublishChapter(supabase, chapter_id);
+        
         res.json({ id: data.id });
     } catch (error) {
         console.error(error);
@@ -214,6 +230,8 @@ router.post('/questions/:chapterId/bulk', async (req, res) => {
 
         const { error: insError } = await supabase.from('questions').insert(questionsToInsert);
         if (insError) throw insError;
+        
+        await autoPublishChapter(supabase, chapterId);
 
         // --- NOTIFICATIONS ---
         try {
@@ -317,6 +335,13 @@ router.put('/questions/:id', async (req, res) => {
         }).eq('id', req.params.id);
 
         if (error) throw error;
+        
+        // Find chapter_id for this question and publish it
+        const { data: q } = await supabase.from('questions').select('chapter_id').eq('id', req.params.id).single();
+        if (q && q.chapter_id) {
+            await autoPublishChapter(supabase, q.chapter_id);
+        }
+        
         res.json({ message: 'Pregunta actualizada' });
     } catch (error) {
         console.error(error);

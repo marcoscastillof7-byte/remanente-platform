@@ -67,18 +67,20 @@ const BookPage = () => {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {chapters.map((chapter) => (
-          <div key={chapter.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-shadow">
+        {chapters.map((chapter) => {
+          const isDisabled = chapter.is_published === false;
+          return (
+          <div key={chapter.id} className={`bg-white rounded-xl shadow-sm border border-gray-100 p-6 ${isDisabled ? 'opacity-60 relative' : 'hover:shadow-md transition-shadow'}`}>
             <div className="flex justify-between items-start mb-3">
               <h3 className="font-[Cinzel] font-bold text-xl text-primary-dark">
                 Capítulo {chapter.chapter_number}
               </h3>
-              {getStatusIcon(chapter)}
+              {!isDisabled && getStatusIcon(chapter)}
             </div>
 
             <p className="text-sm text-gray-600 mb-4 line-clamp-2">{chapter.title}</p>
 
-            {chapter.best_score != null && chapter.best_score > 0 && (
+            {chapter.best_score != null && chapter.best_score > 0 && !isDisabled && (
               <div className="mb-4 text-sm">
                 <span className="text-gray-500">Mejor Puntuación: </span>
                 <span className="font-bold text-primary">{chapter.best_score}%</span>
@@ -86,27 +88,35 @@ const BookPage = () => {
             )}
 
             <div className="mt-4 flex gap-2">
-              <Link
-                to={`/chapters/${chapter.id}`}
-                className="flex-1 text-center py-2 bg-primary text-white rounded hover:bg-primary-light text-sm transition-colors"
-              >
-                Detalles
-              </Link>
-              <Link
-                to={`/quiz/${chapter.id}`}
-                className="flex-1 text-center py-2 bg-gold text-white rounded hover:bg-gold-dark text-sm transition-colors"
-              >
-                Quiz
-              </Link>
-              <Link
-                to={`/flashcards/${chapter.id}`}
-                className="flex-1 text-center py-2 bg-primary-light text-white rounded hover:bg-primary text-sm transition-colors"
-              >
-                Tarjetas
-              </Link>
+              {isDisabled ? (
+                <div className="flex-1 text-center py-2 bg-gray-300 text-gray-600 rounded text-sm font-bold cursor-not-allowed">
+                  Próximamente 🚧
+                </div>
+              ) : (
+                <>
+                  <Link
+                    to={`/chapters/${chapter.id}`}
+                    className="flex-1 text-center py-2 bg-primary text-white rounded hover:bg-primary-light text-sm transition-colors"
+                  >
+                    Detalles
+                  </Link>
+                  <Link
+                    to={`/quiz/${chapter.id}`}
+                    className="flex-1 text-center py-2 bg-gold text-white rounded hover:bg-gold-dark text-sm transition-colors"
+                  >
+                    Quiz
+                  </Link>
+                  <Link
+                    to={`/flashcards/${chapter.id}`}
+                    className="flex-1 text-center py-2 bg-primary-light text-white rounded hover:bg-primary text-sm transition-colors"
+                  >
+                    Tarjetas
+                  </Link>
+                </>
+              )}
             </div>
           </div>
-        ))}
+        )})}
       </div>
     </div>
   );

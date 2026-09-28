@@ -100,8 +100,10 @@ const DashboardPage = () => {
       </h2>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {books.map((book) => (
-          <div key={book.id} className="bg-white rounded-xl shadow-md p-6 border border-gray-100 hover:shadow-lg transition-shadow flex flex-col h-full">
+        {books.map((book) => {
+          const isDisabled = book.is_published === false;
+          return (
+          <div key={book.id} className={`bg-white rounded-xl shadow-md p-6 border border-gray-100 flex flex-col h-full ${isDisabled ? 'opacity-60 relative' : 'hover:shadow-lg transition-shadow'}`}>
             <h3 className="font-[Cinzel] font-bold text-xl text-primary-dark mb-2">{book.name}</h3>
             <p className="text-sm text-gray-500 mb-4">{book.chapters_count} capítulos</p>
 
@@ -125,14 +127,20 @@ const DashboardPage = () => {
               )}
             </div>
 
-            <Link
-              to={`/books/${book.id}`}
-              className="mt-4 w-full flex items-center justify-center py-2 px-4 bg-primary text-white rounded hover:bg-primary-light transition-colors text-sm font-medium"
-            >
-              Continuar <ArrowRight className="w-4 h-4 ml-2" />
-            </Link>
+            {isDisabled ? (
+              <div className="mt-4 w-full flex items-center justify-center py-2 px-4 bg-gray-300 text-gray-600 rounded cursor-not-allowed text-sm font-bold">
+                Próximamente 🚧
+              </div>
+            ) : (
+              <Link
+                to={`/books/${book.id}`}
+                className="mt-4 w-full flex items-center justify-center py-2 px-4 bg-primary text-white rounded hover:bg-primary-light transition-colors text-sm font-medium"
+              >
+                Continuar <ArrowRight className="w-4 h-4 ml-2" />
+              </Link>
+            )}
           </div>
-        ))}
+        )})}
       </div>
     </div>
   );
