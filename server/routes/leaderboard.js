@@ -5,24 +5,19 @@ import { auth } from '../middleware/auth.js';
 const router = express.Router();
 router.use(auth);
 
-// Caché en memoria por group_id
-const CACHE_TTL = 60000; // 1 minuto
-const cache = {
-    global: {},
-    books: {}
-};
-
 router.get('/', async (req, res) => {
     try {
         const groupId = req.user.group_id;
-        const now = Date.now();
-        
-        if (cache.global[groupId] && (now - cache.global[groupId].lastUpdated < CACHE_TTL)) {
-            return res.json(cache.global[groupId].data);
-        }
+        const internal = req.query.internal === 'true';
 
         const supabase = getDb();
-        const { data: users, error: uError } = await supabase.from('users').select('id, username, points').eq('group_id', groupId);
+        let query = supabase.from('users').select('id, username, points, group_id, groups(name)');
+        
+        if (internal && groupId) {
+            query = query.eq('group_id', groupId);
+        }
+
+        const { data: users, error: uError } = await query;
         const { data: attempts, error: aError } = await supabase.from('quiz_attempts').select('user_id, score');
         const { data: streaks, error: sError } = await supabase.from('study_streaks').select('user_id, current_streak');
 
@@ -39,6 +34,7 @@ router.get('/', async (req, res) => {
             
             return {
                 username: u.username,
+                groupName: u.groups?.name || null,
                 points,
                 total_score,
                 quizzes_completed,
@@ -47,12 +43,7 @@ router.get('/', async (req, res) => {
             };
         }).filter(u => u.points > 0 || u.quizzes_completed > 0)
           .sort((a, b) => b.points - a.points)
-          .slice(0, 20);
-
-        cache.global[groupId] = {
-            data: leaderboard,
-            lastUpdated: now
-        };
+          .slice(0, 50); // Muestra top 50 en la global
 
         res.json(leaderboard);
     } catch (error) {
@@ -65,16 +56,16 @@ router.get('/:bookId', async (req, res) => {
     try {
         const groupId = req.user.group_id;
         const bookId = parseInt(req.params.bookId, 10);
-        const now = Date.now();
-        
-        const cacheKey = `${groupId}-${bookId}`;
-        
-        if (cache.books[cacheKey] && (now - cache.books[cacheKey].lastUpdated < CACHE_TTL)) {
-            return res.json(cache.books[cacheKey].data);
-        }
+        const internal = req.query.internal === 'true';
 
         const supabase = getDb();
-        const { data: users, error: uError } = await supabase.from('users').select('id, username').eq('group_id', groupId);
+        let query = supabase.from('users').select('id, username, group_id, groups(name)');
+        
+        if (internal && groupId) {
+            query = query.eq('group_id', groupId);
+        }
+
+        const { data: users, error: uError } = await query;
         const { data: attempts, error: aError } = await supabase
             .from('quiz_attempts')
             .select('user_id, score, chapters!inner(book_id)')
@@ -91,18 +82,14 @@ router.get('/:bookId', async (req, res) => {
             
             return {
                 username: u.username,
+                groupName: u.groups?.name || null,
                 total_score,
                 quizzes_completed,
                 avg_score
             };
         }).filter(u => u.quizzes_completed > 0)
           .sort((a, b) => b.total_score - a.total_score)
-          .slice(0, 20);
-
-        cache.books[cacheKey] = {
-            data: leaderboard,
-            lastUpdated: now
-        };
+          .slice(0, 50);
 
         res.json(leaderboard);
     } catch (error) {

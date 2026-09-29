@@ -9,6 +9,7 @@ const LeaderboardPage = () => {
   const [leaderboard, setLeaderboard] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('global');
+  const [isInternal, setIsInternal] = useState(false);
   const [books, setBooks] = useState([]);
 
   useEffect(() => {
@@ -29,11 +30,11 @@ const LeaderboardPage = () => {
     fetchData();
   }, []);
 
-  const fetchByBook = async (bookId) => {
+  const fetchByBook = async (bookId, internal = isInternal) => {
     setActiveTab(bookId);
     setLoading(true);
     try {
-      const data = await api.get(`/leaderboard/${bookId}`);
+      const data = await api.get(`/leaderboard/${bookId}?internal=${internal}`);
       setLeaderboard(data);
     } catch (err) {
       console.error(err);
@@ -42,11 +43,11 @@ const LeaderboardPage = () => {
     }
   };
 
-  const fetchGlobal = async () => {
+  const fetchGlobal = async (internal = isInternal) => {
     setActiveTab('global');
     setLoading(true);
     try {
-      const data = await api.get('/leaderboard');
+      const data = await api.get(`/leaderboard?internal=${internal}`);
       setLeaderboard(data);
     } catch (err) {
       console.error(err);
@@ -64,10 +65,27 @@ const LeaderboardPage = () => {
 
   return (
     <div className="max-w-4xl mx-auto">
-      <h1 className="font-[Cinzel] text-3xl font-bold text-primary mb-2 flex items-center gap-3">
-        <Trophy className="w-8 h-8 text-gold" /> Tabla de Honor
-      </h1>
-      <p className="text-gray-600 mb-8">Los mejores estudiantes de la plataforma.</p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4">
+        <div>
+          <h1 className="font-[Cinzel] text-3xl font-bold text-primary mb-2 flex items-center gap-3">
+            <Trophy className="w-8 h-8 text-gold" /> Tabla de Honor
+          </h1>
+          <p className="text-gray-600">Los mejores estudiantes de la plataforma.</p>
+        </div>
+        <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-lg shadow-sm border border-gray-200 self-start sm:self-auto">
+          <span className={!isInternal ? "text-sm font-bold text-primary" : "text-sm font-bold text-gray-400"}>General</span>
+          <label className="relative inline-flex items-center cursor-pointer">
+            <input type="checkbox" className="sr-only peer" checked={isInternal} onChange={(e) => {
+               const val = e.target.checked;
+               setIsInternal(val);
+               if (activeTab === 'global') fetchGlobal(val);
+               else fetchByBook(activeTab, val);
+            }} />
+            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-gold"></div>
+          </label>
+          <span className={isInternal ? "text-sm font-bold text-primary" : "text-sm font-bold text-gray-400"}>Mi Equipo</span>
+        </div>
+      </div>
 
       {/* Tabs */}
       <div className="flex flex-wrap gap-2 mb-6">
@@ -131,9 +149,14 @@ const LeaderboardPage = () => {
                 >
                   <td className="px-4 py-3 text-lg">{getMedal(i + 1)}</td>
                   <td className="px-4 py-3">
-                    <span className={isUser ? 'text-primary font-bold' : ''}>
-                      {entry.username}
-                    </span>
+                    <span className={isUser ? "text-primary font-bold flex flex-wrap items-center gap-2" : "flex flex-wrap items-center gap-2"}>
+                        <span>{entry.username}</span>
+                        {!isInternal && entry.groupName && (
+                          <span className="text-[10px] bg-gray-100 border border-gray-200 text-gray-600 px-2 py-0.5 rounded-full whitespace-nowrap">
+                            {entry.groupName}
+                          </span>
+                        )}
+                      </span>
                   </td>
                   <td className="px-4 py-3 text-center font-bold text-primary">
                     {activeTab === 'global' ? points : (entry.total_score || 0)}

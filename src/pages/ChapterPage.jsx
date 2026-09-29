@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router';
+import { useParams, Link, useNavigate } from 'react-router';
 import { api } from '../utils/api';
 import { BookOpen, FileText, History, Loader, Save, ShieldAlert, BookType } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
@@ -7,6 +7,7 @@ import HistoricalDetails from '../components/chapter/HistoricalDetails';
 
 const ChapterPage = () => {
   const { chapterId } = useParams();
+  const navigate = useNavigate();
   const { user, isAdmin } = useAuth();
   const [chapter, setChapter] = useState(null);
   const [history, setHistory] = useState([]);
@@ -118,12 +119,20 @@ const ChapterPage = () => {
             <span className="text-xs font-normal opacity-80">Límite de intentos (2) alcanzado</span>
           </div>
         ) : (
-          <Link
-            to={`/quiz/${chapterId}`}
-            className="flex items-center justify-center gap-2 p-6 bg-gold text-white rounded-xl text-lg font-bold hover:bg-gold-dark transition-colors shadow-md"
-          >
-            <FileText className="w-6 h-6" /> Iniciar Quiz
-          </Link>
+          <button
+              onClick={() => {
+                if (history.length === 0) {
+                  if (window.confirm("Solo tienes 2 intentos para responder en cada capitulo de cada libro. Dale con to'")) {
+                    navigate(`/quiz/${chapterId}`);
+                  }
+                } else {
+                  navigate(`/quiz/${chapterId}`);
+                }
+              }}
+              className="flex items-center justify-center gap-2 p-6 bg-gold text-white rounded-xl text-lg font-bold hover:bg-gold-dark transition-colors shadow-md w-full"
+            >
+              <FileText className="w-6 h-6" /> Iniciar Quiz
+            </button>
         )}
         <Link
           to={`/flashcards/${chapterId}`}

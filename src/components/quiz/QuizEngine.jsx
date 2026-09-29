@@ -10,9 +10,11 @@ const QuizEngine = ({ questions, chapterId, isCustom = false, configId = null })
   const [results, setResults] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [instantMode, setInstantMode] = useState(false);
+  const [reviewedQuestions, setReviewedQuestions] = useState({});
   const questionStartRef = useRef(Date.now());
 
   const handleSelectAnswer = (letter) => {
+    if (instantMode && reviewedQuestions[questions[currentIndex].id]) return; // locked
     const timeSpent = Math.round((Date.now() - questionStartRef.current) / 1000);
     setAnswers(prev => ({
       ...prev,
@@ -21,6 +23,11 @@ const QuizEngine = ({ questions, chapterId, isCustom = false, configId = null })
   };
 
   const handleNext = () => {
+    const currentQId = questions[currentIndex].id;
+    if (instantMode && answers[currentQId] && !reviewedQuestions[currentQId]) {
+      setReviewedQuestions(prev => ({ ...prev, [currentQId]: true }));
+      return;
+    }
     if (currentIndex < questions.length - 1) {
       setCurrentIndex(currentIndex + 1);
       questionStartRef.current = Date.now();
@@ -100,7 +107,7 @@ const QuizEngine = ({ questions, chapterId, isCustom = false, configId = null })
           question={currentQ}
           selectedAnswer={answers[currentQ.id]?.selectedAnswer}
           onSelect={handleSelectAnswer}
-          reviewMode={instantMode && !!answers[currentQ.id]}
+          reviewMode={instantMode && !!reviewedQuestions[currentQ.id]}
           correctAnswer={currentQ.correct_answer}
         />
       </div>
@@ -116,6 +123,11 @@ const QuizEngine = ({ questions, chapterId, isCustom = false, configId = null })
         {currentIndex === questions.length - 1 ? (
           <button
             onClick={() => {
+              const currentQId = questions[currentIndex].id;
+              if (instantMode && answers[currentQId] && !reviewedQuestions[currentQId]) {
+                 setReviewedQuestions(prev => ({ ...prev, [currentQId]: true }));
+                 return;
+              }
               if (!allAnswered) {
                 const missing = questions.findIndex(q => !answers[q.id]) + 1;
                 alert(`Te falta responder la pregunta ${missing}. Por favor, regresa y respóndela antes de finalizar.`);
@@ -127,14 +139,14 @@ const QuizEngine = ({ questions, chapterId, isCustom = false, configId = null })
             className={`px-6 py-2 text-white rounded-md font-bold transition-colors flex items-center gap-2 ${!allAnswered ? 'bg-gray-400 cursor-not-allowed' : 'bg-primary hover:bg-primary-light'}`}
           >
             {submitting && <Loader className="w-4 h-4 animate-spin" />}
-            Finalizar Quiz
-          </button>
+            {instantMode && answers[questions[currentIndex].id] && !reviewedQuestions[questions[currentIndex].id] ? 'Revisar' : 'Finalizar Quiz'}
+            </button>
         ) : (
           <button
             onClick={handleNext}
-            className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary-light transition-colors"
+            className="px-4 py-2 bg-[var(--color-primary)] text-white rounded-md hover:bg-[var(--color-primary-light)] transition-colors"
           >
-            Siguiente
+            {instantMode && answers[currentQ.id] && !reviewedQuestions[currentQ.id] ? 'Revisar' : 'Siguiente'}
           </button>
         )}
       </div>

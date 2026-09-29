@@ -29,6 +29,13 @@ router.get('/', async (req, res) => {
         const supabase = getDb();
         const userId = req.user.id;
         
+        // Auto-limpieza (Lazy cleanup)
+        const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+        const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
+        
+        await supabase.from('duels').delete().eq('status', 'completed').lt('updated_at', oneWeekAgo);
+        await supabase.from('duels').delete().eq('status', 'pending_acceptance').lt('created_at', threeDaysAgo);
+
         // Obtener duelos donde seas retador u oponente
         const { data, error } = await supabase
             .from('duels')

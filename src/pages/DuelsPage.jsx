@@ -291,7 +291,8 @@ const DuelsPage = () => {
             {completedDuels.length === 0 ? (
               <p className="p-6 text-gray-500 text-center italic">Aún no has completado ningún duelo.</p>
             ) : (
-              <table className="w-full text-sm">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-gray-50 text-gray-500 border-b">
                     <th className="px-4 py-3 text-left">Oponente</th>
@@ -324,7 +325,7 @@ const DuelsPage = () => {
                         </td>
                         <td className="px-4 py-3 text-center">
                           {isTie ? (
-                            <span className="inline-flex items-center gap-1 text-gray-500 font-bold bg-gray-100 px-2 py-1 rounded">
+                            <span className="inline-flex items-center gap-1 text-blue-600 font-bold bg-blue-100 px-2 py-1 rounded-md shadow-sm">
                               EMPATE
                             </span>
                           ) : iWon ? (
@@ -342,6 +343,7 @@ const DuelsPage = () => {
                   })}
                 </tbody>
               </table>
+              </div>
             )}
           </div>
         </div>
