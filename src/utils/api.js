@@ -1,8 +1,9 @@
 const API_URL = '/api';
 
 // Cache en memoria para hacer la app increíblemente rápida (SPA fluid feel)
+// Reducido a 2 segundos para evitar spam de re-renders, pero suficientemente corto para que todos los cambios se vean "en vivo" al cambiar de pantalla
 const cache = new Map();
-const CACHE_TTL = 60000; // 60 segundos de caché por defecto
+const CACHE_TTL = 2000; 
 
 async function fetchWithAuth(endpoint, options = {}, useCache = false) {
   const method = options.method || 'GET';
