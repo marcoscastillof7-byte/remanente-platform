@@ -185,4 +185,45 @@ router.delete('/groups/:id', async (req, res) => {
     }
 });
 
+// Eliminar un solo usuario y todos sus datos en cascada manual
+router.delete('/users/:userId', async (req, res) => {
+    try {
+        const supabase = getDb();
+        const userId = req.params.userId;
+
+        // Eliminar datos relacionados con este usuario
+        await supabase.from('essay_responses').delete().eq('user_id', userId);
+        await supabase.from('flashcard_progress').delete().eq('user_id', userId);
+        await supabase.from('user_achievements').delete().eq('user_id', userId);
+        await supabase.from('user_notes').delete().eq('user_id', userId);
+        await supabase.from('study_streaks').delete().eq('user_id', userId);
+        await supabase.from('custom_quiz_configs').delete().eq('user_id', userId);
+
+        // Quizzes normales
+        const { data: attempts } = await supabase.from('quiz_attempts').select('id').eq('user_id', userId);
+        if (attempts && attempts.length > 0) {
+            const attemptIds = attempts.map(a => a.id);
+            await supabase.from('quiz_answers').delete().in('attempt_id', attemptIds);
+        }
+        await supabase.from('quiz_attempts').delete().eq('user_id', userId);
+
+        // Quizzes personalizados
+        const { data: cAttempts } = await supabase.from('custom_quiz_attempts').select('id').eq('user_id', userId);
+        if (cAttempts && cAttempts.length > 0) {
+            const cAttemptIds = cAttempts.map(a => a.id);
+            await supabase.from('custom_quiz_answers').delete().in('attempt_id', cAttemptIds);
+        }
+        await supabase.from('custom_quiz_attempts').delete().eq('user_id', userId);
+
+        // Finalmente, eliminar el usuario
+        const { error: delError } = await supabase.from('users').delete().eq('id', userId);
+        if (delError) throw delError;
+
+        res.json({ message: 'Usuario eliminado exitosamente' });
+    } catch (error) {
+        console.error('Error al eliminar usuario:', error);
+        res.status(500).json({ error: 'Error interno al eliminar el usuario' });
+    }
+});
+
 export default router;

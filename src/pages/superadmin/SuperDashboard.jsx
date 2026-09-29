@@ -98,6 +98,19 @@ const SuperDashboard = () => {
     }
   };
 
+  const handleDeleteUser = async (userId, username) => {
+    if (window.confirm(`🚨 ¿Estás absolutamente SEGURO de eliminar permanentemente la cuenta de ${username}?\n\n¡Se borrará todo su progreso (quizzes, rachas, puntos) y no podrá recuperarlo!`)) {
+      try {
+        await api.del(`/superadmin/users/${userId}`);
+        addToast(`Usuario ${username} eliminado`, 'success');
+        fetchGroupUsers(editGroup.id);
+        fetchGroups();
+      } catch (error) {
+        addToast(error.error || 'Error al eliminar usuario', 'error');
+      }
+    }
+  };
+
   const handleUpdateUser = async (userId, newRole, newGroupId) => {
     try {
       await api.put(`/superadmin/users/${userId}`, {
@@ -383,7 +396,14 @@ const SuperDashboard = () => {
                               <option key={g.id} value={g.id}>{g.name}</option>
                             ))}
                           </select>
-                        </div>
+                            <button 
+                              onClick={() => handleDeleteUser(u.id, u.username)} 
+                              className="p-1.5 ml-2 text-white bg-red-500 hover:bg-red-600 rounded-md transition-colors shadow-sm" 
+                              title="Eliminar Cuenta Permanente"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
                       </div>
                     ))}
                   </div>
