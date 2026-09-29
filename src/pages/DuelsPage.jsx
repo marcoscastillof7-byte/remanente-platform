@@ -146,7 +146,7 @@ const DuelsPage = () => {
             {users.map(u => (
               <div key={u.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-100">
                 <div>
-                  <span className="font-medium text-gray-700 block">{u.username}</span>
+                  <span className="font-medium text-gray-700 block flex items-center gap-2">{u.username} {u.groups?.name && <span className="text-[10px] bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full whitespace-nowrap">{u.groups.name}</span>}</span>
                   <span className="text-xs text-gray-500">{u.points || 0} pts</span>
                 </div>
                 <button
@@ -176,7 +176,7 @@ const DuelsPage = () => {
                   <div className="flex justify-between items-start mb-2">
                     <div>
                       <div className="text-sm text-gray-500">Fuiste retado por</div>
-                      <div className="font-bold text-lg text-primary">{d.challenger.username}</div>
+                      <div className="font-bold text-lg text-primary">{d.challenger.username + (d.challenger.groups?.name ? ` [${d.challenger.groups.name}]` : "")}</div>
                     </div>
                     <div className="text-right">
                       <div className="text-sm text-gray-500">Apuesta</div>
@@ -212,7 +212,7 @@ const DuelsPage = () => {
               {sentChallenges.map(d => (
                 <div key={d.id} className="bg-gray-50 p-4 rounded-lg border shadow-sm flex items-center justify-between opacity-75">
                   <div>
-                    <span className="font-medium block">Retaste a {d.opponent.username}</span>
+                    <span className="font-medium block">Retaste a {d.opponent.username + (d.opponent.groups?.name ? ` [${d.opponent.groups.name}]` : "")}</span>
                     <span className="text-sm text-gray-500">Apuesta: {d.wager} pts</span>
                   </div>
                   <span className="text-sm text-warning font-bold">
@@ -235,7 +235,7 @@ const DuelsPage = () => {
             <div className="grid grid-cols-1 gap-4">
               {myTurnDuels.map(d => {
                 const isChallenger = d.challenger_id === user.id;
-                const enemyName = isChallenger ? d.opponent.username : d.challenger.username;
+                const enemyName = isChallenger ? d.opponent.username + (d.opponent.groups?.name ? ` [${d.opponent.groups.name}]` : "") : d.challenger.username + (d.challenger.groups?.name ? ` [${d.challenger.groups.name}]` : "");
                 return (
                   <div key={d.id} className="bg-white p-4 rounded-lg border-l-4 border-success shadow-sm flex items-center justify-between">
                     <div>
@@ -268,7 +268,7 @@ const DuelsPage = () => {
           ) : (
             <div className="grid grid-cols-1 gap-3">
               {waitingDuels.map(d => {
-                const enemyName = d.challenger_id === user.id ? d.opponent.username : d.challenger.username;
+                const enemyName = d.challenger_id === user.id ? d.opponent.username + (d.opponent.groups?.name ? ` [${d.opponent.groups.name}]` : "") : d.challenger.username + (d.challenger.groups?.name ? ` [${d.challenger.groups.name}]` : "");
                 return (
                   <div key={d.id} className="bg-gray-50 p-4 rounded-lg border shadow-sm flex items-center justify-between opacity-75">
                     <span className="font-medium">Duelo vs {enemyName}</span>
@@ -304,7 +304,7 @@ const DuelsPage = () => {
                 <tbody>
                   {completedDuels.map(d => {
                     const isChallenger = d.challenger_id === user.id;
-                    const enemyName = isChallenger ? d.opponent.username : d.challenger.username;
+                    const enemyName = isChallenger ? d.opponent.username + (d.opponent.groups?.name ? ` [${d.opponent.groups.name}]` : "") : d.challenger.username + (d.challenger.groups?.name ? ` [${d.challenger.groups.name}]` : "");
                     const myScore = isChallenger ? d.challenger_score : d.opponent_score;
                     const enemyScore = isChallenger ? d.opponent_score : d.challenger_score;
                     const myTime = isChallenger ? d.challenger_time : d.opponent_time;

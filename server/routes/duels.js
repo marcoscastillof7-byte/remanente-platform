@@ -5,15 +5,14 @@ import { auth } from '../middleware/auth.js';
 const router = express.Router();
 router.use(auth);
 
-// Obtener usuarios a los que puedes retar
+// Obtener usuarios a los que puedes retar (Global, de cualquier grupo)
 router.get('/users', async (req, res) => {
     try {
         const supabase = getDb();
         const { data, error } = await supabase
             .from('users')
-            .select('id, username, points')
+            .select('id, username, points, groups(name)')
             .neq('id', req.user.id)
-            .eq('group_id', req.user.group_id)
             .order('username');
             
         if (error) throw error;
@@ -35,8 +34,8 @@ router.get('/', async (req, res) => {
             .from('duels')
             .select(`
                 *,
-                challenger:users!challenger_id(username),
-                opponent:users!opponent_id(username),
+                challenger:users!challenger_id(username, groups(name)),
+                opponent:users!opponent_id(username, groups(name)),
                 winner:users!winner_id(username)
             `)
             .or(`challenger_id.eq.${userId},opponent_id.eq.${userId}`)
