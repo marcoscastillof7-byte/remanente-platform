@@ -22,25 +22,17 @@ const DashboardPage = () => {
   const [books, setBooks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [streak, setStreak] = useState(null);
-  const [pendingEssays, setPendingEssays] = useState(0);
-
   const dailyVerse = verses[new Date().getDate() % verses.length];
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [booksData, profileData, essaysData] = await Promise.all([
+        const [booksData, profileData] = await Promise.all([
           api.get('/books'),
-          api.get('/auth/profile'),
-          api.get('/essays/active')
+          api.get('/auth/profile')
         ]);
         setBooks(booksData);
-        setStreak(profileData.streak);
-        if (essaysData) {
-          const unanswered = essaysData.filter(q => !q.user_response).length;
-          setPendingEssays(unanswered);
-        }
-      } catch (err) {
+        setStreak(profileData.streak);      } catch (err) {
         console.error('Error cargando dashboard:', err);
       } finally {
         setLoading(false);
@@ -102,15 +94,6 @@ const DashboardPage = () => {
             </div>
           </div>
           <div className="mt-6">
-            <Link to="/essays" className="relative inline-flex items-center gap-2 bg-gold hover:bg-yellow-500 text-primary font-bold px-6 py-3 rounded-lg shadow-lg transition-transform hover:scale-105">
-              <BookOpen className="w-5 h-5" />
-              Preguntas Extendidas (Gana +500 pts)
-              {pendingEssays > 0 && (
-                <span className="absolute -top-2 -right-2 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 border-2 border-[var(--color-primary)] text-white text-[10px] font-bold">
-                  {pendingEssays}
-                </span>
-              )}
-            </Link>
           </div>
         </div>
       </div>
