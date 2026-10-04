@@ -135,7 +135,7 @@ const SuperDashboard = () => {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
         <h1 className="font-[Cinzel] text-2xl md:text-3xl font-bold text-primary flex items-center gap-2">
           <ShieldAlert className="w-8 h-8 text-gold" />
-          Súper Panel MegaAdmin
+          Súper Panel Admin
         </h1>
         <button
           onClick={() => setIsModalOpen(true)}

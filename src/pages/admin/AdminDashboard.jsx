@@ -128,7 +128,7 @@ const AdminDashboard = () => {
                     </td>
                     <td className="px-6 py-4 text-center">
                       <span className={`px-2 py-1 rounded-full text-xs ${u.role === 'admin' || u.role === 'superadmin' ? 'bg-[var(--color-gold)]/20 text-[var(--color-gold-dark)] font-bold' : 'bg-gray-100 text-gray-600'}`}>
-                        {u.role === 'admin' ? 'Líder' : u.role === 'superadmin' ? 'MegaAdmin' : 'Usuario'}
+                        {u.role === 'admin' ? 'Líder' : u.role === 'superadmin' ? 'Admin' : 'Usuario'}
                       </span>
                     </td>
                     <td className="px-6 py-4 text-center font-bold text-[var(--color-primary)]">

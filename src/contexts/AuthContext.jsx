@@ -51,7 +51,7 @@ export const AuthProvider = ({ children }) => {
     setUser(null);
   };
 
-  // Regla absoluta: Solo Marcos tiene el Súper Panel de MegaAdmin
+  // Regla absoluta: Solo Marcos tiene el Súper Panel de Admin
   const isMarcos = user?.username?.toLowerCase() === 'marcos';
   const isSuperAdmin = isMarcos;
   

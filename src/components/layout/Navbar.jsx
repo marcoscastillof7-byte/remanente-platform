@@ -215,7 +215,7 @@ const Navbar = () => {
           </button>
           <Link to="/admin" className="block px-3 py-2 rounded-md text-base text-[var(--color-gold)] hover:bg-[var(--color-primary-light)]">Panel</Link>
           {isSuperAdmin && (
-            <Link to="/superadmin" className="block px-3 py-2 rounded-md text-base font-bold text-red-400 bg-white/5 hover:bg-white/10">Súper Panel MegaAdmin</Link>
+            <Link to="/superadmin" className="block px-3 py-2 rounded-md text-base font-bold text-red-400 bg-white/5 hover:bg-white/10">Súper Panel Admin</Link>
           )}
         </div>
       )}
