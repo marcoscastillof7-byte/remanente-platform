@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { api } from '../utils/api';
 import { getRankInfo } from '../utils/ranks';
-import { Loader, Trophy, Medal, Flame, Target } from 'lucide-react';
+import { Loader, Trophy, Medal, Flame, Target, Gift } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 
 const LeaderboardPage = () => {
@@ -87,7 +87,16 @@ const LeaderboardPage = () => {
         </div>
       </div>
 
-      {/* Tabs */}
+      <div className="bg-gradient-to-r from-yellow-50 to-orange-50 border-l-4 border-gold p-4 mb-8 rounded-r-lg shadow-sm">
+          <p className="text-sm text-yellow-800 font-medium flex items-center gap-2">
+            <Gift className="w-6 h-6 text-gold flex-shrink-0" />
+            <span>
+              <strong>¡Gran Premio!</strong> La persona que quede <strong>Top 1</strong> en el marcador general antes del <strong>31 de octubre</strong> se llevará un premio especial. ¡Sigue esforzándote!
+            </span>
+          </p>
+        </div>
+
+        {/* Tabs */}
       <div className="flex flex-wrap gap-2 mb-6">
         <button
           onClick={fetchGlobal}
