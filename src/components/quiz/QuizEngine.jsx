@@ -13,21 +13,34 @@ const QuizEngine = ({ questions, chapterId, isCustom = false, configId = null })
   const [reviewedQuestions, setReviewedQuestions] = useState({});
   const questionStartRef = useRef(Date.now());
 
+  const currentQ = questions[currentIndex];
+  const isCurrentReviewed = !!reviewedQuestions[currentQ?.id];
+  const isPrevReviewed = currentIndex > 0 && !!reviewedQuestions[questions[currentIndex - 1]?.id];
+  const canGoBack = currentIndex > 0 && !isCurrentReviewed && !isPrevReviewed;
+
   const handleSelectAnswer = (letter) => {
-    if (instantMode && reviewedQuestions[questions[currentIndex].id]) return; // locked
+    const currentQId = questions[currentIndex].id;
+    // Si la pregunta ya fue revisada, la respuesta queda bloqueada permanentemente
+    if (reviewedQuestions[currentQId]) return;
     const timeSpent = Math.round((Date.now() - questionStartRef.current) / 1000);
     setAnswers(prev => ({
       ...prev,
-      [questions[currentIndex].id]: { selectedAnswer: letter, timeSpent }
+      [currentQId]: { selectedAnswer: letter, timeSpent }
     }));
   };
 
   const handleNext = () => {
     const currentQId = questions[currentIndex].id;
-    if (instantMode && answers[currentQId] && !reviewedQuestions[currentQId]) {
+    // Si está en modo instantáneo y no ha revisado la pregunta actual
+    if (instantMode && !isCurrentReviewed) {
+      if (!answers[currentQId]) {
+        alert('Por favor selecciona una respuesta antes de continuar.');
+        return;
+      }
       setReviewedQuestions(prev => ({ ...prev, [currentQId]: true }));
       return;
     }
+
     if (currentIndex < questions.length - 1) {
       setCurrentIndex(currentIndex + 1);
       questionStartRef.current = Date.now();
@@ -35,10 +48,31 @@ const QuizEngine = ({ questions, chapterId, isCustom = false, configId = null })
   };
 
   const handlePrev = () => {
-    if (currentIndex > 0) {
+    if (canGoBack) {
       setCurrentIndex(currentIndex - 1);
       questionStartRef.current = Date.now();
     }
+  };
+
+  const handleLastAction = () => {
+    const currentQId = questions[currentIndex].id;
+    // Si está en modo instantáneo y no ha revisado la última pregunta
+    if (instantMode && !isCurrentReviewed) {
+      if (!answers[currentQId]) {
+        alert('Por favor selecciona una respuesta antes de finalizar.');
+        return;
+      }
+      setReviewedQuestions(prev => ({ ...prev, [currentQId]: true }));
+      return;
+    }
+
+    if (!allAnswered) {
+      const missing = questions.findIndex(q => !answers[q.id]) + 1;
+      alert(`Te falta responder la pregunta ${missing}. Por favor, respóndela antes de finalizar.`);
+      return;
+    }
+
+    handleFinish();
   };
 
   const handleFinish = async () => {
@@ -82,16 +116,28 @@ const QuizEngine = ({ questions, chapterId, isCustom = false, configId = null })
     );
   }
 
-  const currentQ = questions[currentIndex];
   const progress = ((currentIndex + 1) / questions.length) * 100;
   const allAnswered = questions.every(q => answers[q.id]);
 
   return (
     <div className="bg-white p-6 rounded-xl shadow-md border border-parchment-dark flex-1 flex flex-col">
       <div className="mb-4 flex justify-between items-center bg-gray-50 p-3 rounded-lg border border-gray-100">
-        <span className="text-sm font-medium text-gray-700">Respuesta al instante</span>
-        <label className="relative inline-flex items-center cursor-pointer">
-          <input type="checkbox" className="sr-only peer" checked={instantMode} onChange={() => setInstantMode(!instantMode)} />
+        <div className="flex flex-col">
+          <span className="text-sm font-medium text-gray-700">Respuesta al instante</span>
+          {isCurrentReviewed && (
+            <span className="text-[11px] text-amber-600 font-medium">
+              🔒 Respuesta revisada (bloqueada para esta pregunta)
+            </span>
+          )}
+        </div>
+        <label className={`relative inline-flex items-center ${isCurrentReviewed ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}>
+          <input
+            type="checkbox"
+            className="sr-only peer"
+            checked={instantMode}
+            disabled={isCurrentReviewed}
+            onChange={() => !isCurrentReviewed && setInstantMode(!instantMode)}
+          />
           <div className="w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[var(--color-primary)]"></div>
         </label>
       </div>
@@ -111,7 +157,7 @@ const QuizEngine = ({ questions, chapterId, isCustom = false, configId = null })
           question={currentQ}
           selectedAnswer={answers[currentQ.id]?.selectedAnswer}
           onSelect={handleSelectAnswer}
-          reviewMode={instantMode && !!reviewedQuestions[currentQ.id]}
+          reviewMode={isCurrentReviewed}
           correctAnswer={currentQ.correct_answer}
         />
       </div>
@@ -119,38 +165,32 @@ const QuizEngine = ({ questions, chapterId, isCustom = false, configId = null })
       <div className="mt-auto pt-4 border-t border-gray-100 flex justify-between">
         <button
           onClick={handlePrev}
-          disabled={currentIndex === 0}
-          className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md disabled:opacity-50 hover:bg-gray-200 transition-colors"
+          disabled={!canGoBack}
+          className={`px-4 py-2 rounded-md font-medium transition-colors ${
+            !canGoBack
+              ? 'bg-gray-100 text-gray-400 cursor-not-allowed opacity-50'
+              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+          }`}
+          title={!canGoBack ? 'No puedes regresar tras haber revisado la respuesta' : ''}
         >
           Anterior
         </button>
+
         {currentIndex === questions.length - 1 ? (
           <button
-            onClick={() => {
-              const currentQId = questions[currentIndex].id;
-              if (instantMode && answers[currentQId] && !reviewedQuestions[currentQId]) {
-                 setReviewedQuestions(prev => ({ ...prev, [currentQId]: true }));
-                 return;
-              }
-              if (!allAnswered) {
-                const missing = questions.findIndex(q => !answers[q.id]) + 1;
-                alert(`Te falta responder la pregunta ${missing}. Por favor, regresa y respóndela antes de finalizar.`);
-                return;
-              }
-              handleFinish();
-            }}
+            onClick={handleLastAction}
             disabled={submitting}
-            className={`px-6 py-2 text-white rounded-md font-bold transition-colors flex items-center gap-2 ${!allAnswered ? 'bg-gray-400 cursor-not-allowed' : 'bg-primary hover:bg-primary-light'}`}
+            className="px-6 py-2 text-white rounded-md font-bold transition-colors flex items-center gap-2 bg-primary hover:bg-primary-light"
           >
             {submitting && <Loader className="w-4 h-4 animate-spin" />}
-            {instantMode && answers[questions[currentIndex].id] && !reviewedQuestions[questions[currentIndex].id] ? 'Revisar' : 'Finalizar Quiz'}
-            </button>
+            {instantMode && !isCurrentReviewed ? 'Revisar' : 'Finalizar Quiz'}
+          </button>
         ) : (
           <button
             onClick={handleNext}
-            className="px-4 py-2 bg-[var(--color-primary)] text-white rounded-md hover:bg-[var(--color-primary-light)] transition-colors"
+            className="px-6 py-2 bg-[var(--color-primary)] text-white rounded-md hover:bg-[var(--color-primary-light)] font-bold transition-colors"
           >
-            {instantMode && answers[currentQ.id] && !reviewedQuestions[currentQ.id] ? 'Revisar' : 'Siguiente'}
+            {instantMode && !isCurrentReviewed ? 'Revisar' : 'Siguiente'}
           </button>
         )}
       </div>
