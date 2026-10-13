@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { 
   X, 
-  Sparkles, 
   Upload, 
   FileText, 
   BookOpen, 
@@ -29,13 +28,13 @@ const CreateMeetModal = ({ isOpen, onClose, onCreated }) => {
   const [pdfUrl, setPdfUrl] = useState('');
   const [pdfFileName, setPdfFileName] = useState('');
   
-  // Preguntas
+  // Preguntas e Importador Masivo (Método de Quizzes Oficial)
   const [questions, setQuestions] = useState([]);
-  const [aiPrompt, setAiPrompt] = useState('');
-  const [questionCount, setQuestionCount] = useState(10);
-  const [difficulty, setDifficulty] = useState('medio');
-  const [generatingAI, setGeneratingAI] = useState(false);
-  const [aiSuccessMessage, setAiSuccessMessage] = useState('');
+  const [bulkText, setBulkText] = useState('');
+  const [importMode, setImportMode] = useState('append'); // 'append' | 'replace'
+  const [bulkSuccessMessage, setBulkSuccessMessage] = useState('');
+  const [bulkErrorMessage, setBulkErrorMessage] = useState('');
+  const [loadingBank, setLoadingBank] = useState(false);
 
   // Envío
   const [submitting, setSubmitting] = useState(false);
@@ -105,42 +104,177 @@ const CreateMeetModal = ({ isOpen, onClose, onCreated }) => {
     reader.readAsDataURL(file);
   };
 
-  // Generar preguntas con IA
-  const handleGenerateAI = async () => {
-    if (selectedChapterIds.length === 0) {
-      alert('Selecciona al menos un capítulo para generar preguntas acordes al estudio.');
+  // Parseador de preguntas idéntico al método de quizzes de la plataforma principal
+  const parseQuestionsFromText = (rawText) => {
+    if (!rawText.trim()) return [];
+
+    const blocks = rawText
+      .split(/(?:^|\n)(?=PREGUNTA\s*[:\-\d]|(?:\d+[\.\)]\s+))/i)
+      .map(b => b.trim())
+      .filter(b => b.length > 0);
+
+    const parsed = [];
+
+    for (let block of blocks) {
+      const lines = block.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+      if (lines.length === 0) continue;
+
+      let question_text = '';
+      let option_a = '';
+      let option_b = '';
+      let option_c = '';
+      let option_d = '';
+      let correct_answer = 'a';
+      let explanation = '';
+      let verse_reference = '';
+
+      for (let line of lines) {
+        // Coincidir con título de pregunta
+        const matchQ = line.match(/^(?:PREGUNTA\s*[:\-\d]*\s*|\d+[\.\)]\s*)(.+)$/i);
+        if (matchQ && !question_text) {
+          question_text = matchQ[1].trim();
+          continue;
+        }
+
+        // Coincidir con opciones
+        const matchA = line.match(/^[A]\s*[.)\-:]\s*(.+)$/i);
+        const matchB = line.match(/^[B]\s*[.)\-:]\s*(.+)$/i);
+        const matchC = line.match(/^[C]\s*[.)\-:]\s*(.+)$/i);
+        const matchD = line.match(/^[D]\s*[.)\-:]\s*(.+)$/i);
+
+        // Coincidir con metadatos
+        const matchResp = line.match(/^RESPUESTA(?:\s*CORRECTA)?\s*[:\-]?\s*([A-D])/i);
+        const matchExp = line.match(/^EXPLICACI[OÓ]N\s*[:\-]?\s*(.+)$/i);
+        const matchVer = line.match(/^VERS[IÍ]CULO\s*[:\-]?\s*(.+)$/i);
+
+        if (matchA) option_a = matchA[1].trim();
+        else if (matchB) option_b = matchB[1].trim();
+        else if (matchC) option_c = matchC[1].trim();
+        else if (matchD) option_d = matchD[1].trim();
+        else if (matchResp) correct_answer = matchResp[1].trim().toLowerCase();
+        else if (matchExp) explanation = matchExp[1].trim();
+        else if (matchVer) verse_reference = matchVer[1].trim();
+        else if (!question_text) {
+          question_text = line;
+        }
+      }
+
+      if (question_text && (option_a || option_b)) {
+        parsed.push({
+          id: `q_bulk_${Date.now()}_${Math.random().toString(36).substring(7)}`,
+          question_text,
+          option_a: option_a || 'Opción A',
+          option_b: option_b || 'Opción B',
+          option_c: option_c || 'Opción C',
+          option_d: option_d || 'Opción D',
+          correct_answer: correct_answer || 'a',
+          explanation: explanation || '',
+          verse_reference: verse_reference || '',
+          time_limit_seconds: 25
+        });
+      }
+    }
+
+    return parsed;
+  };
+
+  // Procesar e importar texto
+  const handleProcessBulkImport = () => {
+    setBulkSuccessMessage('');
+    setBulkErrorMessage('');
+
+    if (!bulkText.trim()) {
+      setBulkErrorMessage('Por favor pega el texto de las preguntas o sube un archivo .txt');
       return;
     }
 
-    setGeneratingAI(true);
-    setAiSuccessMessage('');
-    setError(null);
+    const parsed = parseQuestionsFromText(bulkText);
+    if (parsed.length === 0) {
+      setBulkErrorMessage('No se reconocieron preguntas con formato válido. Asegúrate de incluir PREGUNTA:, A., B., C., D., y RESPUESTA:.');
+      return;
+    }
+
+    if (importMode === 'replace') {
+      setQuestions(parsed);
+    } else {
+      setQuestions(prev => [...prev, ...parsed]);
+    }
+
+    setBulkSuccessMessage(`¡${parsed.length} preguntas procesadas e importadas correctamente!`);
+    setBulkText('');
+  };
+
+  // Subir archivo .txt
+  const handleQuestionsTxtUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const content = event.target.result;
+      setBulkText(content);
+    };
+    reader.readAsText(file);
+  };
+
+  // Cargar desde el banco bíblico oficial de los capítulos seleccionados
+  const handleLoadFromBank = async () => {
+    if (selectedChapterIds.length === 0) {
+      alert('Selecciona al menos un capítulo en la sección 2.');
+      return;
+    }
+
+    setLoadingBank(true);
+    setBulkSuccessMessage('');
+    setBulkErrorMessage('');
 
     try {
       const res = await api.post('/meetings/generate-questions', {
         bookId: selectedBookId,
         chapterIds: selectedChapterIds,
-        customPrompt: aiPrompt,
-        questionCount: parseInt(questionCount, 10),
-        difficulty
+        questionCount: 15,
+        difficulty: 'medio'
       });
 
-      if (res && res.questions && res.questions.length > 0) {
-        setQuestions(res.questions);
-        setAiSuccessMessage(
-          res.usedAI 
-            ? `¡${res.questions.length} preguntas generadas con Inteligencia Artificial (RV1960)!` 
-            : `¡${res.questions.length} preguntas bíblicas verificadas cargadas desde el banco de estudio!`
-        );
+      if (res && res.questions && Array.isArray(res.questions) && res.questions.length > 0) {
+        if (importMode === 'replace') {
+          setQuestions(res.questions);
+        } else {
+          setQuestions(prev => [...prev, ...res.questions]);
+        }
+        setBulkSuccessMessage(`¡${res.questions.length} preguntas bíblicas cargadas desde el banco de estudio!`);
       } else {
-        alert('No se pudieron generar preguntas. Intenta de nuevo.');
+        alert('No se encontraron preguntas en el banco para los capítulos seleccionados.');
       }
     } catch (err) {
       console.error(err);
-      alert('Error generando preguntas. Intenta de nuevo.');
+      alert('Error cargando preguntas del banco.');
     } finally {
-      setGeneratingAI(false);
+      setLoadingBank(false);
     }
+  };
+
+  // Plantilla de ejemplo idéntica al formato de la plataforma
+  const insertTemplateExample = () => {
+    const template = `PREGUNTA: ¿Quién fue el primer rey ungido de Israel?
+A. David
+B. Saúl
+C. Salomón
+D. Samuel
+RESPUESTA: B
+EXPLICACION: Saúl, hijo de Cis de la tribu de Benjamín, fue ungido por Samuel.
+VERSICULO: 1 Samuel 10:1
+
+PREGUNTA: ¿Con qué derrotó David a Goliat en el valle de Ela?
+A. Una espada de bronce
+B. Una lanza y escudo
+C. Una honda y una piedra
+D. Un arco y flechas
+RESPUESTA: C
+EXPLICACION: David confió en el Dios de Israel y con su honda hirió a Goliat en la frente.
+VERSICULO: 1 Samuel 17:49`;
+
+    setBulkText(template);
   };
 
   // Añadir pregunta manual
@@ -404,11 +538,14 @@ const CreateMeetModal = ({ isOpen, onClose, onCreated }) => {
             )}
           </div>
 
-          {/* 4. Preguntas para el Meet (IA y Prompt) */}
+          {/* 4. Importador Masivo y Gestión de Preguntas */}
           <div className="space-y-4">
             <div className="flex justify-between items-center border-b pb-1">
-              <h3 className="text-base font-bold text-primary font-[Cinzel]">
-                4. Preguntas del Meet ({questions.length} configuradas)
+              <h3 className="text-base font-bold text-primary font-[Cinzel] flex items-center gap-2">
+                <span>4. Preguntas para el Meet</span>
+                <span className="text-xs bg-gold/20 text-gold-dark px-2 py-0.5 rounded-full font-bold">
+                  {questions.length} configuradas
+                </span>
               </h3>
               <button
                 type="button"
@@ -419,79 +556,117 @@ const CreateMeetModal = ({ isOpen, onClose, onCreated }) => {
               </button>
             </div>
 
-            {/* Generador de IA */}
-            <div className="bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-4 space-y-3 shadow-sm">
-              <div className="flex items-center gap-2 text-amber-900 font-bold text-sm">
-                <Sparkles className="w-4 h-4 text-gold" />
-                <span>Generador de Preguntas con IA (Prompt Inteligente)</span>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-amber-800 mb-1">
-                  Instrucción / Prompt especial para las preguntas (Opcional):
-                </label>
-                <textarea
-                  value={aiPrompt}
-                  onChange={(e) => setAiPrompt(e.target.value)}
-                  rows={2}
-                  placeholder="Ej: 'Enfócate en la lealtad entre Jonatán y David y el cántico del arco en 2 Samuel 1'..."
-                  className="w-full px-3 py-2 border border-amber-300 rounded-lg text-xs bg-white focus:ring-2 focus:ring-gold focus:border-transparent"
-                />
-              </div>
-
-              <div className="flex flex-wrap items-center gap-3">
-                <div>
-                  <span className="text-[11px] font-bold text-amber-800 block mb-0.5">Cantidad:</span>
-                  <select
-                    value={questionCount}
-                    onChange={(e) => setQuestionCount(e.target.value)}
-                    className="text-xs px-2.5 py-1.5 border border-amber-300 rounded-md bg-white font-medium"
-                  >
-                    <option value={5}>5 Preguntas</option>
-                    <option value={10}>10 Preguntas</option>
-                    <option value={15}>15 Preguntas</option>
-                  </select>
+            {/* Panel de Importación Masiva (Método Estándar de la Plataforma) */}
+            <div className="bg-gradient-to-br from-blue-50/70 to-indigo-50/50 border border-blue-200 rounded-xl p-4 space-y-3 shadow-xs">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2 text-primary font-bold text-sm">
+                  <FileText className="w-4 h-4 text-blue-600" />
+                  <span>Importador Masivo de Preguntas</span>
                 </div>
 
-                <div>
-                  <span className="text-[11px] font-bold text-amber-800 block mb-0.5">Dificultad:</span>
-                  <select
-                    value={difficulty}
-                    onChange={(e) => setDifficulty(e.target.value)}
-                    className="text-xs px-2.5 py-1.5 border border-amber-300 rounded-md bg-white font-medium"
-                  >
-                    <option value="fácil">Fácil</option>
-                    <option value="medio">Medio</option>
-                    <option value="difícil">Difícil</option>
-                  </select>
-                </div>
+                {/* Acciones rápidas: Subir TXT, Plantilla, Cargar del Banco */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <label className="cursor-pointer inline-flex items-center gap-1 text-[11px] font-semibold bg-white border border-gray-300 hover:border-gold px-2.5 py-1 rounded shadow-2xs text-gray-700 hover:text-gold-dark transition-all">
+                    <Upload className="w-3 h-3 text-gold" />
+                    <span>Subir archivo .txt</span>
+                    <input 
+                      type="file" 
+                      accept=".txt,text/plain" 
+                      onChange={handleQuestionsTxtUpload} 
+                      className="hidden" 
+                    />
+                  </label>
 
-                <div className="flex-1 flex justify-end items-end pt-3 sm:pt-0">
                   <button
                     type="button"
-                    disabled={generatingAI}
-                    onClick={handleGenerateAI}
-                    className="inline-flex items-center gap-1.5 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 text-white px-4 py-2 rounded-lg text-xs font-bold shadow-md transition-all disabled:opacity-50"
+                    onClick={insertTemplateExample}
+                    className="inline-flex items-center gap-1 text-[11px] font-semibold bg-white border border-gray-300 hover:border-blue-400 px-2.5 py-1 rounded shadow-2xs text-gray-700 hover:text-blue-700 transition-all"
                   >
-                    {generatingAI ? (
+                    <span>Plantilla Ejemplo 📝</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={loadingBank || selectedChapterIds.length === 0}
+                    onClick={handleLoadFromBank}
+                    className="inline-flex items-center gap-1 text-[11px] font-semibold bg-amber-100/80 hover:bg-amber-200 border border-amber-300 px-2.5 py-1 rounded shadow-2xs text-amber-900 transition-all disabled:opacity-50"
+                    title="Carga preguntas oficiales de los capítulos seleccionados"
+                  >
+                    {loadingBank ? (
                       <>
-                        <Loader className="w-3.5 h-3.5 animate-spin" />
-                        <span>Generando con IA...</span>
+                        <Loader className="w-3 h-3 animate-spin text-amber-800" />
+                        <span>Cargando...</span>
                       </>
                     ) : (
                       <>
-                        <Sparkles className="w-3.5 h-3.5" />
-                        <span>✨ Generar Preguntas Ahora</span>
+                        <BookOpen className="w-3 h-3 text-amber-800" />
+                        <span>Cargar del Banco 🏛️</span>
                       </>
                     )}
                   </button>
                 </div>
               </div>
 
-              {aiSuccessMessage && (
+              {/* Textarea para pegar las preguntas */}
+              <div>
+                <textarea
+                  value={bulkText}
+                  onChange={(e) => setBulkText(e.target.value)}
+                  rows={4}
+                  placeholder={`Pega tus preguntas con el formato estándar de la plataforma:\n\nPREGUNTA: ¿Texto de la pregunta?\nA. Opción A\nB. Opción B\nC. Opción C\nD. Opción D\nRESPUESTA: B\nEXPLICACION: Explicación bíblica (opcional)\nVERSICULO: 1 Samuel 16:7 (opcional)`}
+                  className="w-full px-3 py-2 border border-blue-200 rounded-lg text-xs font-mono bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+
+              {/* Opciones y Botón de Procesar */}
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-1 border-t border-blue-100">
+                <div className="flex items-center gap-4 text-xs">
+                  <label className="flex items-center gap-1.5 cursor-pointer text-gray-700">
+                    <input
+                      type="radio"
+                      name="importMode"
+                      value="append"
+                      checked={importMode === 'append'}
+                      onChange={() => setImportMode('append')}
+                      className="text-blue-600 focus:ring-blue-500"
+                    />
+                    <span>Añadir a las existentes</span>
+                  </label>
+                  <label className="flex items-center gap-1.5 cursor-pointer text-red-600 font-medium">
+                    <input
+                      type="radio"
+                      name="importMode"
+                      value="replace"
+                      checked={importMode === 'replace'}
+                      onChange={() => setImportMode('replace')}
+                      className="text-red-600 focus:ring-red-500"
+                    />
+                    <span>Reemplazar preguntas</span>
+                  </label>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleProcessBulkImport}
+                  className="inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-1.5 rounded-lg text-xs font-bold shadow-xs transition-colors cursor-pointer"
+                >
+                  <CheckCircle className="w-3.5 h-3.5" />
+                  <span>Procesar e Importar Preguntas</span>
+                </button>
+              </div>
+
+              {/* Mensajes de éxito / error */}
+              {bulkSuccessMessage && (
                 <div className="text-xs text-green-700 bg-green-50 border border-green-200 p-2.5 rounded-lg flex items-center gap-2">
                   <CheckCircle className="w-4 h-4 text-green-600 shrink-0" />
-                  <span>{aiSuccessMessage}</span>
+                  <span>{bulkSuccessMessage}</span>
+                </div>
+              )}
+
+              {bulkErrorMessage && (
+                <div className="text-xs text-red-700 bg-red-50 border border-red-200 p-2.5 rounded-lg flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+                  <span>{bulkErrorMessage}</span>
                 </div>
               )}
             </div>
