@@ -375,37 +375,37 @@ const MeetRoomPage = () => {
   const handsRaisedList = Array.isArray(participants) ? participants.filter(p => p.handRaised) : [];
 
   return (
-    <div className="flex flex-col h-[calc(100dvh-6.5rem)] md:h-[calc(100dvh-7.5rem)] min-h-[540px] max-w-7xl mx-auto bg-slate-900 rounded-2xl shadow-2xl border border-gold/40 overflow-hidden relative">
+    <div className="flex flex-col h-[calc(100dvh-4.75rem)] sm:h-[calc(100dvh-5.5rem)] md:h-[calc(100dvh-6.75rem)] min-h-[440px] sm:min-h-[500px] max-w-7xl mx-auto bg-slate-900 rounded-xl sm:rounded-2xl shadow-2xl border border-gold/40 overflow-hidden relative">
       
       {/* 1. BARRA SUPERIOR DE CONTROL & ESTADO */}
-      <div className="bg-primary-dark/95 border-b border-gold/30 px-3 sm:px-4 py-2.5 sm:py-3 flex flex-wrap items-center justify-between gap-2.5 text-white shrink-0 z-20">
-        <div className="flex items-center gap-2.5 sm:gap-3">
+      <div className="bg-primary-dark/95 border-b border-gold/30 px-2.5 sm:px-4 py-2 sm:py-2.5 flex items-center justify-between gap-2 text-white shrink-0 z-20">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           <Link
             to="/meet"
-            className="text-gray-400 hover:text-white p-1.5 rounded-lg hover:bg-white/10 transition-colors"
+            className="text-gray-400 hover:text-white p-1 sm:p-1.5 rounded-lg hover:bg-white/10 transition-colors shrink-0"
             title="Salir de la sala"
           >
-            <ArrowLeft className="w-5 h-5" />
+            <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
           </Link>
 
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="flex h-2.5 w-2.5 relative">
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <span className="flex h-2 w-2 sm:h-2.5 sm:w-2.5 relative shrink-0">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 sm:h-2.5 sm:w-2.5 bg-red-500"></span>
               </span>
-              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-gold">
-                Remanente Meet {phase === 'reading' ? '• Lectura' : phase === 'quiz' ? '• Quiz en Vivo' : '• Podio'}
+              <span className="text-[9px] sm:text-[11px] font-bold uppercase tracking-wider text-gold truncate">
+                Meet {phase === 'reading' ? '• Lectura' : phase === 'quiz' ? '• Quiz' : '• Podio'}
               </span>
             </div>
-            <h1 className="text-xs sm:text-base font-bold font-[Cinzel] text-white truncate max-w-[140px] xs:max-w-xs sm:max-w-md">
+            <h1 className="text-xs sm:text-base font-bold font-[Cinzel] text-white truncate max-w-[120px] xs:max-w-[180px] sm:max-w-xs md:max-w-md">
               {meet.title}
             </h1>
           </div>
         </div>
 
         {/* Centro: Lector Asignado o Puntuación */}
-        <div className="hidden sm:flex items-center gap-3 text-xs">
+        <div className="hidden md:flex items-center gap-3 text-xs">
           {currentReader && (
             <div className="bg-gold/20 border border-gold/40 px-3 py-1 rounded-full text-gold-light font-medium flex items-center gap-1.5 animate-pulse">
               <BookOpen className="w-3.5 h-3.5" />
@@ -422,37 +422,38 @@ const MeetRoomPage = () => {
         </div>
 
         {/* Derecha: Participantes y Controles */}
-        <div className="flex items-center gap-1.5 sm:gap-3">
+        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
           <button
             onClick={() => setShowHandsModal(true)}
-            className={`relative p-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
+            className={`relative p-1.5 sm:p-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
               handsRaisedList.length > 0 
                 ? 'bg-amber-500 text-white animate-bounce' 
                 : 'bg-white/10 text-gray-300 hover:bg-white/20'
             }`}
             title="Manos levantadas"
           >
-            <Hand className="w-4 h-4" />
+            <Hand className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             {handsRaisedList.length > 0 && (
-              <span className="bg-red-600 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold">
+              <span className="bg-red-600 text-white text-[10px] px-1 py-0.2 rounded-full font-bold">
                 {handsRaisedList.length}
               </span>
             )}
           </button>
 
-          <div className="bg-white/10 text-gray-200 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5">
+          <div className="bg-white/10 text-gray-200 px-2 sm:px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1">
             <Users className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gold" />
-            <span className="text-[11px] sm:text-xs">{participants.length} <span className="hidden xs:inline">en vivo</span></span>
+            <span className="text-[11px] sm:text-xs">{participants.length} <span className="hidden sm:inline">en vivo</span></span>
           </div>
 
           {/* Botón Maestro del Líder para pasar a Quiz */}
           {isHost && phase === 'reading' && (
             <button
               onClick={handleStartQuiz}
-              className="inline-flex items-center gap-1.5 bg-gradient-to-r from-gold to-gold-dark hover:from-gold-dark hover:to-gold text-white px-2.5 sm:px-3.5 py-1.5 rounded-lg text-xs font-black shadow-lg transition-all animate-pulse"
+              className="inline-flex items-center gap-1 sm:gap-1.5 bg-gradient-to-r from-gold to-gold-dark hover:from-gold-dark hover:to-gold text-white px-2 sm:px-3.5 py-1.5 rounded-lg text-xs font-black shadow-lg transition-all animate-pulse"
             >
               <Swords className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-              <span>Preguntas ⚔️</span>
+              <span className="hidden xs:inline">Preguntas</span>
+              <span>⚔️</span>
             </button>
           )}
 
@@ -460,11 +461,11 @@ const MeetRoomPage = () => {
           {isHost && phase !== 'finished' && (
             <button
               onClick={handleEndMeeting}
-              className="inline-flex items-center gap-1.5 bg-red-600/90 hover:bg-red-600 text-white px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-md cursor-pointer hover:scale-105"
+              className="inline-flex items-center gap-1 sm:gap-1.5 bg-red-600/90 hover:bg-red-600 text-white px-2 sm:px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-md cursor-pointer hover:scale-105"
               title="Finalizar y cerrar la sesión en vivo para todos los participantes"
             >
               <XCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
-              <span className="hidden xs:inline">Cerrar Meet</span>
+              <span className="hidden sm:inline">Cerrar</span>
             </button>
           )}
         </div>
@@ -522,7 +523,7 @@ const MeetRoomPage = () => {
                       title="Abrir PDF en pantalla completa nativa o descargarlo"
                     >
                       <ExternalLink className="w-3.5 h-3.5" />
-                      <span className="hidden xs:inline">Pantalla Completa</span>
+                      <span className="hidden sm:inline">Pantalla Completa</span>
                     </a>
                   </div>
                 </>
@@ -550,74 +551,74 @@ const MeetRoomPage = () => {
             </div>
 
             {/* BARRA INFERIOR DE ACCIONES Y REACCIONES */}
-            <div className="bg-primary-dark/95 border-t border-gold/20 p-3 px-4 flex flex-wrap items-center justify-between gap-3 text-white shrink-0 z-20">
+            <div className="bg-primary-dark/95 border-t border-gold/20 p-2 sm:p-2.5 px-2.5 sm:px-4 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 text-white shrink-0 z-20">
               
               {/* Lado Izquierdo: Paginación & Puntero (Líder) o Sincronización (Miembro) */}
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 sm:gap-2">
                 {isHost ? (
                   <>
                     <button
                       onClick={() => handlePageChange(currentPage - 1)}
                       disabled={currentPage <= 1}
-                      className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 disabled:opacity-30 transition-colors"
+                      className="p-1 sm:p-1.5 rounded-lg bg-white/10 hover:bg-white/20 disabled:opacity-30 transition-colors"
                       title="Página anterior"
                     >
-                      <ChevronLeft className="w-5 h-5" />
+                      <ChevronLeft className="w-4 h-4 sm:w-5 sm:h-5" />
                     </button>
-                    <span className="text-xs font-bold text-gray-200">
-                      Página {currentPage}
+                    <span className="text-[11px] sm:text-xs font-bold text-gray-200 whitespace-nowrap">
+                      Pág. {currentPage}
                     </span>
                     <button
                       onClick={() => handlePageChange(currentPage + 1)}
-                      className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 transition-colors"
+                      className="p-1 sm:p-1.5 rounded-lg bg-white/10 hover:bg-white/20 transition-colors"
                       title="Página siguiente"
                     >
-                      <ChevronRight className="w-5 h-5" />
+                      <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5" />
                     </button>
 
                     <button
                       onClick={() => setLaserModeActive(!laserModeActive)}
-                      className={`ml-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                      className={`ml-1 sm:ml-2 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-[11px] sm:text-xs font-bold transition-all flex items-center gap-1 sm:gap-1.5 whitespace-nowrap ${
                         laserModeActive 
                           ? 'bg-red-600 text-white shadow-md shadow-red-600/40 ring-2 ring-red-400' 
                           : 'bg-white/10 text-gray-300 hover:bg-white/20'
                       }`}
                     >
-                      <span className="w-2 h-2 rounded-full bg-red-400 animate-pulse" />
-                      <span>{laserModeActive ? 'Láser Activo' : 'Activar Láser'}</span>
+                      <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-red-400 animate-pulse" />
+                      <span>{laserModeActive ? 'Láser ON' : 'Láser'}</span>
                     </button>
                   </>
                 ) : (
-                  <div className="text-xs text-gray-300 flex items-center gap-2">
-                    <span className="font-bold text-gold">Página {currentPage}</span>
-                    <span className="text-[11px] text-gray-400">• Guiado por el líder</span>
+                  <div className="text-[11px] sm:text-xs text-gray-300 flex items-center gap-1.5 sm:gap-2">
+                    <span className="font-bold text-gold">Pág. {currentPage}</span>
+                    <span className="text-[10px] sm:text-[11px] text-gray-400 hidden xs:inline">• Guiado por líder</span>
                   </div>
                 )}
               </div>
 
               {/* Centro / Derecha: Pedir la palabra & Reacciones */}
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 sm:gap-2">
                 {!isHost && (
                   <button
                     onClick={() => socket?.emit('meet:toggle-hand', { meetId: id })}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                    className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-[11px] sm:text-xs font-bold transition-all flex items-center gap-1 sm:gap-1.5 whitespace-nowrap ${
                       isHandRaised 
                         ? 'bg-amber-500 text-white shadow-md animate-pulse' 
                         : 'bg-white/10 text-gray-300 hover:bg-white/20'
                     }`}
                   >
-                    <Hand className="w-4 h-4" />
-                    <span>{isHandRaised ? 'Mano Levantada ✋' : 'Pedir la Palabra ✋'}</span>
+                    <Hand className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                    <span>{isHandRaised ? 'Mano ✋' : 'Hablar ✋'}</span>
                   </button>
                 )}
 
                 {/* Botones de Reacción Rápida */}
-                <div className="flex items-center gap-1 bg-white/10 p-1 rounded-xl">
+                <div className="flex items-center gap-0.5 sm:gap-1 bg-white/10 p-0.5 sm:p-1 rounded-xl">
                   {REACTION_EMOJIS.map(r => (
                     <button
                       key={r.id}
                       onClick={() => sendReaction(r.id)}
-                      className="p-1.5 hover:bg-white/20 rounded-lg text-base sm:text-lg transition-transform hover:scale-125 active:scale-95"
+                      className="p-1 sm:p-1.5 hover:bg-white/20 rounded-lg text-sm sm:text-lg transition-transform hover:scale-125 active:scale-95"
                       title={r.label}
                     >
                       {r.icon}

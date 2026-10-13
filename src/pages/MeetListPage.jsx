@@ -107,33 +107,33 @@ const MeetListPage = () => {
     <div className="max-w-6xl mx-auto space-y-8 pb-12">
       
       {/* Encabezado */}
-      <div className="bg-gradient-to-r from-primary-dark via-primary to-primary-dark text-white p-6 md:p-8 rounded-2xl shadow-xl border border-gold/40 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 relative overflow-hidden">
+      <div className="bg-gradient-to-r from-primary-dark via-primary to-primary-dark text-white p-4 sm:p-6 md:p-8 rounded-xl sm:rounded-2xl shadow-xl border border-gold/40 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-64 h-64 bg-gold/10 rounded-full blur-3xl pointer-events-none" />
         
         <div>
-          <div className="inline-flex items-center gap-1.5 bg-gold/20 text-gold-light border border-gold/30 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider mb-2">
-            <Radio className="w-4 h-4 text-gold animate-pulse" />
+          <div className="inline-flex items-center gap-1.5 bg-gold/20 text-gold-light border border-gold/30 px-2.5 sm:px-3 py-1 rounded-full text-[11px] sm:text-xs font-bold uppercase tracking-wider mb-2">
+            <Radio className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gold animate-pulse" />
             <span>Estudio en Vivo & Quiz Interactivo</span>
           </div>
-          <h1 className="font-[Cinzel] text-3xl md:text-4xl font-bold text-white tracking-wide">
+          <h1 className="font-[Cinzel] text-2xl sm:text-3xl md:text-4xl font-bold text-white tracking-wide">
             📖 Remanente Meet
           </h1>
         </div>
 
         {isLeaderOrAdmin && (
-          <div className="flex flex-wrap items-center gap-2.5">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-2.5 w-full sm:w-auto">
             <button
               onClick={() => setIsCreateOpen(true)}
-              className="inline-flex items-center gap-2 bg-gradient-to-r from-gold to-gold-dark hover:from-gold-dark hover:to-gold text-white px-5 py-3 rounded-xl font-bold text-sm shadow-lg hover:shadow-gold/20 transition-all transform hover:-translate-y-0.5 shrink-0 cursor-pointer"
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-gradient-to-r from-gold to-gold-dark hover:from-gold-dark hover:to-gold text-white px-4 sm:px-5 py-2.5 sm:py-3 rounded-xl font-bold text-xs sm:text-sm shadow-lg hover:shadow-gold/20 transition-all transform hover:-translate-y-0.5 shrink-0 cursor-pointer"
             >
-              <Plus className="w-5 h-5" />
+              <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
               <span>Crear Nuevo Meet</span>
             </button>
 
             {(liveMeets.length > 0 || scheduledMeets.length > 0) && (
               <button
                 onClick={handleCloseAllMeets}
-                className="inline-flex items-center gap-1.5 bg-red-600/80 hover:bg-red-600 text-white px-4 py-3 rounded-xl font-bold text-xs shadow-md transition-all shrink-0 cursor-pointer hover:scale-105"
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 bg-red-600/80 hover:bg-red-600 text-white px-3.5 sm:px-4 py-2.5 sm:py-3 rounded-xl font-bold text-xs shadow-md transition-all shrink-0 cursor-pointer hover:scale-105"
                 title="Cerrar todas las reuniones activas y pasarlas al historial"
               >
                 <XCircle className="w-4 h-4" />
@@ -166,31 +166,31 @@ const MeetListPage = () => {
                 {liveMeets.map(meet => (
                   <div 
                     key={meet.id}
-                    className="bg-white rounded-2xl shadow-xl border-2 border-red-500/80 p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 relative overflow-hidden group hover:shadow-2xl transition-all"
+                    className="bg-white rounded-xl sm:rounded-2xl shadow-xl border-2 border-red-500/80 p-4 sm:p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 sm:gap-6 relative overflow-hidden group hover:shadow-2xl transition-all"
                   >
-                    <div className="space-y-2 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="inline-flex items-center gap-1 bg-red-600 text-white px-3 py-1 rounded-full text-xs font-black tracking-wider uppercase shadow-xs animate-pulse">
-                          🔴 Transmitiendo en Vivo
+                    <div className="space-y-2 flex-1 w-full">
+                      <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                        <span className="inline-flex items-center gap-1 bg-red-600 text-white px-2.5 sm:px-3 py-0.5 sm:py-1 rounded-full text-[11px] sm:text-xs font-black tracking-wider uppercase shadow-xs animate-pulse">
+                          🔴 En Vivo
                         </span>
                         {meet.bookName && (
-                          <span className="inline-flex items-center gap-1 bg-blue-50 text-primary border border-blue-200 px-3 py-1 rounded-full text-xs font-semibold">
+                          <span className="inline-flex items-center gap-1 bg-blue-50 text-primary border border-blue-200 px-2.5 sm:px-3 py-0.5 sm:py-1 rounded-full text-[11px] sm:text-xs font-semibold">
                             <BookOpen className="w-3.5 h-3.5" />
                             {meet.bookName}
                           </span>
                         )}
                         {meet.questionsCount > 0 && (
-                          <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-800 border border-amber-200 px-3 py-1 rounded-full text-xs font-semibold">
+                          <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-800 border border-amber-200 px-2.5 sm:px-3 py-0.5 sm:py-1 rounded-full text-[11px] sm:text-xs font-semibold">
                             <Award className="w-3.5 h-3.5 text-gold" />
-                            {meet.questionsCount} Preguntas en Vivo
+                            {meet.questionsCount} Preguntas
                           </span>
                         )}
                       </div>
 
-                      <h3 className="text-2xl font-bold font-[Cinzel] text-primary-dark group-hover:text-gold-dark transition-colors">
+                      <h3 className="text-xl sm:text-2xl font-bold font-[Cinzel] text-primary-dark group-hover:text-gold-dark transition-colors">
                         {meet.title}
                       </h3>
-                      <p className="text-sm text-gray-600 line-clamp-2">
+                      <p className="text-xs sm:text-sm text-gray-600 line-clamp-2">
                         {meet.descriptionText || 'Estudio interactivo de la Palabra en vivo.'}
                       </p>
 
@@ -199,19 +199,19 @@ const MeetListPage = () => {
                       </div>
                     </div>
 
-                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full md:w-auto shrink-0">
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-2.5 w-full md:w-auto shrink-0">
                       <button
                         onClick={() => navigate(`/meet/${meet.id}`)}
-                        className="inline-flex items-center justify-center gap-2 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white px-7 py-3.5 rounded-xl font-black text-sm md:text-base shadow-lg shadow-red-600/30 hover:scale-105 transition-all shrink-0 cursor-pointer"
+                        className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white px-5 sm:px-7 py-3 sm:py-3.5 rounded-xl font-black text-xs sm:text-sm md:text-base shadow-lg shadow-red-600/30 hover:scale-102 sm:hover:scale-105 transition-all shrink-0 cursor-pointer text-center"
                       >
-                        <Play className="w-5 h-5 fill-current" />
+                        <Play className="w-4 h-4 sm:w-5 sm:h-5 fill-current" />
                         <span>Conectar y Entrar al Room 📖</span>
                       </button>
 
                       {isLeaderOrAdmin && (
                         <button
                           onClick={() => handleEndMeet(meet.id)}
-                          className="inline-flex items-center justify-center gap-1.5 bg-red-100 hover:bg-red-200 text-red-800 border border-red-300 px-4 py-3.5 rounded-xl font-bold text-xs md:text-sm transition-all cursor-pointer"
+                          className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 bg-red-100 hover:bg-red-200 text-red-800 border border-red-300 px-4 py-2.5 sm:py-3.5 rounded-xl font-bold text-xs sm:text-sm transition-all cursor-pointer text-center"
                           title="Finalizar y cerrar esta sesión en vivo para todos los miembros"
                         >
                           <XCircle className="w-4 h-4 text-red-600" />

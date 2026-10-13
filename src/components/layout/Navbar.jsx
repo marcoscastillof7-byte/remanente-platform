@@ -134,8 +134,10 @@ const Navbar = () => {
             <button onClick={() => setMenuOpen(!menuOpen)} className="p-2 mr-2 md:hidden">
               <Menu className="w-6 h-6 text-[var(--color-gold)]" />
             </button>
-            <Link to="/" className="flex items-center">
-              <span className="font-[Cinzel] text-xl md:text-2xl text-[var(--color-gold)] font-bold">📖 {user?.groups?.name || 'Olimpiadas GVY'}</span>
+            <Link to="/" className="flex items-center min-w-0">
+              <span className="font-[Cinzel] text-lg sm:text-xl md:text-2xl text-[var(--color-gold)] font-bold truncate max-w-[150px] xs:max-w-[220px] sm:max-w-xs md:max-w-none">
+                📖 {user?.groups?.name || 'Olimpiadas GVY'}
+              </span>
             </Link>
           </div>
           

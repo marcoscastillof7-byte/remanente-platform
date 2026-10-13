@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect } from 'react';
-import { Routes, Route } from 'react-router';
+import { Routes, Route, useLocation } from 'react-router';
 import { AuthProvider } from './contexts/AuthContext';
 import { ToastProvider } from './components/shared/Toast';
 import { ProtectedRoute, AdminRoute, SuperAdminRoute } from './components/layout/ProtectedRoute';
@@ -32,20 +32,25 @@ const SuperDashboard = lazy(() => import('./pages/superadmin/SuperDashboard'));
 const MeetListPage = lazy(() => import('./pages/MeetListPage'));
 const MeetRoomPage = lazy(() => import('./pages/MeetRoomPage'));
 
-const Layout = ({ children }) => (
-  <div className="flex flex-col min-h-screen bg-[var(--color-parchment)]">
-    <Navbar />
-    <div className="flex flex-1 overflow-hidden">
-      <main className="flex-1 overflow-y-auto p-4 md:p-8">
-        <ErrorBoundary>
-          <Suspense fallback={<div className="flex items-center justify-center h-64"><LoadingSpinner /></div>}>
-            {children}
-          </Suspense>
-        </ErrorBoundary>
-      </main>
+const Layout = ({ children }) => {
+  const location = useLocation();
+  const isMeetRoom = location.pathname.startsWith('/meet/') && location.pathname !== '/meet';
+
+  return (
+    <div className="flex flex-col min-h-screen bg-[var(--color-parchment)]">
+      <Navbar />
+      <div className="flex flex-1 overflow-hidden">
+        <main className={`flex-1 overflow-y-auto ${isMeetRoom ? 'p-1.5 sm:p-3 md:p-6' : 'p-3 sm:p-4 md:p-8'}`}>
+          <ErrorBoundary>
+            <Suspense fallback={<div className="flex items-center justify-center h-64"><LoadingSpinner /></div>}>
+              {children}
+            </Suspense>
+          </ErrorBoundary>
+        </main>
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 const App = () => {
   useEffect(() => {
