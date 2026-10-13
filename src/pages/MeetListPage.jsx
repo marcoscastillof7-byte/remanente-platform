@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
+import { io } from 'socket.io-client';
 import { 
   Users, 
   Plus, 
@@ -33,20 +34,44 @@ const MeetListPage = () => {
   const isLeaderOrAdmin = user && ['admin', 'superadmin', 'lider', 'leader'].includes(user.role?.toLowerCase());
 
   useEffect(() => {
-    fetchMeets();
-    const interval = setInterval(fetchMeets, 15000);
-    return () => clearInterval(interval);
+    fetchMeets(true);
+
+    const socketUrl = window.location.port === '5173' ? 'http://localhost:3001' : window.location.origin;
+    const socket = io(socketUrl, {
+      transports: ['websocket', 'polling']
+    });
+
+    const handleRealtimeUpdate = () => {
+      fetchMeets(false);
+    };
+
+    socket.on('meet:updated', handleRealtimeUpdate);
+    socket.on('meet:started', handleRealtimeUpdate);
+    socket.on('meet:session-ended', handleRealtimeUpdate);
+    socket.on('meet:phase-changed', handleRealtimeUpdate);
+
+    const interval = setInterval(() => fetchMeets(false), 15000);
+
+    return () => {
+      clearInterval(interval);
+      socket.off('meet:updated', handleRealtimeUpdate);
+      socket.off('meet:started', handleRealtimeUpdate);
+      socket.off('meet:session-ended', handleRealtimeUpdate);
+      socket.off('meet:phase-changed', handleRealtimeUpdate);
+      socket.disconnect();
+    };
   }, []);
 
-  const fetchMeets = async () => {
+  const fetchMeets = async (showLoading = false) => {
     try {
+      if (showLoading) setLoading(true);
       const data = await api.get('/meetings', false);
       setMeets(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error('Error cargando meets:', err);
       setMeets([]);
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   };
 
@@ -79,7 +104,7 @@ const MeetListPage = () => {
     if (!confirm('¿Deseas finalizar y cerrar esta reunión en vivo para todos los miembros?')) return;
     try {
       await api.put(`/meetings/${meetId}/status`, { status: 'ended' });
-      fetchMeets();
+      await fetchMeets(false);
     } catch (err) {
       console.error(err);
       alert('Error cerrando el Meet.');
@@ -90,7 +115,7 @@ const MeetListPage = () => {
     if (!confirm('¿Estás seguro de cerrar TODAS las reuniones activas y programadas? Pasarán al historial de finalizadas.')) return;
     try {
       await api.post('/meetings/close-all', {});
-      fetchMeets();
+      await fetchMeets(false);
       alert('Todas las reuniones han sido finalizadas con éxito.');
     } catch (err) {
       console.error(err);

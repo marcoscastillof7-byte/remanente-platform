@@ -4,6 +4,29 @@ import { getDb } from '../db/database.js';
 const activeRooms = new Map();
 
 /**
+ * Limpia y marca como finalizada una sala activa en memoria
+ */
+export function endActiveRoom(meetId) {
+    const room = activeRooms.get(String(meetId));
+    if (room) {
+        room.status = 'ended';
+        room.phase = 'finished';
+        activeRooms.delete(String(meetId));
+    }
+}
+
+/**
+ * Limpia y finaliza todas las salas activas en memoria
+ */
+export function endAllActiveRooms() {
+    for (const [id, room] of activeRooms.entries()) {
+        room.status = 'ended';
+        room.phase = 'finished';
+    }
+    activeRooms.clear();
+}
+
+/**
  * Obtiene o inicializa el estado de una sala Meet
  */
 async function getOrCreateRoom(meetId) {
@@ -70,6 +93,15 @@ export function setupMeetSocket(io) {
             const room = await getOrCreateRoom(currentMeetId);
             if (!room) {
                 socket.emit('meet:error', { message: 'Sala no encontrada' });
+                return;
+            }
+
+            if (room.status === 'ended') {
+                socket.emit('meet:session-ended', { 
+                    meetId: currentMeetId,
+                    message: 'Esta reunión ya ha sido finalizada.',
+                    closed: true 
+                });
                 return;
             }
 
@@ -336,6 +368,7 @@ export function setupMeetSocket(io) {
                         }
                         await supabase.from('meetings').update({ status: 'ended' }).eq('id', meetId);
                         io.emit('leaderboard-update');
+                        io.emit('meet:updated');
                     } catch (dbErr) {
                         console.error('[MeetSocket] Error guardando puntos finales:', dbErr);
                     }
@@ -346,22 +379,31 @@ export function setupMeetSocket(io) {
         // 9.1. FINALIZAR / CERRAR REUNIÓN EN VIVO MANUALMENTE (Líder / Admin)
         socket.on('meet:end-session', async ({ meetId }) => {
             const room = activeRooms.get(String(meetId));
-            if (!room) return;
             const isAuthorized = currentUser && (
-                String(currentUser.id) === String(room.hostId) ||
+                (room && String(currentUser.id) === String(room.hostId)) ||
                 ['admin', 'superadmin', 'lider', 'leader'].includes((currentUser.role || '').toLowerCase())
             );
 
             if (isAuthorized) {
-                room.status = 'ended';
-                room.phase = 'finished';
-
-                const finalPodium = Array.from(room.participants.values())
-                    .sort((a, b) => b.score - a.score);
+                let finalPodium = [];
+                if (room) {
+                    room.status = 'ended';
+                    room.phase = 'finished';
+                    finalPodium = Array.from(room.participants.values())
+                        .sort((a, b) => b.score - a.score);
+                }
 
                 io.to(`meet:${meetId}`).emit('meet:phase-changed', { phase: 'finished' });
                 io.to(`meet:${meetId}`).emit('meet:session-ended', { 
+                    meetId: String(meetId),
                     message: 'La reunión ha sido finalizada por el líder.',
+                    closed: true,
+                    podium: finalPodium 
+                });
+                io.emit('meet:session-ended', { 
+                    meetId: String(meetId),
+                    message: 'La reunión ha sido finalizada por el líder.',
+                    closed: true,
                     podium: finalPodium 
                 });
                 io.to(`meet:${meetId}`).emit('meet:final-podium', { podium: finalPodium });

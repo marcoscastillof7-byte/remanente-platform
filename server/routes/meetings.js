@@ -2,6 +2,7 @@ import express from 'express';
 import { getDb } from '../db/database.js';
 import { auth } from '../middleware/auth.js';
 import { sendPushToAll } from '../utils/pushNotifier.js';
+import { endActiveRoom, endAllActiveRooms } from '../socket/meetSocket.js';
 
 const router = express.Router();
 router.use(auth);
@@ -486,10 +487,16 @@ router.post('/close-all', async (req, res) => {
 
         if (error) throw error;
 
+        endAllActiveRooms();
+
         if (req.app.get('io')) {
             const io = req.app.get('io');
             io.emit('meet:phase-changed', { phase: 'finished' });
-            io.emit('meet:session-ended', { message: 'Todas las reuniones han sido finalizadas.' });
+            io.emit('meet:session-ended', { 
+                meetId: 'all', 
+                message: 'Todas las reuniones han sido finalizadas por el administrador.',
+                closed: true
+            });
             io.emit('meet:updated');
         }
 
@@ -525,8 +532,18 @@ router.put('/:id/status', async (req, res) => {
         if (req.app.get('io')) {
             const io = req.app.get('io');
             if (status === 'ended') {
+                endActiveRoom(req.params.id);
                 io.to(`meet:${req.params.id}`).emit('meet:phase-changed', { phase: 'finished' });
-                io.to(`meet:${req.params.id}`).emit('meet:session-ended', { message: 'La reunión ha sido finalizada por el líder.' });
+                io.to(`meet:${req.params.id}`).emit('meet:session-ended', { 
+                    meetId: String(req.params.id), 
+                    message: 'La reunión ha sido finalizada por el líder.',
+                    closed: true
+                });
+                io.emit('meet:session-ended', { 
+                    meetId: String(req.params.id), 
+                    message: 'La reunión ha sido finalizada por el líder.',
+                    closed: true 
+                });
             }
             io.emit('meet:updated');
         }
