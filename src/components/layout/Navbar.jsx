@@ -141,9 +141,6 @@ const Navbar = () => {
           
           <div className="hidden md:flex items-center space-x-6">
             <Link to="/" className="hover:text-[var(--color-gold)] transition-colors">Inicio</Link>
-            <Link to="/meet" className="hover:text-[var(--color-gold)] transition-colors flex items-center relative">
-              <Users className="w-4 h-4 mr-1"/> Meet
-            </Link>
             <Link to="/duels" className="hover:text-[var(--color-gold)] transition-colors flex items-center relative">
               <Swords className="w-4 h-4 mr-1"/> Duelos
               {hasPendingDuel && (
