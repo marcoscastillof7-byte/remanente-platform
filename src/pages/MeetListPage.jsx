@@ -118,9 +118,6 @@ const MeetListPage = () => {
           <h1 className="font-[Cinzel] text-3xl md:text-4xl font-bold text-white tracking-wide">
             📖 Remanente Meet
           </h1>
-          <p className="text-gray-200 text-sm md:text-base mt-1 max-w-xl">
-            Conéctate con tu congregación en vivo: lee el documento PDF guiado por tu líder y pon a prueba tu conocimiento con preguntas interactivas en tiempo real.
-          </p>
         </div>
 
         {isLeaderOrAdmin && (
@@ -130,7 +127,7 @@ const MeetListPage = () => {
               className="inline-flex items-center gap-2 bg-gradient-to-r from-gold to-gold-dark hover:from-gold-dark hover:to-gold text-white px-5 py-3 rounded-xl font-bold text-sm shadow-lg hover:shadow-gold/20 transition-all transform hover:-translate-y-0.5 shrink-0 cursor-pointer"
             >
               <Plus className="w-5 h-5" />
-              <span>+ Crear Nuevo Meet</span>
+              <span>Crear Nuevo Meet</span>
             </button>
 
             {(liveMeets.length > 0 || scheduledMeets.length > 0) && (
