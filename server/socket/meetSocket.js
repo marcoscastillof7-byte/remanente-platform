@@ -71,11 +71,90 @@ async function getOrCreateRoom(meetId) {
         participants: new Map(), // userId -> { id, username, score, handRaised, isHost, avatar }
         answers: new Map(), // questionIndex -> Map(userId -> { selectedAnswer, isCorrect, points, timeTakenMs })
         handsRaised: new Set(),
-        currentReader: null
+        currentReader: null,
+        revealedResults: null
     };
 
     activeRooms.set(meetId, roomState);
     return roomState;
+}
+
+function revealQuestionResults(room, questionIndex, io) {
+    if (!room) return;
+    if (room.revealTimer) {
+        clearTimeout(room.revealTimer);
+        room.revealTimer = null;
+    }
+    const q = room.questions[questionIndex];
+    if (!q) return;
+
+    const qAnswers = room.answers.get(questionIndex) || new Map();
+    const breakdown = { a: 0, b: 0, c: 0, d: 0 };
+    qAnswers.forEach((ans) => {
+        const opt = String(ans.selectedAnswer || '').trim().toLowerCase();
+        if (breakdown[opt] !== undefined) {
+            breakdown[opt]++;
+        }
+    });
+
+    // Clasificar detalladamente a todos los participantes: Correctos, Incorrectos y Sin responder
+    const correctParticipants = [];
+    const incorrectParticipants = [];
+    const unrespondedParticipants = [];
+
+    room.participants.forEach((p) => {
+        const ans = qAnswers.get(p.id);
+        if (ans) {
+            if (ans.isCorrect) {
+                correctParticipants.push({
+                    id: p.id,
+                    username: p.username,
+                    selectedAnswer: ans.selectedAnswer,
+                    pointsGained: ans.points,
+                    timeTakenMs: ans.timeTakenMs,
+                    totalScore: p.score || 0
+                });
+            } else {
+                incorrectParticipants.push({
+                    id: p.id,
+                    username: p.username,
+                    selectedAnswer: ans.selectedAnswer,
+                    pointsGained: 0,
+                    timeTakenMs: ans.timeTakenMs,
+                    totalScore: p.score || 0
+                });
+            }
+        } else {
+            unrespondedParticipants.push({
+                id: p.id,
+                username: p.username,
+                selectedAnswer: null,
+                pointsGained: 0,
+                totalScore: p.score || 0
+            });
+        }
+    });
+
+    // Ordenar tabla de posicionamiento completa (todos los participantes)
+    const leaderboard = Array.from(room.participants.values())
+        .sort((a, b) => (b.score || 0) - (a.score || 0));
+
+    const resultsPayload = {
+        questionIndex,
+        correctAnswer: q.correct_answer,
+        explanation: q.explanation || 'Respuesta bíblica fundamentada.',
+        verseReference: q.verse_reference || '',
+        breakdown,
+        correctParticipants,
+        incorrectParticipants,
+        unrespondedParticipants,
+        leaderboard,
+        hasNextQuestion: (questionIndex + 1) < room.questions.length,
+        totalQuestions: room.questions.length
+    };
+
+    room.revealedResults = resultsPayload;
+    io.to(`meet:${room.meetId}`).emit('meet:question-results', resultsPayload);
 }
 
 export function setupMeetSocket(io) {
@@ -136,6 +215,63 @@ export function setupMeetSocket(io) {
                 verse_reference: isHost ? q.verse_reference : null
             }));
 
+            const sortedLeaderboard = Array.from(room.participants.values())
+                .sort((a, b) => (b.score || 0) - (a.score || 0));
+
+            let currentAnswerStatus = null;
+            let currentRemainingTime = 25;
+            let myHasAnswered = false;
+            let mySelectedAnswer = null;
+
+            if (room.phase === 'quiz' && room.currentQuestionIndex >= 0) {
+                const questionAnswers = room.answers.get(room.currentQuestionIndex) || new Map();
+                const answeredParticipants = [];
+                const pendingParticipants = [];
+
+                room.participants.forEach((p) => {
+                    const ans = questionAnswers.get(p.id);
+                    if (ans) {
+                        answeredParticipants.push({
+                            id: p.id,
+                            username: p.username,
+                            score: p.score || 0,
+                            isCorrect: ans.isCorrect,
+                            selectedAnswer: ans.selectedAnswer,
+                            points: ans.points,
+                            timeTakenMs: ans.timeTakenMs
+                        });
+                    } else {
+                        pendingParticipants.push({
+                            id: p.id,
+                            username: p.username,
+                            score: p.score || 0
+                        });
+                    }
+                });
+
+                currentAnswerStatus = {
+                    questionIndex: room.currentQuestionIndex,
+                    answeredCount: questionAnswers.size,
+                    totalParticipants: room.participants.size,
+                    answeredParticipants,
+                    pendingParticipants,
+                    allAnswered: pendingParticipants.length === 0 && room.participants.size > 0,
+                    leaderboard: sortedLeaderboard
+                };
+
+                const myAns = questionAnswers.get(user.id);
+                if (myAns) {
+                    myHasAnswered = true;
+                    mySelectedAnswer = myAns.selectedAnswer;
+                }
+
+                if (room.questionStartTime && room.questions[room.currentQuestionIndex]) {
+                    const limitSec = room.questions[room.currentQuestionIndex].time_limit_seconds || 25;
+                    const elapsed = Math.floor((Date.now() - room.questionStartTime) / 1000);
+                    currentRemainingTime = Math.max(0, limitSec - elapsed);
+                }
+            }
+
             socket.emit('meet:initial-state', {
                 meetId: room.meetId,
                 title: room.title,
@@ -150,7 +286,13 @@ export function setupMeetSocket(io) {
                 currentReader: room.currentReader,
                 questionsCount: room.questions.length,
                 participants: Array.from(room.participants.values()),
-                questions: sanitizedQuestions
+                questions: sanitizedQuestions,
+                revealedResults: room.revealedResults,
+                leaderboard: sortedLeaderboard,
+                answerStatus: currentAnswerStatus,
+                timeLeft: currentRemainingTime,
+                hasAnswered: myHasAnswered,
+                selectedAnswer: mySelectedAnswer
             });
 
             // Avisar a los demás
@@ -214,30 +356,67 @@ export function setupMeetSocket(io) {
         socket.on('meet:start-quiz', ({ meetId }) => {
             const room = activeRooms.get(String(meetId));
             if (!room) return;
-            if (currentUser && (String(currentUser.id) === String(room.hostId) || currentUser.role === 'admin' || currentUser.role === 'superadmin')) {
-                room.phase = 'quiz';
-                room.currentQuestionIndex = 0;
-                room.questionStartTime = Date.now();
-                room.answers.set(0, new Map());
+            const isAuthorized = currentUser && (
+                String(currentUser.id) === String(room.hostId) ||
+                ['admin', 'superadmin', 'lider', 'leader'].includes((currentUser.role || '').toLowerCase())
+            );
+            if (!isAuthorized) return;
 
-                const q = room.questions[0];
-                if (!q) return;
-
-                io.to(`meet:${meetId}`).emit('meet:phase-changed', { phase: 'quiz' });
-                io.to(`meet:${meetId}`).emit('meet:question-started', {
-                    questionIndex: 0,
-                    totalQuestions: room.questions.length,
-                    question: {
-                        id: q.id || 'q_0',
-                        question_text: q.question_text,
-                        option_a: q.option_a,
-                        option_b: q.option_b,
-                        option_c: q.option_c,
-                        option_d: q.option_d,
-                        time_limit_seconds: q.time_limit_seconds || 25
-                    }
+            if (!room.questions || room.questions.length === 0) {
+                socket.emit('meet:error', { 
+                    message: 'Esta sala no tiene preguntas cargadas. Puedes añadir preguntas bíblicas al editar o crear el Meet.' 
                 });
+                return;
             }
+
+            room.phase = 'quiz';
+            room.currentQuestionIndex = 0;
+            room.questionStartTime = Date.now();
+            room.revealedResults = null;
+            room.answers.set(0, new Map());
+
+            const q = room.questions[0];
+            const leaderboard = Array.from(room.participants.values())
+                .sort((a, b) => (b.score || 0) - (a.score || 0));
+
+            io.to(`meet:${meetId}`).emit('meet:phase-changed', { phase: 'quiz' });
+            io.to(`meet:${meetId}`).emit('meet:question-started', {
+                questionIndex: 0,
+                totalQuestions: room.questions.length,
+                question: {
+                    id: q.id || 'q_0',
+                    question_text: q.question_text,
+                    option_a: q.option_a,
+                    option_b: q.option_b,
+                    option_c: q.option_c,
+                    option_d: q.option_d,
+                    time_limit_seconds: q.time_limit_seconds || 25
+                },
+                leaderboard
+            });
+
+            // Estado de respuestas inicial: 0 respondieron, todos pendientes
+            io.to(`meet:${meetId}`).emit('meet:answer-status-updated', {
+                questionIndex: 0,
+                answeredCount: 0,
+                totalParticipants: room.participants.size,
+                answeredParticipants: [],
+                pendingParticipants: Array.from(room.participants.values()).map(p => ({
+                    id: p.id,
+                    username: p.username,
+                    score: p.score || 0
+                })),
+                allAnswered: false,
+                leaderboard
+            });
+
+            if (room.revealTimer) clearTimeout(room.revealTimer);
+            const timeLimitSec = (q.time_limit_seconds || 25) + 3;
+            room.revealTimer = setTimeout(() => {
+                if (room.phase === 'quiz' && room.currentQuestionIndex === 0 && !room.revealedResults) {
+                    revealQuestionResults(room, 0, io);
+                }
+            }, timeLimitSec * 1000);
         });
 
         // 7. ENVIAR RESPUESTA A PREGUNTA EN VIVO
@@ -252,26 +431,29 @@ export function setupMeetSocket(io) {
                 room.answers.set(questionIndex, questionAnswers);
             }
 
-            // Si ya respondió esta pregunta, ignorar
+            // Si ya respondió esta pregunta, ignorar duplicado
             if (questionAnswers.has(currentUser.id)) return;
 
             const q = room.questions[questionIndex];
-            const isCorrect = q && q.correct_answer === selectedAnswer;
+            const isCorrect = q && String(q.correct_answer || '').trim().toLowerCase() === String(selectedAnswer || '').trim().toLowerCase();
 
             // Puntuación estilo Kahoot: Base 50 + velocidad hasta 50 puntos adicionales
             let points = 0;
             if (isCorrect) {
                 const limitMs = (q.time_limit_seconds || 25) * 1000;
-                const timeLeftRatio = Math.max(0, Math.min(1, 1 - (timeTakenMs / limitMs)));
+                const safeTimeMs = Math.max(0, Math.min(limitMs, Number(timeTakenMs) || 1000));
+                const timeLeftRatio = Math.max(0, Math.min(1, 1 - (safeTimeMs / limitMs)));
                 const speedBonus = Math.round(timeLeftRatio * 50);
                 points = 50 + speedBonus;
             }
 
             questionAnswers.set(currentUser.id, {
+                userId: currentUser.id,
+                username: currentUser.username,
                 selectedAnswer,
                 isCorrect,
                 points,
-                timeTakenMs
+                timeTakenMs: Number(timeTakenMs) || 0
             });
 
             // Actualizar score acumulado del participante
@@ -280,98 +462,154 @@ export function setupMeetSocket(io) {
                 participant.score = (participant.score || 0) + points;
             }
 
-            socket.emit('meet:answer-received', { isCorrect, points });
+            // Confirmación privada para el participante que respondió
+            socket.emit('meet:answer-received', { isCorrect, points, selectedAnswer });
 
-            // Notificar a todos cuántos han respondido
+            // Calcular listas de quiénes ya respondieron y quiénes faltan en tiempo real
+            const answeredParticipants = [];
+            const pendingParticipants = [];
+
+            room.participants.forEach((p) => {
+                const ans = questionAnswers.get(p.id);
+                if (ans) {
+                    answeredParticipants.push({
+                        id: p.id,
+                        username: p.username,
+                        score: p.score || 0,
+                        isCorrect: ans.isCorrect,
+                        selectedAnswer: ans.selectedAnswer,
+                        points: ans.points,
+                        timeTakenMs: ans.timeTakenMs
+                    });
+                } else {
+                    pendingParticipants.push({
+                        id: p.id,
+                        username: p.username,
+                        score: p.score || 0
+                    });
+                }
+            });
+
+            const currentLeaderboard = Array.from(room.participants.values())
+                .sort((a, b) => (b.score || 0) - (a.score || 0));
+
+            // Notificar a toda la sala el estado detallado en vivo
+            io.to(`meet:${meetId}`).emit('meet:answer-status-updated', {
+                questionIndex,
+                answeredCount: questionAnswers.size,
+                totalParticipants: room.participants.size,
+                answeredParticipants,
+                pendingParticipants,
+                allAnswered: pendingParticipants.length === 0 && room.participants.size > 0,
+                leaderboard: currentLeaderboard
+            });
+
             io.to(`meet:${meetId}`).emit('meet:answer-count-updated', {
                 answeredCount: questionAnswers.size,
                 totalParticipants: room.participants.size
             });
         });
 
-        // 8. REVELAR RESULTADOS DE LA PREGUNTA (Fin de tiempo o Líder avanza)
+        // 8. REVELAR RESULTADOS DE LA PREGUNTA (Líder / Admin hace clic en "Mostrar Resultados")
         socket.on('meet:reveal-question-results', ({ meetId, questionIndex }) => {
             const room = activeRooms.get(String(meetId));
             if (!room) return;
-            if (currentUser && (String(currentUser.id) === String(room.hostId) || currentUser.role === 'admin' || currentUser.role === 'superadmin')) {
-                const q = room.questions[questionIndex];
-                if (!q) return;
+            const isAuthorized = currentUser && (
+                String(currentUser.id) === String(room.hostId) ||
+                ['admin', 'superadmin', 'lider', 'leader'].includes((currentUser.role || '').toLowerCase())
+            );
+            if (!isAuthorized) return;
 
-                const qAnswers = room.answers.get(questionIndex) || new Map();
-                const breakdown = { a: 0, b: 0, c: 0, d: 0 };
-                qAnswers.forEach((ans) => {
-                    if (ans.selectedAnswer && breakdown[ans.selectedAnswer] !== undefined) {
-                        breakdown[ans.selectedAnswer]++;
-                    }
-                });
-
-                // Top 5 del Meet
-                const leaderboard = Array.from(room.participants.values())
-                    .sort((a, b) => b.score - a.score)
-                    .slice(0, 5);
-
-                io.to(`meet:${meetId}`).emit('meet:question-results', {
-                    questionIndex,
-                    correctAnswer: q.correct_answer,
-                    explanation: q.explanation,
-                    verseReference: q.verse_reference,
-                    breakdown,
-                    leaderboard
-                });
-            }
+            revealQuestionResults(room, questionIndex, io);
         });
 
         // 9. SIGUIENTE PREGUNTA O FINALIZAR
         socket.on('meet:next-question', async ({ meetId }) => {
             const room = activeRooms.get(String(meetId));
             if (!room) return;
-            if (currentUser && (String(currentUser.id) === String(room.hostId) || currentUser.role === 'admin' || currentUser.role === 'superadmin')) {
-                const nextIndex = room.currentQuestionIndex + 1;
+            const isAuthorized = currentUser && (
+                String(currentUser.id) === String(room.hostId) ||
+                ['admin', 'superadmin', 'lider', 'leader'].includes((currentUser.role || '').toLowerCase())
+            );
+            if (!isAuthorized) return;
 
-                if (nextIndex < room.questions.length) {
-                    room.currentQuestionIndex = nextIndex;
-                    room.questionStartTime = Date.now();
-                    room.answers.set(nextIndex, new Map());
+            const nextIndex = room.currentQuestionIndex + 1;
 
-                    const q = room.questions[nextIndex];
-                    io.to(`meet:${meetId}`).emit('meet:question-started', {
-                        questionIndex: nextIndex,
-                        totalQuestions: room.questions.length,
-                        question: {
-                            id: q.id || `q_${nextIndex}`,
-                            question_text: q.question_text,
-                            option_a: q.option_a,
-                            option_b: q.option_b,
-                            option_c: q.option_c,
-                            option_d: q.option_d,
-                            time_limit_seconds: q.time_limit_seconds || 25
-                        }
-                    });
-                } else {
-                    // QUIZ TERMINADO -> PODIO FINAL
-                    room.phase = 'finished';
-                    const finalPodium = Array.from(room.participants.values())
-                        .sort((a, b) => b.score - a.score);
+            if (nextIndex < room.questions.length) {
+                room.currentQuestionIndex = nextIndex;
+                room.questionStartTime = Date.now();
+                room.revealedResults = null;
+                room.answers.set(nextIndex, new Map());
 
-                    io.to(`meet:${meetId}`).emit('meet:phase-changed', { phase: 'finished' });
-                    io.to(`meet:${meetId}`).emit('meet:final-podium', { podium: finalPodium });
+                const q = room.questions[nextIndex];
+                const leaderboard = Array.from(room.participants.values())
+                    .sort((a, b) => (b.score || 0) - (a.score || 0));
 
-                    // Acreditar Puntos de Sabiduría a los participantes en la base de datos
-                    try {
-                        const supabase = getDb();
-                        for (let p of finalPodium) {
-                            if (p.score > 0) {
-                                const { data: u } = await supabase.from('users').select('points').eq('id', p.id).single();
-                                const currentPts = (u && u.points) ? u.points : 0;
-                                await supabase.from('users').update({ points: currentPts + p.score }).eq('id', p.id);
-                            }
-                        }
-                        await supabase.from('meetings').update({ status: 'ended' }).eq('id', meetId);
-                        io.emit('leaderboard-update');
-                        io.emit('meet:updated');
-                    } catch (dbErr) {
-                        console.error('[MeetSocket] Error guardando puntos finales:', dbErr);
+                io.to(`meet:${meetId}`).emit('meet:question-started', {
+                    questionIndex: nextIndex,
+                    totalQuestions: room.questions.length,
+                    question: {
+                        id: q.id || `q_${nextIndex}`,
+                        question_text: q.question_text,
+                        option_a: q.option_a,
+                        option_b: q.option_b,
+                        option_c: q.option_c,
+                        option_d: q.option_d,
+                        time_limit_seconds: q.time_limit_seconds || 25
+                    },
+                    leaderboard
+                });
+
+                io.to(`meet:${meetId}`).emit('meet:answer-status-updated', {
+                    questionIndex: nextIndex,
+                    answeredCount: 0,
+                    totalParticipants: room.participants.size,
+                    answeredParticipants: [],
+                    pendingParticipants: Array.from(room.participants.values()).map(p => ({
+                        id: p.id,
+                        username: p.username,
+                        score: p.score || 0
+                    })),
+                    allAnswered: false,
+                    leaderboard
+                });
+
+                if (room.revealTimer) clearTimeout(room.revealTimer);
+                const timeLimitSec = (q.time_limit_seconds || 25) + 3;
+                room.revealTimer = setTimeout(() => {
+                    if (room.phase === 'quiz' && room.currentQuestionIndex === nextIndex && !room.revealedResults) {
+                        revealQuestionResults(room, nextIndex, io);
                     }
+                }, timeLimitSec * 1000);
+            } else {
+                if (room.revealTimer) {
+                    clearTimeout(room.revealTimer);
+                    room.revealTimer = null;
+                }
+                // QUIZ TERMINADO -> PODIO FINAL
+                room.phase = 'finished';
+                room.revealedResults = null;
+                const finalPodium = Array.from(room.participants.values())
+                    .sort((a, b) => (b.score || 0) - (a.score || 0));
+
+                io.to(`meet:${meetId}`).emit('meet:phase-changed', { phase: 'finished' });
+                io.to(`meet:${meetId}`).emit('meet:final-podium', { podium: finalPodium });
+
+                // Acreditar Puntos de Sabiduría a los participantes en la base de datos
+                try {
+                    const supabase = getDb();
+                    for (let p of finalPodium) {
+                        if (p.score > 0) {
+                            const { data: u } = await supabase.from('users').select('points').eq('id', p.id).single();
+                            const currentPts = (u && u.points) ? u.points : 0;
+                            await supabase.from('users').update({ points: currentPts + p.score }).eq('id', p.id);
+                        }
+                    }
+                    await supabase.from('meetings').update({ status: 'ended' }).eq('id', meetId);
+                    io.emit('leaderboard-update');
+                    io.emit('meet:updated');
+                } catch (dbErr) {
+                    console.error('[MeetSocket] Error guardando puntos finales:', dbErr);
                 }
             }
         });
@@ -427,10 +665,10 @@ export function setupMeetSocket(io) {
             }
         });
 
-        // 10. REACCIONES BÍBLICAS EN VIVO (Amén, Fuego, Gloria)
+        // 10. REACCIONES BÍBLICAS EN VIVO (Amén, Fuego, Gloria, Victoria)
         socket.on('meet:send-reaction', ({ meetId, reaction }) => {
             if (!meetId || !reaction || !currentUser) return;
-            io.to(`meet:${meetId}`).emit('meet:reaction-received', {
+            socket.to(`meet:${meetId}`).emit('meet:reaction-received', {
                 userId: currentUser.id,
                 username: currentUser.username,
                 reaction,
