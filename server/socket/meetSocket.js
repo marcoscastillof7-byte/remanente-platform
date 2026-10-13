@@ -354,17 +354,21 @@ export function setupMeetSocket(io) {
             });
         });
 
-        // 11. DESCONEXIÓN
+        // 11. DESCONEXIÓN CON PROTECCIÓN PARA RECONEXIONES MÓVILES
         socket.on('disconnect', () => {
             if (currentMeetId && currentUser) {
                 const room = activeRooms.get(currentMeetId);
                 if (room) {
-                    room.participants.delete(currentUser.id);
-                    room.handsRaised.delete(currentUser.id);
-                    io.to(`meet:${currentMeetId}`).emit('meet:participants-updated', {
-                        participants: Array.from(room.participants.values()),
-                        totalCount: room.participants.size
-                    });
+                    const p = room.participants.get(currentUser.id);
+                    // Solo eliminar si el socket desconectado coincide con el socket registrado (evita borrar una reconexión entrante)
+                    if (p && p.socketId === socket.id) {
+                        room.participants.delete(currentUser.id);
+                        room.handsRaised.delete(currentUser.id);
+                        io.to(`meet:${currentMeetId}`).emit('meet:participants-updated', {
+                            participants: Array.from(room.participants.values()),
+                            totalCount: room.participants.size
+                        });
+                    }
                 }
             }
         });

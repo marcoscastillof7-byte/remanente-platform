@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router';
 import { useAuth } from '../hooks/useAuth';
 import { api } from '../utils/api';
-import { Flame, Target, Award, ArrowRight, BookOpen, Loader } from 'lucide-react';
+import { Flame, Target, Award, ArrowRight, BookOpen, Loader, Radio, Swords, Users } from 'lucide-react';
 
 const verses = [
   '"Procura con diligencia presentarte a Dios aprobado, como obrero que no tiene de qué avergonzarse." — 2 Timoteo 2:15',
@@ -104,7 +104,35 @@ const DashboardPage = () => {
               </div>
             </div>
           </div>
-          <div className="mt-6">
+
+          {/* Botones de acción rápida dentro del cuadro azul */}
+          <div className="mt-8 pt-6 border-t border-white/20 flex flex-wrap items-center gap-3">
+            <Link
+              to="/meet"
+              className="inline-flex items-center gap-2.5 bg-gradient-to-r from-gold via-gold-light to-gold hover:from-gold-dark hover:to-gold text-slate-900 font-black px-6 py-3.5 rounded-xl text-sm md:text-base shadow-xl shadow-gold/25 hover:scale-105 transition-all transform shrink-0 group cursor-pointer"
+            >
+              <Radio className="w-5 h-5 text-red-600 animate-pulse group-hover:scale-110 transition-transform" />
+              <span>Entrar a Remanente Meet</span>
+              <span className="bg-slate-900/15 text-slate-900 text-xs px-2 py-0.5 rounded-full font-bold">
+                En Vivo 📖
+              </span>
+            </Link>
+
+            <Link
+              to="/duels"
+              className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white font-bold px-4 py-3 rounded-xl text-sm border border-white/20 transition-all hover:scale-102 shrink-0"
+            >
+              <Swords className="w-4 h-4 text-gold" />
+              <span>Duelos Bíblicos</span>
+            </Link>
+
+            <Link
+              to="/survival"
+              className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white font-bold px-4 py-3 rounded-xl text-sm border border-white/20 transition-all hover:scale-102 shrink-0"
+            >
+              <Flame className="w-4 h-4 text-orange-400" />
+              <span>Supervivencia</span>
+            </Link>
           </div>
         </div>
       </div>

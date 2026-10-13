@@ -34,6 +34,32 @@ const REACTION_EMOJIS = [
   { id: 'bendicion', label: 'Bendición ❤️', icon: '❤️' }
 ];
 
+export function getUniversalPdfViewerUrl(url, page = 1) {
+  if (!url) return '';
+  const trimmed = url.trim();
+
+  // Si es un enlace de Google Drive
+  if (trimmed.includes('drive.google.com')) {
+    const driveMatch = trimmed.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+    if (driveMatch && driveMatch[1]) {
+      return `https://drive.google.com/file/d/${driveMatch[1]}/preview`;
+    }
+  }
+
+  // Si ya es un visor incrustado o data URL
+  if (trimmed.startsWith('data:') || trimmed.includes('docs.google.com/viewer')) {
+    return trimmed;
+  }
+
+  // Si es un archivo PDF web directo
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+    // Usar Google Docs Viewer para compatibilidad perfecta en iOS Safari y Android Chrome sin forzar descarga
+    return `https://docs.google.com/viewer?url=${encodeURIComponent(trimmed)}&embedded=true`;
+  }
+
+  return `${trimmed}#page=${page}&toolbar=0&navpanes=0`;
+}
+
 const MeetRoomPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -66,7 +92,7 @@ const MeetRoomPage = () => {
   const [mySessionScore, setMySessionScore] = useState(0);
   const [finalPodium, setFinalPodium] = useState([]);
 
-  const isHost = meet && (String(user?.id) === String(meet.host_id) || ['admin', 'superadmin'].includes(user?.role?.toLowerCase()));
+  const isHost = meet && (String(user?.id) === String(meet.host_id) || ['admin', 'superadmin', 'lider', 'leader'].includes(user?.role?.toLowerCase()));
   const pdfContainerRef = useRef(null);
 
   useEffect(() => {
@@ -98,9 +124,15 @@ const MeetRoomPage = () => {
 
     setSocket(s);
 
-    s.on('connect', () => {
+    const joinRoom = () => {
       s.emit('meet:join', { meetId: id, user });
-    });
+    };
+
+    s.on('connect', joinRoom);
+    s.on('reconnect', joinRoom);
+    if (s.io) {
+      s.io.on('reconnect', joinRoom);
+    }
 
     s.on('meet:initial-state', (state) => {
       setPhase(state.phase || 'reading');
@@ -228,19 +260,38 @@ const MeetRoomPage = () => {
     }
   };
 
-  // Movimiento del Puntero Láser
-  const handleMouseMove = (e) => {
+  // Movimiento del Puntero Láser (Soporte Universal: Mouse + Pantalla Táctil / Mobile)
+  const handlePointerCoords = (clientX, clientY) => {
     if (!isHost || !laserModeActive || !pdfContainerRef.current) return;
     const rect = pdfContainerRef.current.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width) * 100;
-    const y = ((e.clientY - rect.top) / rect.height) * 100;
+    if (!rect.width || !rect.height) return;
+    const x = Math.max(0, Math.min(100, ((clientX - rect.left) / rect.width) * 100));
+    const y = Math.max(0, Math.min(100, ((clientY - rect.top) / rect.height) * 100));
 
     if (socket) {
       socket.emit('meet:laser-move', { meetId: id, x, y, active: true });
     }
   };
 
-  const handleMouseLeave = () => {
+  const handleMouseMove = (e) => {
+    handlePointerCoords(e.clientX, e.clientY);
+  };
+
+  const handleTouchMove = (e) => {
+    if (!isHost || !laserModeActive) return;
+    if (e.touches && e.touches.length > 0) {
+      handlePointerCoords(e.touches[0].clientX, e.touches[0].clientY);
+    }
+  };
+
+  const handleTouchStart = (e) => {
+    if (!isHost || !laserModeActive) return;
+    if (e.touches && e.touches.length > 0) {
+      handlePointerCoords(e.touches[0].clientX, e.touches[0].clientY);
+    }
+  };
+
+  const handlePointerLeave = () => {
     if (!isHost || !laserModeActive) return;
     if (socket) {
       socket.emit('meet:laser-move', { meetId: id, x: 0, y: 0, active: false });
@@ -300,11 +351,11 @@ const MeetRoomPage = () => {
   const handsRaisedList = participants.filter(p => p.handRaised);
 
   return (
-    <div className="flex flex-col h-[calc(100vh-5rem)] max-w-7xl mx-auto bg-slate-900 rounded-2xl shadow-2xl border border-gold/40 overflow-hidden relative">
+    <div className="flex flex-col h-[calc(100dvh-6.5rem)] md:h-[calc(100dvh-7.5rem)] min-h-[540px] max-w-7xl mx-auto bg-slate-900 rounded-2xl shadow-2xl border border-gold/40 overflow-hidden relative">
       
       {/* 1. BARRA SUPERIOR DE CONTROL & ESTADO */}
-      <div className="bg-primary-dark/95 border-b border-gold/30 px-4 py-3 flex flex-wrap items-center justify-between gap-3 text-white shrink-0 z-20">
-        <div className="flex items-center gap-3">
+      <div className="bg-primary-dark/95 border-b border-gold/30 px-3 sm:px-4 py-2.5 sm:py-3 flex flex-wrap items-center justify-between gap-2.5 text-white shrink-0 z-20">
+        <div className="flex items-center gap-2.5 sm:gap-3">
           <Link
             to="/meet"
             className="text-gray-400 hover:text-white p-1.5 rounded-lg hover:bg-white/10 transition-colors"
@@ -319,11 +370,11 @@ const MeetRoomPage = () => {
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
               </span>
-              <span className="text-[11px] font-bold uppercase tracking-wider text-gold">
+              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-gold">
                 Remanente Meet {phase === 'reading' ? '• Lectura' : phase === 'quiz' ? '• Quiz en Vivo' : '• Podio'}
               </span>
             </div>
-            <h1 className="text-sm sm:text-base font-bold font-[Cinzel] text-white truncate max-w-xs sm:max-w-md">
+            <h1 className="text-xs sm:text-base font-bold font-[Cinzel] text-white truncate max-w-[140px] xs:max-w-xs sm:max-w-md">
               {meet.title}
             </h1>
           </div>
@@ -347,7 +398,7 @@ const MeetRoomPage = () => {
         </div>
 
         {/* Derecha: Participantes y Controles */}
-        <div className="flex items-center gap-2 sm:gap-3">
+        <div className="flex items-center gap-1.5 sm:gap-3">
           <button
             onClick={() => setShowHandsModal(true)}
             className={`relative p-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
@@ -365,19 +416,19 @@ const MeetRoomPage = () => {
             )}
           </button>
 
-          <div className="bg-white/10 text-gray-200 px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5">
-            <Users className="w-4 h-4 text-gold" />
-            <span>{participants.length} en vivo</span>
+          <div className="bg-white/10 text-gray-200 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5">
+            <Users className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gold" />
+            <span className="text-[11px] sm:text-xs">{participants.length} <span className="hidden xs:inline">en vivo</span></span>
           </div>
 
           {/* Botón Maestro del Líder para pasar a Quiz */}
           {isHost && phase === 'reading' && (
             <button
               onClick={handleStartQuiz}
-              className="inline-flex items-center gap-1.5 bg-gradient-to-r from-gold to-gold-dark hover:from-gold-dark hover:to-gold text-white px-3.5 py-1.5 rounded-lg text-xs font-black shadow-lg transition-all animate-pulse"
+              className="inline-flex items-center gap-1.5 bg-gradient-to-r from-gold to-gold-dark hover:from-gold-dark hover:to-gold text-white px-2.5 sm:px-3.5 py-1.5 rounded-lg text-xs font-black shadow-lg transition-all animate-pulse"
             >
-              <Swords className="w-4 h-4" />
-              <span>Iniciar Preguntas ⚔️</span>
+              <Swords className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <span>Preguntas ⚔️</span>
             </button>
           )}
         </div>
@@ -407,23 +458,46 @@ const MeetRoomPage = () => {
             <div 
               ref={pdfContainerRef}
               onMouseMove={handleMouseMove}
-              onMouseLeave={handleMouseLeave}
-              className="flex-1 relative bg-slate-900 overflow-hidden flex items-center justify-center"
+              onMouseLeave={handlePointerLeave}
+              onTouchStart={handleTouchStart}
+              onTouchMove={handleTouchMove}
+              onTouchEnd={handlePointerLeave}
+              onTouchCancel={handlePointerLeave}
+              className={`flex-1 relative bg-slate-900 overflow-hidden flex items-center justify-center ${
+                laserModeActive ? 'touch-none select-none cursor-crosshair' : ''
+              }`}
             >
               {meet.pdfUrl ? (
-                <iframe
-                  src={`${meet.pdfUrl}#page=${currentPage}&toolbar=0&navpanes=0`}
-                  title="Documento PDF"
-                  className="w-full h-full border-0 bg-white"
-                />
+                <>
+                  <iframe
+                    src={getUniversalPdfViewerUrl(meet.pdfUrl, currentPage)}
+                    title="Documento PDF"
+                    allow="fullscreen"
+                    className="w-full h-full border-0 bg-white"
+                  />
+
+                  {/* Acceso directo a Pantalla Completa para dispositivos móviles y tablets */}
+                  <div className="absolute top-2.5 right-2.5 z-30 flex items-center gap-1.5 bg-slate-900/85 backdrop-blur-md border border-gold/30 p-1 rounded-xl shadow-lg">
+                    <a
+                      href={meet.pdfUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-[11px] font-bold text-gold hover:text-white bg-white/10 hover:bg-white/20 px-2.5 py-1 rounded-lg transition-colors"
+                      title="Abrir PDF en pantalla completa nativa o descargarlo"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      <span className="hidden xs:inline">Pantalla Completa</span>
+                    </a>
+                  </div>
+                </>
               ) : (
-                <div className="text-center p-8 space-y-4 max-w-lg text-white">
-                  <FileText className="w-16 h-16 text-gold/60 mx-auto" />
-                  <h3 className="font-[Cinzel] text-xl font-bold text-gold">
+                <div className="text-center p-6 sm:p-8 space-y-4 max-w-lg text-white">
+                  <FileText className="w-14 h-14 sm:w-16 sm:h-16 text-gold/60 mx-auto" />
+                  <h3 className="font-[Cinzel] text-lg sm:text-xl font-bold text-gold">
                     Estudio Bíblico: {meet.bookName || 'Palabra de Dios'}
                   </h3>
-                  <p className="text-sm text-gray-300">
-                    El líder no ha adjuntado un archivo PDF para esta sesión. Sigue las instrucciones del anfitrión para el estudio de los capítulos correspondientes.
+                  <p className="text-xs sm:text-sm text-gray-300">
+                    El líder guiará la lectura en vivo de los capítulos seleccionados. Sigue las instrucciones del anfitrión y prepárate para la ronda interactiva de preguntas.
                   </p>
                 </div>
               )}

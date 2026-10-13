@@ -60,3 +60,46 @@ a[href*="netlify.com"] {
   pointer-events: none !important;
   visibility: hidden !important;
 }
+
+/* Animaciones de Remanente Meet */
+@keyframes float-up {
+  0% {
+    transform: translateY(0) scale(0.8);
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+    transform: translateY(-25px) scale(1.2);
+  }
+  80% {
+    opacity: 0.9;
+    transform: translateY(-130px) scale(1.1);
+  }
+  100% {
+    transform: translateY(-200px) scale(0.6);
+    opacity: 0;
+  }
+}
+
+.animate-float-up {
+  animation: float-up 2.8s ease-out forwards;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.3s ease-out forwards;
+}
+
+@keyframes bounce-short {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+.animate-bounce-short {
+  animation: bounce-short 0.5s ease-in-out;
+}
+
