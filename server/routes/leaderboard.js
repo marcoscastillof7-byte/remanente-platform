@@ -6,10 +6,18 @@ import { getLocalDate, getDaysDiff } from '../utils/streaks.js';
 const router = express.Router();
 router.use(auth);
 
+let globalCache = null;
+let globalCacheTime = 0;
+
 router.get('/', async (req, res) => {
     try {
         const groupId = req.user.group_id;
         const internal = req.query.internal === 'true';
+
+        // Si es consulta general global y tenemos caché fresco (< 15 seg), responder de inmediato
+        if (!internal && globalCache && (Date.now() - globalCacheTime < 15000)) {
+            return res.json(globalCache);
+        }
 
         const supabase = getDb();
         let query = supabase.from('users').select('id, username, points, group_id, groups(name)');
@@ -57,6 +65,11 @@ router.get('/', async (req, res) => {
         }).filter(u => u.points > 0 || u.quizzes_completed > 0)
           .sort((a, b) => b.points - a.points)
           .slice(0, 50); // Muestra top 50 en la global
+
+        if (!internal) {
+            globalCache = leaderboard;
+            globalCacheTime = Date.now();
+        }
 
         res.json(leaderboard);
     } catch (error) {

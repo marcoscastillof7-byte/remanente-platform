@@ -22,6 +22,7 @@ import groupsRoutes from './routes/groups.js';
 import pushRoutes from './routes/push.js';
 
 const app = express();
+app.disable('x-powered-by');
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
     cors: {

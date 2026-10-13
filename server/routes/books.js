@@ -18,15 +18,28 @@ const optionalAuth = (req, res, next) => {
     next();
 };
 
+// Caché en memoria para catálogo de libros (60 segundos)
+let rawBooksCache = null;
+let rawBooksLastFetch = 0;
+
+async function getRawBooks(supabase) {
+    if (rawBooksCache && (Date.now() - rawBooksLastFetch < 60000)) {
+        return JSON.parse(JSON.stringify(rawBooksCache));
+    }
+    const { data: books, error: booksError } = await supabase
+        .from('books')
+        .select('*')
+        .order('order_index');
+    if (booksError) throw booksError;
+    rawBooksCache = books;
+    rawBooksLastFetch = Date.now();
+    return JSON.parse(JSON.stringify(books));
+}
+
 router.get('/', optionalAuth, async (req, res) => {
     try {
         const supabase = getDb();
-        const { data: books, error: booksError } = await supabase
-            .from('books')
-            .select('*')
-            .order('order_index');
-
-        if (booksError) throw booksError;
+        const books = await getRawBooks(supabase);
 
         if (req.user) {
             const userId = req.user.id;

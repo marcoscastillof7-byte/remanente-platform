@@ -11,13 +11,19 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Remanente" />
+    <!-- Preconnect y DNS-Prefetch para acelerar conexión y fuentes -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="dns-prefetch" href="https://fonts.googleapis.com" />
+    <link rel="dns-prefetch" href="https://fonts.gstatic.com" />
+    <link rel="preconnect" href="https://ltrudmbtqtgonfjctmsz.supabase.co" crossorigin />
+    <link rel="dns-prefetch" href="https://ltrudmbtqtgonfjctmsz.supabase.co" />
     <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
     <style>
-      /* Fuerza bruta CSS para cualquier contenedor conocido de Netlify */
       #netlify-badge, .netlify-badge, netlify-badge, a[href^="https://www.netlify.com"] {
         display: none !important;
         opacity: 0 !important;
@@ -27,23 +33,17 @@
       }
     </style>
     <script>
-      // Destrucción total: se ejecuta cada 100ms durante los primeros 10 segundos
+      // Eliminación reactiva sin sobrecarga de CPU (MutationObserver)
       const killBadge = () => {
-        // 1. Matar por etiqueta personalizada o IDs clásicos
-        const targets = document.querySelectorAll('#netlify-badge, .netlify-badge, netlify-badge');
-        targets.forEach(t => t.remove());
-
-        // 2. Matar por URL (busca cualquier enlace hacia netlify.com)
+        document.querySelectorAll('#netlify-badge, .netlify-badge, netlify-badge').forEach(t => t.remove());
         document.querySelectorAll('a').forEach(a => {
-          if (a.href && a.href.toLowerCase().includes('netlify.com')) {
-            a.remove();
-          }
+          if (a.href && a.href.toLowerCase().includes('netlify.com')) a.remove();
         });
       };
-
       killBadge();
-      const interval = setInterval(killBadge, 100);
-      setTimeout(() => clearInterval(interval), 15000); // Detener a los 15 segundos
+      const observer = new MutationObserver(killBadge);
+      observer.observe(document.body || document.documentElement, { childList: true, subtree: true });
+      setTimeout(() => observer.disconnect(), 10000);
     </script>
   </body>
 </html>
