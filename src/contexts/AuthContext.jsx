@@ -46,6 +46,20 @@ export const AuthProvider = ({ children }) => {
     setUser(userData);
   };
 
+  const refreshUser = async () => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      try {
+        const profile = await api.get('/auth/profile', false);
+        setUser(profile);
+        return profile;
+      } catch (error) {
+        console.error('Error refrescando usuario:', error);
+      }
+    }
+    return null;
+  };
+
   const logout = () => {
     localStorage.removeItem('token');
     setUser(null);
@@ -58,7 +72,7 @@ export const AuthProvider = ({ children }) => {
   // Si es superAdmin (Marcos), o tiene rol admin, puede ver el Panel Admin normal
   const isAdmin = user?.role === 'admin' || user?.role === 'superadmin' || isMarcos;
 
-  const value = useMemo(() => ({ user, loading, login, register, logout, isAdmin, isSuperAdmin }), [user, loading, isAdmin, isSuperAdmin]);
+  const value = useMemo(() => ({ user, loading, login, register, logout, isAdmin, isSuperAdmin, refreshUser }), [user, loading, isAdmin, isSuperAdmin]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };

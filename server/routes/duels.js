@@ -33,8 +33,28 @@ router.get('/', async (req, res) => {
         const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
         const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
         
-        await supabase.from('duels').delete().eq('status', 'completed').lt('updated_at', oneWeekAgo);
-        await supabase.from('duels').delete().eq('status', 'pending_acceptance').lt('created_at', threeDaysAgo);
+        // 1. Reembolsar retos pendientes no aceptados tras 3 días antes de eliminarlos
+        const { data: expiredDuels } = await supabase
+            .from('duels')
+            .select('id, challenger_id, wager')
+            .eq('status', 'pending_acceptance')
+            .lt('created_at', threeDaysAgo);
+
+        if (expiredDuels && expiredDuels.length > 0) {
+            for (const ed of expiredDuels) {
+                if (ed.wager > 0) {
+                    const { data: cu } = await supabase.from('users').select('points').eq('id', ed.challenger_id).single();
+                    if (cu) {
+                        const curPts = typeof cu.points === 'number' ? cu.points : 0;
+                        await supabase.from('users').update({ points: curPts + ed.wager }).eq('id', ed.challenger_id);
+                    }
+                }
+            }
+            await supabase.from('duels').delete().in('id', expiredDuels.map(d => d.id));
+        }
+
+        // 2. Limpiar duelos completados hace más de 1 semana
+        await supabase.from('duels').delete().eq('status', 'completed').lt('created_at', oneWeekAgo);
 
         // Obtener duelos donde seas retador u oponente
         const { data, error } = await supabase
@@ -126,6 +146,11 @@ router.post('/challenge', async (req, res) => {
             link: '/duels'
         }]);
 
+        if (req.app.get('io')) {
+            req.app.get('io').emit('duels-update');
+            req.app.get('io').emit('leaderboard-update');
+        }
+
         res.json(duel);
     } catch (error) {
         console.error(error);
@@ -151,17 +176,23 @@ router.post('/:id/accept', async (req, res) => {
         const { data: userRecord, error: uErr } = await supabase.from('users').select('points').eq('id', userId).single();
         if (uErr) throw uErr;
 
-        if (userRecord.points < duel.wager) {
+        const userPts = typeof userRecord.points === 'number' ? userRecord.points : 0;
+        if (userPts < duel.wager) {
             return res.status(400).json({ error: 'No tienes suficientes puntos para aceptar este duelo' });
         }
 
         // Descontar puntos y actualizar estado
         if (duel.wager > 0) {
-            await supabase.from('users').update({ points: userRecord.points - duel.wager }).eq('id', userId);
+            await supabase.from('users').update({ points: Math.max(0, userPts - duel.wager) }).eq('id', userId);
         }
 
         const { error: updErr } = await supabase.from('duels').update({ status: 'pending' }).eq('id', duelId);
         if (updErr) throw updErr;
+
+        if (req.app.get('io')) {
+            req.app.get('io').emit('duels-update');
+            req.app.get('io').emit('leaderboard-update');
+        }
 
         res.json({ message: 'Duelo aceptado' });
     } catch (error) {
@@ -184,19 +215,117 @@ router.post('/:id/reject', async (req, res) => {
             return res.status(400).json({ error: 'No puedes rechazar este duelo' });
         }
 
+        // Reembolsar al retador
+        const wager = duel.wager || 0;
+        if (wager > 0) {
+            const { data: cUser } = await supabase.from('users').select('points').eq('id', duel.challenger_id).single();
+            if (cUser) {
+                const currentPts = typeof cUser.points === 'number' ? cUser.points : 0;
+                await supabase.from('users').update({ points: currentPts + wager }).eq('id', duel.challenger_id);
+            }
+        }
+
+        // Notificar al retador
+        await supabase.from('notifications').insert([{
+            user_id: duel.challenger_id,
+            title: 'Reto Rechazado',
+            message: `Tu reto fue rechazado. Se te han devuelto tus ${wager} puntos a tu saldo.`,
+            link: '/duels'
+        }]);
+
         // Actualizar estado a rechazado
         const { error: updErr } = await supabase.from('duels').update({ status: 'rejected' }).eq('id', duelId);
         if (updErr) throw updErr;
 
-        // Reembolsar al retador
-        if (duel.wager > 0) {
-            const { data: cUser } = await supabase.from('users').select('points').eq('id', duel.challenger_id).single();
+        if (req.app.get('io')) {
+            req.app.get('io').emit('duels-update');
+            req.app.get('io').emit('leaderboard-update');
+        }
+
+        res.json({ message: 'Duelo rechazado y puntos devueltos al retador' });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Error interno' });
+    }
+});
+
+// Cancelar un reto enviado (para recuperar tus puntos si el oponente no responde)
+router.post('/:id/cancel', async (req, res) => {
+    try {
+        const supabase = getDb();
+        const userId = req.user.id;
+        const duelId = req.params.id;
+
+        const { data: duel, error: dError } = await supabase.from('duels').select('*').eq('id', duelId).single();
+        if (dError) throw dError;
+
+        if (duel.challenger_id !== userId) {
+            return res.status(403).json({ error: 'Solo el retador puede cancelar este reto' });
+        }
+
+        if (duel.status !== 'pending_acceptance') {
+            return res.status(400).json({ error: 'Solo se pueden cancelar retos pendientes de aceptación' });
+        }
+
+        // Reembolsar puntos al retador
+        const wager = duel.wager || 0;
+        if (wager > 0) {
+            const { data: cUser } = await supabase.from('users').select('points').eq('id', userId).single();
             if (cUser) {
-                await supabase.from('users').update({ points: cUser.points + duel.wager }).eq('id', duel.challenger_id);
+                const currentPts = typeof cUser.points === 'number' ? cUser.points : 0;
+                await supabase.from('users').update({ points: currentPts + wager }).eq('id', userId);
             }
         }
 
-        res.json({ message: 'Duelo rechazado' });
+        // Eliminar el duelo cancelado para liberar la interfaz
+        await supabase.from('duels').delete().eq('id', duelId);
+
+        if (req.app.get('io')) {
+            req.app.get('io').emit('duels-update');
+            req.app.get('io').emit('leaderboard-update');
+        }
+
+        res.json({ message: 'Reto cancelado exitosamente y puntos devueltos' });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Error interno' });
+    }
+});
+
+// Eliminar/descartar un duelo (para duelos rechazados, completados, o cancelar retos propios)
+router.delete('/:id', async (req, res) => {
+    try {
+        const supabase = getDb();
+        const userId = req.user.id;
+        const duelId = req.params.id;
+
+        const { data: duel, error: dError } = await supabase.from('duels').select('*').eq('id', duelId).single();
+        if (dError) throw dError;
+
+        if (duel.challenger_id !== userId && duel.opponent_id !== userId) {
+            return res.status(403).json({ error: 'No autorizado' });
+        }
+
+        // Si eliminan un reto pendiente de aceptación propio, reembolsar la apuesta
+        if (duel.status === 'pending_acceptance' && duel.challenger_id === userId) {
+            const wager = duel.wager || 0;
+            if (wager > 0) {
+                const { data: cUser } = await supabase.from('users').select('points').eq('id', userId).single();
+                if (cUser) {
+                    const currentPts = typeof cUser.points === 'number' ? cUser.points : 0;
+                    await supabase.from('users').update({ points: currentPts + wager }).eq('id', userId);
+                }
+            }
+        }
+
+        await supabase.from('duels').delete().eq('id', duelId);
+
+        if (req.app.get('io')) {
+            req.app.get('io').emit('duels-update');
+            req.app.get('io').emit('leaderboard-update');
+        }
+
+        res.json({ message: 'Duelo eliminado' });
     } catch (error) {
         console.error(error);
         res.status(500).json({ error: 'Error interno' });
@@ -313,16 +442,23 @@ router.post('/:id/submit', async (req, res) => {
                 if (updates.winner_id) {
                     const { data: wUser } = await supabase.from('users').select('points').eq('id', updates.winner_id).single();
                     if (wUser) {
+                        const curPts = typeof wUser.points === 'number' ? wUser.points : 0;
                         // El ganador se lleva lo de ambos
-                        await supabase.from('users').update({ points: wUser.points + (wager * 2) }).eq('id', updates.winner_id);
+                        await supabase.from('users').update({ points: curPts + (wager * 2) }).eq('id', updates.winner_id);
                     }
                 } else {
                     // Empate: devolver apuesta a ambos
                     const { data: cUser } = await supabase.from('users').select('points').eq('id', duel.challenger_id).single();
-                    if (cUser) await supabase.from('users').update({ points: cUser.points + wager }).eq('id', duel.challenger_id);
+                    if (cUser) {
+                        const curPts = typeof cUser.points === 'number' ? cUser.points : 0;
+                        await supabase.from('users').update({ points: curPts + wager }).eq('id', duel.challenger_id);
+                    }
                     
                     const { data: oUser } = await supabase.from('users').select('points').eq('id', duel.opponent_id).single();
-                    if (oUser) await supabase.from('users').update({ points: oUser.points + wager }).eq('id', duel.opponent_id);
+                    if (oUser) {
+                        const curPts = typeof oUser.points === 'number' ? oUser.points : 0;
+                        await supabase.from('users').update({ points: curPts + wager }).eq('id', duel.opponent_id);
+                    }
                 }
             }
 
@@ -335,12 +471,17 @@ router.post('/:id/submit', async (req, res) => {
                 message: `El duelo ha terminado. ${resultMsg} Apuesta: ${wager} pts.`,
                 link: '/duels'
             }]);
-        } else if (!isChallenger) {
-            updates.status = 'active'; // Si el oponente juega primero
+        } else {
+            updates.status = 'active'; // Si cualquiera juega primero
         }
 
         const { error: uError } = await supabase.from('duels').update(updates).eq('id', duelId);
         if (uError) throw uError;
+
+        if (req.app.get('io')) {
+            req.app.get('io').emit('duels-update');
+            req.app.get('io').emit('leaderboard-update');
+        }
 
         res.json({ message: 'Resultados guardados', winner_id: updates.winner_id, status: updates.status || duel.status });
     } catch (error) {
