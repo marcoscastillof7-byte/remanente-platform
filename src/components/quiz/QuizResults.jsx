@@ -4,7 +4,7 @@ import { Award, ArrowLeft, RefreshCw, ChevronDown, ChevronUp, Flag, Flame } from
 import QuestionCard from './QuestionCard';
 import ReportModal from './ReportModal';
 
-const QuizResults = ({ score, correctCount, totalQuestions, results, questions, chapterId, pointsEarned, streakPointsEarned, newStreak, isNewDay }) => {
+const QuizResults = ({ score, correctCount, totalQuestions, results, questions, chapterId, pointsEarned, streakPointsEarned, newStreak, isNewDay, isSecondAttempt }) => {
   const [expandedQ, setExpandedQ] = useState(null);
   const [reportingQ, setReportingQ] = useState(null);
 
@@ -37,6 +37,11 @@ const QuizResults = ({ score, correctCount, totalQuestions, results, questions, 
               <div className="inline-flex items-center gap-1.5 bg-yellow-50 border border-yellow-200 text-yellow-800 px-3.5 py-1.5 rounded-full text-sm font-bold shadow-sm">
                 <Award className="w-5 h-5 text-gold" />
                 <span>+{pointsEarned} Pts ganados</span>
+                {isSecondAttempt && (
+                  <span className="text-[11px] bg-yellow-200/80 text-yellow-900 px-1.5 py-0.5 rounded font-semibold ml-1">
+                    2do intento (-15% base)
+                  </span>
+                )}
               </div>
             )}
           </div>

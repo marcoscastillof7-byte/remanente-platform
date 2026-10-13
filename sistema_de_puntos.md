@@ -16,11 +16,12 @@ El núcleo de Remanente es poner a prueba lo que sabes. Por cada quiz de un cap�
 * **Bono de Perfección:** `+15 puntos` (Si respondes todo bien, sin errores).
 * **Total máximo por Quiz:** `100 puntos`.
 
-### 🛡️ Regla de Justicia (Anti-Spam)
-Para asegurar que la Tabla de Honor sea 100% justa, **no puedes ganar puntos repitiendo el mismo capítulo una y otra vez**. 
-* **Tu primer intento:** Te da el 100% de los puntos que merezcas.
-* **Si repites el quiz y sacas una MEJOR nota:** Ganarás únicamente los puntos de diferencia. *(Ejemplo: Si sacaste 80 puntos la primera vez y 100 la segunda, se te sumarán +20 puntos a tu cuenta).*
-* **Si repites el quiz y sacas peor o igual nota:** `0 puntos`. ¡Para subir de rango deberás enfrentarte a capítulos nuevos!
+### 🛡️ Regla de Repetición y Segundo Intento
+Para asegurar que la Tabla de Honor sea justa y a la vez recompensar la perseverancia y el estudio:
+* **Tu primer intento:** Te otorga el 100% de los puntos base (`+5 puntos` por cada respuesta correcta contestada + 10 bono de completar + 15 bono de perfección si obtienes 100%).
+* **Tu segundo intento (repetición):** Se disminuye un **15% de los puntos base de cada respuesta contestada** (`4.25 puntos` por cada respuesta correcta). Los bonos de completar y perfección se mantienen intactos.
+* **Tercer intento en adelante:** `0 puntos` de quiz (el sistema limita a un máximo de 2 intentos por capítulo para evitar farming). ¡Para subir de rango deberás enfrentarte a capítulos nuevos!
+
 
 ---
 

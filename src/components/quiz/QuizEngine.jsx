@@ -109,6 +109,8 @@ const QuizEngine = ({ questions, chapterId, isCustom = false, configId = null })
         questions={questions}
         chapterId={chapterId}
         pointsEarned={results.pointsEarned}
+        quizPointsEarned={results.quizPointsEarned}
+        isSecondAttempt={results.isSecondAttempt}
         streakPointsEarned={results.streakPointsEarned}
         newStreak={results.newStreak}
         isNewDay={results.isNewDay}

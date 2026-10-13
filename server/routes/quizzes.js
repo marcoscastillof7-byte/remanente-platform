@@ -76,13 +76,11 @@ router.post('/:chapterId/submit', async (req, res) => {
 
         const score = Math.round((correctCount / answers.length) * 100);
 
-        // --- POINTS LOGIC (ANTI-SPAM) ---
+        // --- POINTS LOGIC (ANTI-SPAM & INTENTOS) ---
         let totalPointsEarned = 0;
         let quizPointsEarned = 0;
         let streakPointsEarned = 0;
         let achievementPointsEarned = 0;
-
-        const baseQuizPoints = 10 + (correctCount * 5) + (score === 100 ? 15 : 0);
 
         // Check past attempts for this chapter
         const { data: pastAttempts } = await supabase
@@ -90,18 +88,23 @@ router.post('/:chapterId/submit', async (req, res) => {
             .select('score')
             .eq('user_id', userId)
             .eq('chapter_id', chapterId);
-            
-        let highestPastPoints = 0;
-        if (pastAttempts && pastAttempts.length > 0) {
-            highestPastPoints = pastAttempts.reduce((max, att) => {
-                // Approximate past correct answers (since 15 questions is standard)
-                const pastCorrect = Math.round((att.score / 100) * answers.length);
-                const pts = 10 + (pastCorrect * 5) + (att.score === 100 ? 15 : 0);
-                return pts > max ? pts : max;
-            }, 0);
+
+        const attemptCount = (pastAttempts && pastAttempts.length) ? pastAttempts.length : 0;
+        const isSecondAttempt = attemptCount === 1;
+
+        if (attemptCount === 0) {
+            // Primer intento: 5 puntos base por cada respuesta correcta
+            const pointsPerCorrect = 5;
+            quizPointsEarned = 10 + (correctCount * pointsPerCorrect) + (score === 100 ? 15 : 0);
+        } else if (attemptCount === 1) {
+            // Segundo intento: se disminuye un 15% de los puntos base de cada respuesta contestada (5 * 0.85 = 4.25 pts)
+            const pointsPerCorrect = 5 * 0.85; // 4.25
+            quizPointsEarned = Math.round(10 + (correctCount * pointsPerCorrect) + (score === 100 ? 15 : 0));
+        } else {
+            // Tercer intento en adelante: 0 puntos de quiz
+            quizPointsEarned = 0;
         }
-        
-        quizPointsEarned = Math.max(0, baseQuizPoints - highestPastPoints);
+
         totalPointsEarned += quizPointsEarned;
 
         // Insert attempt
@@ -207,7 +210,8 @@ router.post('/:chapterId/submit', async (req, res) => {
             newStreak,
             longestStreak,
             isNewDay: streakResult.isNewDay,
-            studiedToday: true
+            studiedToday: true,
+            isSecondAttempt
         });
     } catch (error) {
         console.error(error);
