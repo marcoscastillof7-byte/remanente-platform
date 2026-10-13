@@ -37,22 +37,58 @@ router.get('/start', async (req, res) => {
     }
 });
 
-// Guardar récord de supervivencia
+// Guardar récord de supervivencia y sumar puntos al usuario
 router.post('/submit', async (req, res) => {
     try {
         const supabase = getDb();
         const userId = req.user.id;
-        const { score } = req.body;
+        const rawScore = req.body.score;
+        const score = Math.max(0, parseInt(rawScore, 10) || 0);
+
+        // En Supervivencia: +10 puntos por cada pregunta respondida correctamente
+        const pointsEarned = score * 10;
         
-        const { error } = await supabase.from('survival_attempts').insert([{
+        // 1. Guardar intento en la tabla de records
+        const { error: insertErr } = await supabase.from('survival_attempts').insert([{
             user_id: userId,
             score
         }]);
         
-        if (error) throw error;
-        res.json({ message: 'Récord guardado' });
+        if (insertErr) throw insertErr;
+
+        // 2. Sumar puntos al perfil del usuario (Tabla de Honor)
+        let newTotalPoints = 0;
+        const { data: u, error: uErr } = await supabase
+            .from('users')
+            .select('points')
+            .eq('id', userId)
+            .single();
+
+        if (!uErr && u) {
+            const currentPoints = (typeof u.points === 'number') ? u.points : 0;
+            newTotalPoints = currentPoints + pointsEarned;
+            if (pointsEarned > 0) {
+                await supabase.from('users').update({ points: newTotalPoints }).eq('id', userId);
+            }
+        }
+
+        // Invalidar caché de leaderboard
+        cache.lastUpdated = 0;
+
+        // Notificar en tiempo real por sockets
+        if (req.app.get('io')) {
+            req.app.get('io').emit('leaderboard-update');
+        }
+
+        res.json({ 
+            success: true, 
+            message: 'Récord guardado exitosamente', 
+            score, 
+            pointsEarned, 
+            newTotalPoints 
+        });
     } catch (error) {
-        console.error(error);
+        console.error('[SurvivalRoute] Error en /submit:', error);
         res.status(500).json({ error: 'Error interno' });
     }
 });

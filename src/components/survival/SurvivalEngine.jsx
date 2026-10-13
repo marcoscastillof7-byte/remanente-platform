@@ -21,6 +21,7 @@ const SurvivalEngine = () => {
   const [score, setScore] = useState(0);
   const [gameOver, setGameOver] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [resultData, setResultData] = useState(null);
   
   // Estado para la respuesta actual y revisión paso a paso
   const [selectedAnswer, setSelectedAnswer] = useState(null);
@@ -108,7 +109,8 @@ const SurvivalEngine = () => {
     setGameOver(true);
     setSaving(true);
     try {
-      await api.post('/survival/submit', { score: finalScore });
+      const res = await api.post('/survival/submit', { score: finalScore });
+      setResultData(res);
     } catch (err) {
       console.error('Error guardando score:', err);
     } finally {
@@ -123,6 +125,7 @@ const SurvivalEngine = () => {
     setCurrentIndex(0);
     setSelectedAnswer(null);
     setIsReviewed(false);
+    setResultData(null);
     fetchQuestions();
   };
 
@@ -136,16 +139,40 @@ const SurvivalEngine = () => {
   }
 
   if (gameOver) {
+    const pointsEarned = resultData?.pointsEarned ?? (score * 10);
+    const newTotalPoints = resultData?.newTotalPoints;
+
     return (
       <div className="bg-white p-8 rounded-xl shadow-lg border-2 border-danger text-center max-w-lg mx-auto mt-12 animate-fade-in">
         <Trophy className="w-24 h-24 text-gold mx-auto mb-4" />
-        <h2 className="font-[Cinzel] text-3xl font-bold text-primary-dark mb-2">¡Fin del Juego!</h2>
-        <p className="text-gray-600 mb-6">Perdiste tus 3 vidas.</p>
+        <h2 className="font-[Cinzel] text-3xl font-bold text-primary-dark mb-1">¡Fin del Juego!</h2>
+        <p className="text-gray-600 mb-6 text-sm">Has puesto a prueba tu resistencia bíblica.</p>
         
-        <div className="bg-gray-50 rounded-xl p-6 mb-8 border border-gray-100">
-          <div className="text-sm text-gray-500 uppercase tracking-wider mb-1">Preguntas Sobrevividas</div>
-          <div className="text-6xl font-black text-danger">{score}</div>
+        <div className="grid grid-cols-2 gap-4 mb-6">
+          <div className="bg-red-50 rounded-xl p-5 border border-red-100 flex flex-col items-center justify-center">
+            <div className="text-[11px] text-red-600 uppercase tracking-wider font-bold mb-1">
+              Preguntas Acertadas
+            </div>
+            <div className="text-5xl font-black text-danger">{score}</div>
+          </div>
+
+          <div className="bg-amber-50 rounded-xl p-5 border border-amber-200 flex flex-col items-center justify-center">
+            <div className="text-[11px] text-amber-800 uppercase tracking-wider font-bold mb-1">
+              Puntos Ganados
+            </div>
+            <div className="text-5xl font-black text-amber-600">
+              +{pointsEarned}
+            </div>
+            <span className="text-[10px] text-amber-700 font-semibold mt-0.5">(+10 por acierto)</span>
+          </div>
         </div>
+
+        {newTotalPoints !== undefined && (
+          <div className="mb-6 p-3.5 bg-primary/5 rounded-xl border border-primary/20 text-xs font-semibold text-primary flex items-center justify-center gap-2">
+            <span>🏆 Tu nuevo total en la Tabla de Honor:</span>
+            <span className="font-bold text-sm text-gold-dark">{newTotalPoints} pts</span>
+          </div>
+        )}
 
         <div className="flex justify-center gap-4">
           <button
@@ -157,10 +184,10 @@ const SurvivalEngine = () => {
             {saving ? 'Guardando...' : 'Reintentar'}
           </button>
           <Link
-            to="/"
-            className="flex items-center px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors font-bold"
+            to="/leaderboard"
+            className="flex items-center px-6 py-3 bg-primary text-gold rounded-lg hover:bg-primary-light transition-colors font-bold shadow-md"
           >
-            <ArrowLeft className="w-5 h-5 mr-2" /> Salir
+            <Trophy className="w-5 h-5 mr-2" /> Tabla de Honor
           </Link>
         </div>
       </div>
