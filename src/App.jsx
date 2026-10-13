@@ -6,6 +6,7 @@ import { ProtectedRoute, AdminRoute, SuperAdminRoute } from './components/layout
 import Navbar from './components/layout/Navbar';
 import LoadingSpinner from './components/shared/LoadingSpinner';
 import InAppNotificationBanner from './components/shared/InAppNotificationBanner';
+import ErrorBoundary from './components/shared/ErrorBoundary';
 import { unlockAudio } from './utils/notificationSound';
 
 const LoginPage = lazy(() => import('./pages/LoginPage'));
@@ -36,9 +37,11 @@ const Layout = ({ children }) => (
     <Navbar />
     <div className="flex flex-1 overflow-hidden">
       <main className="flex-1 overflow-y-auto p-4 md:p-8">
-        <Suspense fallback={<div className="flex items-center justify-center h-64"><LoadingSpinner /></div>}>
-          {children}
-        </Suspense>
+        <ErrorBoundary>
+          <Suspense fallback={<div className="flex items-center justify-center h-64"><LoadingSpinner /></div>}>
+            {children}
+          </Suspense>
+        </ErrorBoundary>
       </main>
     </div>
   </div>
@@ -53,10 +56,11 @@ const App = () => {
     <ToastProvider>
       <AuthProvider>
         <InAppNotificationBanner />
-        <Suspense fallback={<div className="flex items-center justify-center min-h-screen bg-[var(--color-parchment)]"><LoadingSpinner /></div>}>
-          <Routes>
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/register" element={<RegisterPage />} />
+        <ErrorBoundary>
+          <Suspense fallback={<div className="flex items-center justify-center min-h-screen bg-[var(--color-parchment)]"><LoadingSpinner /></div>}>
+            <Routes>
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/register" element={<RegisterPage />} />
             
             <Route element={<ProtectedRoute />}>
               <Route path="/" element={<Layout><DashboardPage /></Layout>} />
@@ -87,9 +91,10 @@ const App = () => {
             </Route>
           </Routes>
         </Suspense>
-      </AuthProvider>
-    </ToastProvider>
-  );
+      </ErrorBoundary>
+    </AuthProvider>
+  </ToastProvider>
+);
 };
 
 export default App;

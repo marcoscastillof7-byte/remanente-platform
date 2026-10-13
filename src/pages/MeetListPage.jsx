@@ -40,9 +40,10 @@ const MeetListPage = () => {
   const fetchMeets = async () => {
     try {
       const data = await api.get('/meetings', false);
-      setMeets(data || []);
+      setMeets(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error('Error cargando meets:', err);
+      setMeets([]);
     } finally {
       setLoading(false);
     }
@@ -66,16 +67,17 @@ const MeetListPage = () => {
     if (!confirm('¿Estás seguro de eliminar este Meet?')) return;
     try {
       await api.del(`/meetings/${meetId}`);
-      setMeets(prev => prev.filter(m => m.id !== meetId));
+      setMeets(prev => (Array.isArray(prev) ? prev.filter(m => m.id !== meetId) : []));
     } catch (err) {
       console.error(err);
       alert('Error al eliminar Meet.');
     }
   };
 
-  const liveMeets = meets.filter(m => m.status === 'live');
-  const scheduledMeets = meets.filter(m => m.status === 'scheduled');
-  const pastMeets = meets.filter(m => m.status === 'ended');
+  const meetsList = Array.isArray(meets) ? meets : [];
+  const liveMeets = meetsList.filter(m => m.status === 'live');
+  const scheduledMeets = meetsList.filter(m => m.status === 'scheduled');
+  const pastMeets = meetsList.filter(m => m.status === 'ended');
 
   return (
     <div className="max-w-6xl mx-auto space-y-8 pb-12">

@@ -348,7 +348,7 @@ const MeetRoomPage = () => {
     );
   }
 
-  const handsRaisedList = participants.filter(p => p.handRaised);
+  const handsRaisedList = Array.isArray(participants) ? participants.filter(p => p.handRaised) : [];
 
   return (
     <div className="flex flex-col h-[calc(100dvh-6.5rem)] md:h-[calc(100dvh-7.5rem)] min-h-[540px] max-w-7xl mx-auto bg-slate-900 rounded-2xl shadow-2xl border border-gold/40 overflow-hidden relative">

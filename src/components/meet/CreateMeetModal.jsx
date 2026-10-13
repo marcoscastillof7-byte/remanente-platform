@@ -53,12 +53,14 @@ const CreateMeetModal = ({ isOpen, onClose, onCreated }) => {
   const loadBooks = async () => {
     try {
       const data = await api.get('/books');
-      setBooks(data || []);
-      if (data && data.length > 0) {
-        handleBookSelect(data[0].id, data);
+      const booksList = Array.isArray(data) ? data : (data?.books || []);
+      setBooks(booksList);
+      if (booksList && booksList.length > 0) {
+        handleBookSelect(booksList[0].id, booksList);
       }
     } catch (err) {
       console.error('Error cargando libros:', err);
+      setBooks([]);
     }
   };
 
@@ -67,18 +69,21 @@ const CreateMeetModal = ({ isOpen, onClose, onCreated }) => {
     setSelectedChapterIds([]);
     try {
       const data = await api.get(`/books/${bookId}/chapters`);
-      setChapters(data || []);
-      if (data && data.length > 0) {
-        setSelectedChapterIds([data[0].id]);
+      // /books/:bookId/chapters devuelve { bookName, videoUrl, chapters: [...] }
+      const chaps = Array.isArray(data) ? data : (data?.chapters || []);
+      setChapters(chaps);
+      if (chaps && chaps.length > 0) {
+        setSelectedChapterIds([chaps[0].id]);
       }
     } catch (err) {
       console.error('Error cargando capítulos:', err);
+      setChapters([]);
     }
   };
 
   const toggleChapter = (chapterId) => {
     setSelectedChapterIds(prev => 
-      prev.includes(chapterId) ? prev.filter(id => id !== chapterId) : [...prev, chapterId]
+      (prev || []).includes(chapterId) ? prev.filter(id => id !== chapterId) : [...(prev || []), chapterId]
     );
   };
 
@@ -209,7 +214,7 @@ const CreateMeetModal = ({ isOpen, onClose, onCreated }) => {
 
   if (!isOpen) return null;
 
-  const selectedBook = books.find(b => String(b.id) === String(selectedBookId));
+  const selectedBook = (books || []).find(b => String(b.id) === String(selectedBookId));
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm overflow-y-auto">
@@ -308,7 +313,7 @@ const CreateMeetModal = ({ isOpen, onClose, onCreated }) => {
                 onChange={(e) => handleBookSelect(e.target.value)}
                 className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gold focus:border-transparent text-sm font-medium"
               >
-                {books.map(b => (
+                {(books || []).map(b => (
                   <option key={b.id} value={b.id}>{b.name} ({b.chapters_count} Capítulos)</option>
                 ))}
               </select>
@@ -316,17 +321,17 @@ const CreateMeetModal = ({ isOpen, onClose, onCreated }) => {
 
             <div>
               <label className="block text-xs font-bold text-gray-700 uppercase tracking-wide mb-1">
-                Capítulos a Tratar ({selectedChapterIds.length} seleccionados)
+                Capítulos a Tratar ({(selectedChapterIds || []).length} seleccionados)
               </label>
               <div className="max-h-36 overflow-y-auto border border-gray-200 rounded-lg p-2.5 grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2 bg-gray-50">
-                {chapters.map(c => {
-                  const isChecked = selectedChapterIds.includes(c.id);
+                {(Array.isArray(chapters) ? chapters : []).map(c => {
+                  const isChecked = (selectedChapterIds || []).includes(c.id);
                   return (
                     <button
                       type="button"
                       key={c.id}
                       onClick={() => toggleChapter(c.id)}
-                      className={`px-2.5 py-1.5 text-xs font-semibold rounded-md border text-center transition-all ${
+                      className={`px-2.5 py-1.5 text-xs font-semibold rounded-md border text-center transition-all cursor-pointer ${
                         isChecked 
                           ? 'bg-gold text-white border-gold shadow-sm font-bold' 
                           : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100'
@@ -492,7 +497,7 @@ const CreateMeetModal = ({ isOpen, onClose, onCreated }) => {
             </div>
 
             {/* Lista de Preguntas Previsualizadas */}
-            {questions.length > 0 && (
+            {Array.isArray(questions) && questions.length > 0 && (
               <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
                 {questions.map((q, idx) => (
                   <div key={idx} className="p-3 border border-gray-200 rounded-lg bg-white shadow-xs relative group">
