@@ -1,15 +1,20 @@
 import webpush from 'web-push';
 import { getDb } from '../db/database.js';
 
-// Inicializar configuración VAPID
-const vapidPublicKey = process.env.VAPID_PUBLIC_KEY;
-const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY;
-const vapidSubject = process.env.VAPID_SUBJECT || 'mailto:admin@remanente.org';
+// Claves VAPID oficiales de Remanente Platform (con fallback predeterminado para Netlify/Cloud)
+const DEFAULT_VAPID_PUBLIC_KEY = 'BGnJ2iTANuDrhj5llCG9rB6UIzfl0odlFruACHSkIRlBsAW-yv5C2fq5cmFUq6YLPTO4lC6BdHS-N0XK9v22i3I';
+const DEFAULT_VAPID_PRIVATE_KEY = '9FWM8BesjZo1ETcQ-StI0q1tQCGqde2AKPtB1XlDjZI';
+const DEFAULT_VAPID_SUBJECT = 'mailto:admin@remanente.org';
 
-if (vapidPublicKey && vapidPrivateKey) {
+const vapidPublicKey = process.env.VAPID_PUBLIC_KEY || DEFAULT_VAPID_PUBLIC_KEY;
+const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY || DEFAULT_VAPID_PRIVATE_KEY;
+const vapidSubject = process.env.VAPID_SUBJECT || DEFAULT_VAPID_SUBJECT;
+
+try {
     webpush.setVapidDetails(vapidSubject, vapidPublicKey, vapidPrivateKey);
-} else {
-    console.warn('⚠️ [PushNotifier] Claves VAPID no configuradas en el entorno');
+    console.log('[PushNotifier] VAPID configurado exitosamente.');
+} catch (vErr) {
+    console.error('⚠️ [PushNotifier] Error inicializando VAPID:', vErr.message);
 }
 
 /**

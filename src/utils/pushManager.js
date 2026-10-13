@@ -1,5 +1,8 @@
 import { api } from './api';
 
+// Clave pública VAPID oficial de Remanente Platform
+const DEFAULT_VAPID_PUBLIC_KEY = 'BGnJ2iTANuDrhj5llCG9rB6UIzfl0odlFruACHSkIRlBsAW-yv5C2fq5cmFUq6YLPTO4lC6BdHS-N0XK9v22i3I';
+
 /**
  * Convierte la clave pública VAPID en base64 a Uint8Array
  */
@@ -164,10 +167,23 @@ export async function subscribeToPushNotifications() {
   await registerServiceWorker();
   const reg = await navigator.serviceWorker.ready;
 
-  // 3. Obtener clave pública VAPID
-  const { publicKey } = await api.get('/push/vapid-key', false);
+  // 3. Obtener clave pública VAPID (con fallback resiliente garantizado)
+  let publicKey = null;
+  try {
+    const res = await api.get('/push/vapid-key', false);
+    if (res && res.publicKey) {
+      publicKey = res.publicKey;
+    }
+  } catch (err) {
+    console.warn('[PushManager] Endpoint vapid-key no respondió, usando clave pública de respaldo:', err?.message);
+  }
+
   if (!publicKey) {
-    throw new Error('No se pudo obtener la clave VAPID del servidor.');
+    publicKey = import.meta.env?.VITE_VAPID_PUBLIC_KEY || DEFAULT_VAPID_PUBLIC_KEY;
+  }
+
+  if (!publicKey) {
+    throw new Error('No se pudo obtener la clave VAPID pública.');
   }
 
   // 4. Suscribir en el PushManager del navegador

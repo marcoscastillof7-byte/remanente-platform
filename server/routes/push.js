@@ -9,12 +9,12 @@ import {
 
 const router = express.Router();
 
+// Clave pública VAPID oficial de Remanente Platform
+const DEFAULT_VAPID_PUBLIC_KEY = 'BGnJ2iTANuDrhj5llCG9rB6UIzfl0odlFruACHSkIRlBsAW-yv5C2fq5cmFUq6YLPTO4lC6BdHS-N0XK9v22i3I';
+
 // Ruta pública para obtener la clave pública VAPID
 router.get('/vapid-key', (req, res) => {
-    const publicKey = process.env.VAPID_PUBLIC_KEY;
-    if (!publicKey) {
-        return res.status(500).json({ error: 'Clave VAPID pública no configurada' });
-    }
+    const publicKey = process.env.VAPID_PUBLIC_KEY || DEFAULT_VAPID_PUBLIC_KEY;
     res.json({ publicKey });
 });
 
