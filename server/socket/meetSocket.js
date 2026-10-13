@@ -58,6 +58,16 @@ export function endAllActiveRooms() {
 }
 
 /**
+ * Actualiza las preguntas de una sala activa en memoria
+ */
+export function updateRoomQuestions(meetId, questions) {
+    const room = activeRooms.get(String(meetId));
+    if (room) {
+        room.questions = Array.isArray(questions) ? questions : [];
+    }
+}
+
+/**
  * Obtiene o inicializa el estado de una sala Meet
  */
 async function getOrCreateRoom(meetId) {
@@ -216,6 +226,8 @@ export function setupMeetSocket(io) {
             if (!meetId || !user) return;
             currentMeetId = String(meetId);
             currentUser = user;
+            socket.data = socket.data || {};
+            socket.data.user = user;
 
             // Actualizar identificación global en plataforma
             globalPlatformSockets.set(socket.id, {
@@ -426,6 +438,24 @@ export function setupMeetSocket(io) {
             }
         });
 
+        // 5.1 ACTUALIZAR / IMPORTAR PREGUNTAS EN VIVO (Líder / Host)
+        socket.on('meet:update-questions', ({ meetId, questions }) => {
+            const room = activeRooms.get(String(meetId));
+            if (!room) return;
+            const isAuthorized = currentUser && (
+                String(currentUser.id) === String(room.hostId) ||
+                ['admin', 'superadmin', 'lider', 'leader'].includes((currentUser.role || '').toLowerCase())
+            );
+            if (!isAuthorized) return;
+
+            room.questions = Array.isArray(questions) ? questions : [];
+            io.to(`meet:${meetId}`).emit('meet:questions-updated', {
+                questions: room.questions,
+                count: room.questions.length
+            });
+            io.emit('meet:updated');
+        });
+
         // 6. INICIAR FASE DE QUIZ / PREGUNTAS (Solo Líder/Host)
         socket.on('meet:start-quiz', ({ meetId }) => {
             const room = activeRooms.get(String(meetId));
@@ -494,21 +524,24 @@ export function setupMeetSocket(io) {
         });
 
         // 7. ENVIAR RESPUESTA A PREGUNTA EN VIVO
-        socket.on('meet:submit-answer', ({ meetId, questionIndex, selectedAnswer, timeTakenMs }) => {
+        socket.on('meet:submit-answer', ({ meetId, questionIndex, selectedAnswer, timeTakenMs, user: payloadUser }) => {
             const room = activeRooms.get(String(meetId));
-            if (!room || !currentUser) return;
-            if (room.phase !== 'quiz' || room.currentQuestionIndex !== questionIndex) return;
+            const userObj = currentUser || payloadUser || socket.data?.user;
+            if (!room || !userObj) return;
 
-            let questionAnswers = room.answers.get(questionIndex);
+            const qIndexNum = Number(questionIndex);
+            if (room.phase !== 'quiz' || Number(room.currentQuestionIndex) !== qIndexNum) return;
+
+            let questionAnswers = room.answers.get(qIndexNum);
             if (!questionAnswers) {
                 questionAnswers = new Map();
-                room.answers.set(questionIndex, questionAnswers);
+                room.answers.set(qIndexNum, questionAnswers);
             }
 
             // Si ya respondió esta pregunta, ignorar duplicado
-            if (questionAnswers.has(currentUser.id)) return;
+            if (questionAnswers.has(userObj.id)) return;
 
-            const q = room.questions[questionIndex];
+            const q = room.questions[qIndexNum];
             const isCorrect = q && String(q.correct_answer || '').trim().toLowerCase() === String(selectedAnswer || '').trim().toLowerCase();
 
             // Puntuación estilo Kahoot: Base 50 + velocidad hasta 50 puntos adicionales
@@ -521,9 +554,9 @@ export function setupMeetSocket(io) {
                 points = 50 + speedBonus;
             }
 
-            questionAnswers.set(currentUser.id, {
-                userId: currentUser.id,
-                username: currentUser.username,
+            questionAnswers.set(userObj.id, {
+                userId: userObj.id,
+                username: userObj.username,
                 selectedAnswer,
                 isCorrect,
                 points,
@@ -531,7 +564,7 @@ export function setupMeetSocket(io) {
             });
 
             // Actualizar score acumulado del participante
-            const participant = room.participants.get(currentUser.id);
+            const participant = room.participants.get(userObj.id);
             if (participant) {
                 participant.score = (participant.score || 0) + points;
             }

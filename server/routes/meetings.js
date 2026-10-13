@@ -2,7 +2,7 @@ import express from 'express';
 import { getDb } from '../db/database.js';
 import { auth } from '../middleware/auth.js';
 import { sendPushToAll } from '../utils/pushNotifier.js';
-import { endActiveRoom, endAllActiveRooms } from '../socket/meetSocket.js';
+import { endActiveRoom, endAllActiveRooms, updateRoomQuestions } from '../socket/meetSocket.js';
 
 const router = express.Router();
 router.use(auth);
@@ -585,6 +585,93 @@ router.delete('/:id', async (req, res) => {
         console.error(error);
         res.status(500).json({ error: 'Error interno' });
     }
+});
+
+/**
+ * PUT /api/meetings/:id/questions
+ * Actualizar o importar preguntas de un Meet existente (Host, Admin o Líder)
+ */
+router.put('/:id/questions', async (req, res) => {
+    try {
+        const { questions } = req.body;
+        if (!Array.isArray(questions)) {
+            return res.status(400).json({ error: 'Se esperaba un array de preguntas.' });
+        }
+
+        const supabase = getDb();
+        const { data: meeting, error: fetchErr } = await supabase
+            .from('meetings')
+            .select('*')
+            .eq('id', req.params.id)
+            .single();
+
+        if (fetchErr || !meeting) {
+            return res.status(404).json({ error: 'Reunión no encontrada.' });
+        }
+
+        const isAuthorized = isLeaderOrAdmin(req.user) || String(meeting.host_id) === String(req.user.id);
+        if (!isAuthorized) {
+            return res.status(403).json({ error: 'No tienes permisos para modificar las preguntas de este Meet.' });
+        }
+
+        let meta = {};
+        try {
+            meta = JSON.parse(meeting.description || '{}');
+        } catch {
+            meta = { text: meeting.description };
+        }
+
+        const sanitized = questions.map((q, idx) => ({
+            id: q.id || `q_${Date.now()}_${idx}_${Math.random().toString(36).substring(7)}`,
+            question_text: String(q.question_text || '').trim(),
+            option_a: String(q.option_a || '').trim(),
+            option_b: String(q.option_b || '').trim(),
+            option_c: String(q.option_c || '').trim(),
+            option_d: String(q.option_d || '').trim(),
+            correct_answer: String(q.correct_answer || 'a').toLowerCase().trim(),
+            explanation: String(q.explanation || '').trim(),
+            verse_reference: String(q.verse_reference || '').trim(),
+            time_limit_seconds: Number(q.time_limit_seconds) || 25
+        })).filter(q => q.question_text && (q.option_a || q.option_b));
+
+        meta.questions = sanitized;
+
+        const { data: updatedMeeting, error: updateErr } = await supabase
+            .from('meetings')
+            .update({ description: JSON.stringify(meta) })
+            .eq('id', req.params.id)
+            .select('*')
+            .single();
+
+        if (updateErr) throw updateErr;
+
+        // Actualizar en memoria si la sala está activa
+        updateRoomQuestions(req.params.id, sanitized);
+
+        if (req.app.get('io')) {
+            const io = req.app.get('io');
+            io.to(`meet:${req.params.id}`).emit('meet:questions-updated', {
+                questions: sanitized,
+                count: sanitized.length
+            });
+            io.emit('meet:updated');
+        }
+
+        res.json({
+            success: true,
+            count: sanitized.length,
+            questions: sanitized
+        });
+    } catch (err) {
+        console.error('[Meetings] Error actualizando preguntas:', err);
+        res.status(500).json({ error: 'Error al actualizar las preguntas' });
+    }
+});
+
+// Alias POST para clientes o proxies que limiten verbos PUT
+router.post('/:id/questions', async (req, res, next) => {
+    req.method = 'PUT';
+    router.handle(req, res, next);
 });
 
 export default router;

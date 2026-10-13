@@ -13,6 +13,7 @@ import {
   Radio
 } from 'lucide-react';
 import { api } from '../../utils/api';
+import { parseQuestionsText } from '../../utils/questionParser';
 
 const CreateMeetModal = ({ isOpen, onClose, onCreated }) => {
   const [title, setTitle] = useState('');
@@ -168,93 +169,19 @@ const CreateMeetModal = ({ isOpen, onClose, onCreated }) => {
     }
   };
 
-  // Parseador de preguntas idéntico al método de quizzes de la plataforma principal
-  const parseQuestionsFromText = (rawText) => {
-    if (!rawText.trim()) return [];
-
-    const blocks = rawText
-      .split(/(?:^|\n)(?=PREGUNTA\s*[:\-\d]|(?:\d+[\.\)]\s+))/i)
-      .map(b => b.trim())
-      .filter(b => b.length > 0);
-
-    const parsed = [];
-
-    for (let block of blocks) {
-      const lines = block.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-      if (lines.length === 0) continue;
-
-      let question_text = '';
-      let option_a = '';
-      let option_b = '';
-      let option_c = '';
-      let option_d = '';
-      let correct_answer = 'a';
-      let explanation = '';
-      let verse_reference = '';
-
-      for (let line of lines) {
-        // Coincidir con título de pregunta
-        const matchQ = line.match(/^(?:PREGUNTA\s*[:\-\d]*\s*|\d+[\.\)]\s*)(.+)$/i);
-        if (matchQ && !question_text) {
-          question_text = matchQ[1].trim();
-          continue;
-        }
-
-        // Coincidir con opciones
-        const matchA = line.match(/^[A]\s*[.)\-:]\s*(.+)$/i);
-        const matchB = line.match(/^[B]\s*[.)\-:]\s*(.+)$/i);
-        const matchC = line.match(/^[C]\s*[.)\-:]\s*(.+)$/i);
-        const matchD = line.match(/^[D]\s*[.)\-:]\s*(.+)$/i);
-
-        // Coincidir con metadatos
-        const matchResp = line.match(/^RESPUESTA(?:\s*CORRECTA)?\s*[:\-]?\s*([A-D])/i);
-        const matchExp = line.match(/^EXPLICACI[OÓ]N\s*[:\-]?\s*(.+)$/i);
-        const matchVer = line.match(/^VERS[IÍ]CULO\s*[:\-]?\s*(.+)$/i);
-
-        if (matchA) option_a = matchA[1].trim();
-        else if (matchB) option_b = matchB[1].trim();
-        else if (matchC) option_c = matchC[1].trim();
-        else if (matchD) option_d = matchD[1].trim();
-        else if (matchResp) correct_answer = matchResp[1].trim().toLowerCase();
-        else if (matchExp) explanation = matchExp[1].trim();
-        else if (matchVer) verse_reference = matchVer[1].trim();
-        else if (!question_text) {
-          question_text = line;
-        }
-      }
-
-      if (question_text && (option_a || option_b)) {
-        parsed.push({
-          id: `q_bulk_${Date.now()}_${Math.random().toString(36).substring(7)}`,
-          question_text,
-          option_a: option_a || 'Opción A',
-          option_b: option_b || 'Opción B',
-          option_c: option_c || 'Opción C',
-          option_d: option_d || 'Opción D',
-          correct_answer: correct_answer || 'a',
-          explanation: explanation || '',
-          verse_reference: verse_reference || '',
-          time_limit_seconds: 25
-        });
-      }
-    }
-
-    return parsed;
-  };
-
   // Procesar e importar texto
   const handleProcessBulkImport = () => {
     setBulkSuccessMessage('');
     setBulkErrorMessage('');
 
     if (!bulkText.trim()) {
-      setBulkErrorMessage('Por favor pega el texto de las preguntas o sube un archivo .txt');
+      setBulkErrorMessage('Por favor pega el texto de las preguntas o selecciona un archivo .txt');
       return;
     }
 
-    const parsed = parseQuestionsFromText(bulkText);
+    const parsed = parseQuestionsText(bulkText);
     if (parsed.length === 0) {
-      setBulkErrorMessage('No se reconocieron preguntas con formato válido. Asegúrate de incluir PREGUNTA:, A., B., C., D., y RESPUESTA:.');
+      setBulkErrorMessage('No se reconocieron preguntas con formato válido. Asegúrate de incluir PREGUNTA:, A., B., C., D. y RESPUESTA:.');
       return;
     }
 
@@ -268,17 +195,35 @@ const CreateMeetModal = ({ isOpen, onClose, onCreated }) => {
     setBulkText('');
   };
 
-  // Subir archivo .txt
+  // Subir archivo .txt con auto-parseo inmediato
   const handleQuestionsTxtUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
+
+    setBulkSuccessMessage('');
+    setBulkErrorMessage('');
 
     const reader = new FileReader();
     reader.onload = (event) => {
       const content = event.target.result;
       setBulkText(content);
+
+      // Auto-parsear inmediatamente
+      const parsed = parseQuestionsText(content);
+      if (parsed.length > 0) {
+        if (importMode === 'replace') {
+          setQuestions(parsed);
+        } else {
+          setQuestions(prev => [...prev, ...parsed]);
+        }
+        setBulkSuccessMessage(`¡${parsed.length} preguntas reconocidas e importadas desde "${file.name}"!`);
+        setBulkText('');
+      } else {
+        setBulkErrorMessage(`El archivo "${file.name}" fue cargado, pero no se detectaron preguntas con formato estándar.`);
+      }
     };
     reader.readAsText(file);
+    e.target.value = '';
   };
 
   // Cargar desde el banco bíblico oficial de los capítulos seleccionados

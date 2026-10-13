@@ -22,6 +22,7 @@ import {
 import { api } from '../utils/api';
 import { useAuth } from '../hooks/useAuth';
 import CreateMeetModal from '../components/meet/CreateMeetModal';
+import ManageQuestionsModal from '../components/meet/ManageQuestionsModal';
 
 const MeetListPage = () => {
   const { user } = useAuth();
@@ -29,6 +30,7 @@ const MeetListPage = () => {
   const [meets, setMeets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [selectedMeetForQuestions, setSelectedMeetForQuestions] = useState(null);
   const [startingId, setStartingId] = useState(null);
   const [onlineCount, setOnlineCount] = useState(1);
 
@@ -242,11 +244,27 @@ const MeetListPage = () => {
                             {meet.bookName}
                           </span>
                         )}
-                        {meet.questionsCount > 0 && (
-                          <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-800 border border-amber-200 px-2.5 sm:px-3 py-0.5 sm:py-1 rounded-full text-[11px] sm:text-xs font-semibold">
-                            <Award className="w-3.5 h-3.5 text-gold" />
-                            {meet.questionsCount} Preguntas
-                          </span>
+                        {isLeaderOrAdmin ? (
+                          <button
+                            type="button"
+                            onClick={() => setSelectedMeetForQuestions(meet)}
+                            className={`inline-flex items-center gap-1 px-2.5 sm:px-3 py-0.5 sm:py-1 rounded-full text-[11px] sm:text-xs font-semibold cursor-pointer transition-all hover:scale-105 ${
+                              meet.questionsCount > 0 
+                                ? 'bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300' 
+                                : 'bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-400 animate-pulse font-bold'
+                            }`}
+                            title="Gestionar o importar preguntas para esta reunión"
+                          >
+                            <Award className="w-3.5 h-3.5 text-gold shrink-0" />
+                            <span>{meet.questionsCount > 0 ? `${meet.questionsCount} Preguntas ⚙️` : 'Sin Preguntas (Importar 📥)'}</span>
+                          </button>
+                        ) : (
+                          meet.questionsCount > 0 && (
+                            <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-800 border border-amber-200 px-2.5 sm:px-3 py-0.5 sm:py-1 rounded-full text-[11px] sm:text-xs font-semibold">
+                              <Award className="w-3.5 h-3.5 text-gold" />
+                              {meet.questionsCount} Preguntas
+                            </span>
+                          )
                         )}
                       </div>
 
@@ -332,13 +350,26 @@ const MeetListPage = () => {
                         {meet.descriptionText || 'Sin descripción.'}
                       </p>
 
-                      <div className="text-xs text-gray-500 space-y-1 pt-2 border-t border-gray-100">
+                      <div className="text-xs text-gray-500 space-y-1.5 pt-2 border-t border-gray-100">
                         {meet.bookName && (
                           <div className="flex items-center gap-1.5">
                             <BookOpen className="w-3.5 h-3.5 text-gold" />
                             <span>Libro: <strong>{meet.bookName}</strong></span>
                           </div>
                         )}
+                        <div className="flex items-center gap-1.5">
+                          <Award className="w-3.5 h-3.5 text-gold" />
+                          <span>Preguntas: <strong>{meet.questionsCount || 0}</strong></span>
+                          {isLeaderOrAdmin && (
+                            <button
+                              type="button"
+                              onClick={() => setSelectedMeetForQuestions(meet)}
+                              className="ml-1 text-[11px] text-blue-600 hover:text-blue-800 underline font-bold cursor-pointer"
+                            >
+                              {meet.questionsCount > 0 ? 'Gestionar ⚙️' : 'Importar ahora 📥'}
+                            </button>
+                          )}
+                        </div>
                         <div className="flex items-center gap-1.5">
                           <Clock className="w-3.5 h-3.5 text-gray-400" />
                           <span>Fecha: {new Date(meet.scheduled_for).toLocaleString()}</span>
@@ -352,18 +383,29 @@ const MeetListPage = () => {
 
                     <div className="pt-2 border-t border-gray-100 flex items-center justify-between gap-2">
                       {isLeaderOrAdmin ? (
-                        <button
-                          disabled={startingId === meet.id}
-                          onClick={() => handleStartMeet(meet.id)}
-                          className="w-full inline-flex items-center justify-center gap-2 bg-gradient-to-r from-gold to-gold-dark hover:from-gold-dark hover:to-gold text-white px-4 py-2.5 rounded-lg font-bold text-xs shadow-md transition-all disabled:opacity-50"
-                        >
-                          {startingId === meet.id ? (
-                            <Loader className="w-4 h-4 animate-spin" />
-                          ) : (
-                            <Play className="w-4 h-4 fill-current" />
-                          )}
-                          <span>Iniciar en Vivo Ahora 🚀</span>
-                        </button>
+                        <div className="flex items-center gap-2 w-full">
+                          <button
+                            disabled={startingId === meet.id}
+                            onClick={() => handleStartMeet(meet.id)}
+                            className="flex-1 inline-flex items-center justify-center gap-2 bg-gradient-to-r from-gold to-gold-dark hover:from-gold-dark hover:to-gold text-white px-3.5 py-2.5 rounded-lg font-bold text-xs shadow-md transition-all disabled:opacity-50 cursor-pointer"
+                          >
+                            {startingId === meet.id ? (
+                              <Loader className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <Play className="w-4 h-4 fill-current" />
+                            )}
+                            <span>Iniciar en Vivo 🚀</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedMeetForQuestions(meet)}
+                            className="px-3 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-300 rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5 shrink-0 cursor-pointer"
+                            title="Gestionar e importar preguntas para esta reunión"
+                          >
+                            <FileText className="w-3.5 h-3.5 text-gold" />
+                            <span>Preguntas ({meet.questionsCount || 0})</span>
+                          </button>
+                        </div>
                       ) : (
                         <div className="text-xs text-gray-500 italic py-1 text-center w-full">
                           La sala se activará cuando el líder inicie la sesión
@@ -412,6 +454,18 @@ const MeetListPage = () => {
           }
         }}
       />
+
+      {/* Modal de Gestión e Importación de Preguntas para cualquier Meet */}
+      {selectedMeetForQuestions && (
+        <ManageQuestionsModal
+          isOpen={!!selectedMeetForQuestions}
+          meet={selectedMeetForQuestions}
+          onClose={() => setSelectedMeetForQuestions(null)}
+          onSaved={() => {
+            fetchMeets(false);
+          }}
+        />
+      )}
 
     </div>
   );

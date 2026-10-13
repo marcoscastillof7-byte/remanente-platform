@@ -28,6 +28,7 @@ import { useAuth } from '../hooks/useAuth';
 import { api } from '../utils/api';
 import { supabase } from '../utils/supabase';
 import { playNotificationSound } from '../utils/notificationSound';
+import ManageQuestionsModal from '../components/meet/ManageQuestionsModal';
 
 const REACTION_EMOJIS = [
   { id: 'amen', label: 'Amén 🙏', icon: '🙏' },
@@ -108,6 +109,7 @@ const MeetRoomPage = () => {
   });
   const [liveLeaderboard, setLiveLeaderboard] = useState([]);
   const [activeResultsTab, setActiveResultsTab] = useState('resumen'); // 'resumen' | 'posiciones'
+  const [isManageQuestionsOpen, setIsManageQuestionsOpen] = useState(false);
 
   const isHost = meet && (String(user?.id) === String(meet.host_id) || ['admin', 'superadmin', 'lider', 'leader'].includes(user?.role?.toLowerCase()));
   const pdfContainerRef = useRef(null);
@@ -312,6 +314,17 @@ const MeetRoomPage = () => {
       playNotificationSound();
     });
 
+    s.on('meet:questions-updated', ({ questions: updatedQs, count }) => {
+      setMeet(prev => prev ? {
+        ...prev,
+        questions: updatedQs,
+        questionsCount: count
+      } : prev);
+      if (updatedQs && updatedQs.length > 0) {
+        setCurrentQuestion(prev => prev || updatedQs[currentQuestionIndex || 0]);
+      }
+    });
+
     s.on('meet:error', ({ message }) => {
       if (message) alert(message);
     });
@@ -446,6 +459,14 @@ const MeetRoomPage = () => {
     return () => clearTimeout(timer);
   }, [sessionClosing, navigate, socket]);
 
+  // Respaldo de carga inmediata de pregunta para evitar pantallas en blanco
+  useEffect(() => {
+    if (phase === 'quiz' && !currentQuestion && meet?.questions && meet.questions.length > 0) {
+      const idx = currentQuestionIndex >= 0 ? currentQuestionIndex : 0;
+      setCurrentQuestion(meet.questions[idx] || meet.questions[0]);
+    }
+  }, [phase, currentQuestion, meet?.questions, currentQuestionIndex]);
+
   // Temporizador de preguntas en vivo
   useEffect(() => {
     if (phase !== 'quiz' || revealedResults) return;
@@ -545,7 +566,8 @@ const MeetRoomPage = () => {
         meetId: id,
         questionIndex: currentQuestionIndex,
         selectedAnswer: optKey,
-        timeTakenMs
+        timeTakenMs,
+        user
       });
     }
   };
@@ -683,6 +705,18 @@ const MeetRoomPage = () => {
             </div>
           </div>
 
+          {/* Botón Maestro del Líder para Gestionar / Importar Preguntas */}
+          {isHost && (
+            <button
+              onClick={() => setIsManageQuestionsOpen(true)}
+              className="inline-flex items-center gap-1 sm:gap-1.5 bg-blue-600/80 hover:bg-blue-600 text-white px-2 sm:px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-md cursor-pointer hover:scale-105"
+              title="Gestionar o importar preguntas bíblicas para esta reunión"
+            >
+              <FileText className="w-3.5 h-3.5 text-gold" />
+              <span className="hidden sm:inline">Preguntas ({meet?.questionsCount || (meet?.questions || []).length || 0})</span>
+            </button>
+          )}
+
           {/* Botón Maestro del Líder para pasar a Quiz */}
           {isHost && phase === 'reading' && (
             <button
@@ -690,7 +724,7 @@ const MeetRoomPage = () => {
               className="inline-flex items-center gap-1 sm:gap-1.5 bg-gradient-to-r from-gold to-gold-dark hover:from-gold-dark hover:to-gold text-white px-2 sm:px-3.5 py-1.5 rounded-lg text-xs font-black shadow-lg transition-all animate-pulse"
             >
               <Swords className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-              <span className="hidden xs:inline">Preguntas</span>
+              <span className="hidden xs:inline">Iniciar Quiz</span>
               <span>⚔️</span>
             </button>
           )}
@@ -728,6 +762,23 @@ const MeetRoomPage = () => {
         {/* ---------------- FASE A: LECTURA DE PDF ---------------- */}
         {phase === 'reading' && (
           <div className="flex-1 flex flex-col h-full relative">
+            
+            {/* Banner destacado para el Líder si la reunión no tiene preguntas */}
+            {isHost && (meet?.questionsCount || 0) === 0 && (!meet?.questions || meet.questions.length === 0) && (
+              <div className="bg-amber-950/80 border-b border-amber-500/50 px-3 sm:px-4 py-2 text-amber-200 text-xs flex flex-wrap items-center justify-between gap-2 shrink-0 z-30 shadow-md">
+                <div className="flex items-center gap-2">
+                  <span className="text-base">⚠️</span>
+                  <span><strong>Atención Líder:</strong> Esta reunión aún no tiene preguntas bíblicas cargadas para el quiz en vivo.</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsManageQuestionsOpen(true)}
+                  className="px-3 py-1 bg-gradient-to-r from-gold to-gold-dark hover:from-gold-dark hover:to-gold text-slate-900 font-bold rounded-lg text-xs cursor-pointer shadow-md transition-all hover:scale-105"
+                >
+                  📥 Importar Preguntas Ahora
+                </button>
+              </div>
+            )}
             
             {/* Visor de Documento PDF */}
             <div 
@@ -870,8 +921,9 @@ const MeetRoomPage = () => {
         )}
 
         {/* ---------------- FASE B: QUIZ EN VIVO ---------------- */}
-        {phase === 'quiz' && currentQuestion && (
-          <div className="flex-1 flex flex-col justify-between p-3.5 sm:p-6 md:p-8 pb-20 sm:pb-8 max-w-4xl mx-auto w-full overflow-y-auto space-y-4">
+        {phase === 'quiz' && (
+          currentQuestion ? (
+            <div className="flex-1 flex flex-col justify-between p-3.5 sm:p-6 md:p-8 pb-20 sm:pb-8 max-w-4xl mx-auto w-full overflow-y-auto space-y-4">
             
             {/* 1. Barra de Progreso, Temporizador y Puntos */}
             <div className="bg-slate-900/80 border border-gold/30 p-3 sm:p-4 rounded-xl flex flex-wrap items-center justify-between gap-3 text-white">
@@ -1396,6 +1448,33 @@ const MeetRoomPage = () => {
             </div>
 
           </div>
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center p-6 text-center text-white space-y-4 max-w-md mx-auto">
+              <Loader className="w-10 h-10 animate-spin text-gold" />
+              <h3 className="font-[Cinzel] text-xl font-bold text-gold">Sincronizando Preguntas del Meet...</h3>
+              <p className="text-xs sm:text-sm text-gray-300">
+                La sala se está conectando a la ronda de preguntas bíblicas en vivo.
+              </p>
+              {isHost && (
+                <div className="flex flex-col sm:flex-row items-center gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => socket?.emit('meet:start-quiz', { meetId: id })}
+                    className="w-full sm:w-auto px-4 py-2 bg-gradient-to-r from-gold to-gold-dark hover:from-gold-dark hover:to-gold text-slate-900 font-bold rounded-xl text-xs cursor-pointer shadow-md"
+                  >
+                    Iniciar Ronda ⚔️
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsManageQuestionsOpen(true)}
+                    className="w-full sm:w-auto px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs cursor-pointer shadow-md"
+                  >
+                    Importar Preguntas 📥
+                  </button>
+                </div>
+              )}
+            </div>
+          )
         )}
 
         {/* ---------------- FASE C: PODIO FINAL & PREMIACIÓN ---------------- */}
@@ -1613,6 +1692,28 @@ const MeetRoomPage = () => {
           </button>
         ))}
       </div>
+
+      {/* Modal para Gestionar e Importar Preguntas en Vivo */}
+      {isManageQuestionsOpen && meet && (
+        <ManageQuestionsModal
+          isOpen={isManageQuestionsOpen}
+          meet={meet}
+          onClose={() => setIsManageQuestionsOpen(false)}
+          onSaved={(updatedQuestions) => {
+            setMeet(prev => prev ? {
+              ...prev,
+              questions: updatedQuestions,
+              questionsCount: updatedQuestions.length
+            } : prev);
+            if (socket) {
+              socket.emit('meet:update-questions', {
+                meetId: id,
+                questions: updatedQuestions
+              });
+            }
+          }}
+        />
+      )}
 
     </div>
   );
