@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { Menu, User, LogOut, Shield, Bell, CheckCircle, Swords, Flame, MessageSquare } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
@@ -38,21 +38,66 @@ const Navbar = () => {
     }
   };
 
+  const knownNotifIdsRef = useRef(new Set());
+  const initialLoadedRef = useRef(false);
+
   useEffect(() => {
-    if (user) {
-      const fetchNotifs = async () => {
-        try {
-          const data = await api.get('/notifications');
-          setNotifications(data || []);
-        } catch (err) {
-          console.error("Error cargando notificaciones", err);
+    if (!user) return;
+
+    const fetchNotifs = async () => {
+      try {
+        const data = await api.get('/notifications');
+        const notifList = data || [];
+
+        // Detectar si llegaron notificaciones nuevas no leídas desde la última comprobación
+        if (initialLoadedRef.current) {
+          const newUnread = notifList.filter(n => !n.is_read && !knownNotifIdsRef.current.has(n.id));
+          if (newUnread.length > 0) {
+            // Tomar la notificación más reciente y lanzar el banner flotante con sonido
+            const newest = newUnread[0];
+            window.dispatchEvent(
+              new CustomEvent('show-notification-banner', {
+                detail: {
+                  title: newest.title,
+                  message: newest.message,
+                  link: newest.link
+                }
+              })
+            );
+          }
         }
-      };
-      fetchNotifs();
-      
-      const interval = setInterval(fetchNotifs, 60000); // Check every minute
-      return () => clearInterval(interval);
-    }
+
+        // Registrar IDs conocidos
+        knownNotifIdsRef.current = new Set(notifList.map(n => n.id));
+        initialLoadedRef.current = true;
+        setNotifications(notifList);
+      } catch (err) {
+        console.error("Error cargando notificaciones", err);
+      }
+    };
+
+    fetchNotifs();
+
+    // Comprobación rápida cada 12 segundos para que las alertas lleguen al instante
+    const interval = setInterval(fetchNotifs, 12000);
+
+    // Comprobar de inmediato al volver a enfocar la ventana o cambiar pestaña
+    const handleFocus = () => fetchNotifs();
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') fetchNotifs();
+    };
+    const handlePushReceived = () => fetchNotifs();
+
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('remanente-push-received', handlePushReceived);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('remanente-push-received', handlePushReceived);
+    };
   }, [user]);
 
   if (!user) return null;
@@ -127,11 +172,13 @@ const Navbar = () => {
               <button 
                 onClick={() => { setNotifOpen(!notifOpen); setDropdownOpen(false); }}
                 className="relative p-2 rounded-md hover:bg-[var(--color-primary-light)] transition-colors"
+                title={unreadCount > 0 ? `Tienes ${unreadCount} notificaciones sin leer` : 'Notificaciones'}
               >
-                <Bell className="w-5 h-5 text-[var(--color-gold)]" />
+                <Bell className={`w-5 h-5 text-[var(--color-gold)] transition-transform ${unreadCount > 0 ? 'animate-bounce' : ''}`} />
                 {unreadCount > 0 && (
-                  <span className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
-                    {unreadCount}
+                  <span className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white shadow-md">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                    <span className="relative">{unreadCount}</span>
                   </span>
                 )}
               </button>

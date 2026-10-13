@@ -1,10 +1,12 @@
-import { Suspense, lazy } from 'react';
+import { Suspense, lazy, useEffect } from 'react';
 import { Routes, Route } from 'react-router';
 import { AuthProvider } from './contexts/AuthContext';
 import { ToastProvider } from './components/shared/Toast';
 import { ProtectedRoute, AdminRoute, SuperAdminRoute } from './components/layout/ProtectedRoute';
 import Navbar from './components/layout/Navbar';
 import LoadingSpinner from './components/shared/LoadingSpinner';
+import InAppNotificationBanner from './components/shared/InAppNotificationBanner';
+import { unlockAudio } from './utils/notificationSound';
 
 const LoginPage = lazy(() => import('./pages/LoginPage'));
 const RegisterPage = lazy(() => import('./pages/RegisterPage'));
@@ -41,9 +43,14 @@ const Layout = ({ children }) => (
 );
 
 const App = () => {
+  useEffect(() => {
+    unlockAudio();
+  }, []);
+
   return (
     <ToastProvider>
       <AuthProvider>
+        <InAppNotificationBanner />
         <Suspense fallback={<div className="flex items-center justify-center min-h-screen bg-[var(--color-parchment)]"><LoadingSpinner /></div>}>
           <Routes>
             <Route path="/login" element={<LoginPage />} />

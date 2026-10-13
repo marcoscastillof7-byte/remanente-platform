@@ -155,7 +155,7 @@ export async function removeUserSubscription(userId, endpoint, tableHint = null)
 /**
  * Enviar notificación push a todos los dispositivos registrados de un usuario
  */
-export async function sendPushNotification(userId, { title, body, icon = '/favicon.svg', url = '/', badge = '/favicon.svg', data = {} }) {
+export async function sendPushNotification(userId, { title, body, icon = '/icon-192.png', url = '/', badge = '/icon-192.png', data = {} }) {
     if (!vapidPublicKey || !vapidPrivateKey) {
         console.warn('[PushNotifier] No se pueden enviar push sin claves VAPID');
         return { success: false, reason: 'no_vapid_keys' };
@@ -169,8 +169,12 @@ export async function sendPushNotification(userId, { title, body, icon = '/favic
     const notificationPayload = JSON.stringify({
         title: title || '📖 Remanente Platform',
         body: body || 'Tienes una nueva actualización en Remanente.',
-        icon,
-        badge,
+        icon: icon || '/icon-192.png',
+        badge: badge || '/icon-192.png',
+        sound: '/notification.wav',
+        silent: false,
+        vibrate: [300, 100, 300, 100, 400],
+        requireInteraction: true,
         data: {
             url,
             ...data,
@@ -187,7 +191,14 @@ export async function sendPushNotification(userId, { title, body, icon = '/favic
 
             try {
                 await webpush.sendNotification(pushConfig, notificationPayload, {
-                    TTL: 60 * 60 * 24 // 24 horas
+                    TTL: 60 * 60 * 24, // 24 horas
+                    urgency: 'high',
+                    headers: {
+                        'Urgency': 'high',
+                        'Topic': 'remanente_alerts',
+                        'apns-priority': '10',
+                        'apns-push-type': 'alert'
+                    }
                 });
                 return { success: true, endpoint: sub.endpoint };
             } catch (err) {
@@ -210,7 +221,7 @@ export async function sendPushNotification(userId, { title, body, icon = '/favic
 /**
  * Enviar notificación a TODOS los usuarios suscritos (Broadcast)
  */
-export async function sendPushToAll({ title, body, icon = '/favicon.svg', url = '/' }) {
+export async function sendPushToAll({ title, body, icon = '/icon-192.png', url = '/' }) {
     const supabase = getDb();
     if (!supabase) return;
 

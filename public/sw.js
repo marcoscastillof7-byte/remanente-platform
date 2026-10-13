@@ -1,5 +1,4 @@
-// Service Worker para Remanente Platform - Web Push Notifications & Ultra-Fast Offline Caching
-const CACHE_NAME = 'remanente-cache-v2';
+const CACHE_NAME = 'remanente-cache-v3';
 
 // Archivos básicos de la app para precachear
 const PRECACHE_ASSETS = [
@@ -9,7 +8,9 @@ const PRECACHE_ASSETS = [
   '/icon-192.png',
   '/icon-512.png',
   '/apple-touch-icon.png',
-  '/manifest.json'
+  '/manifest.json',
+  '/notification.wav',
+  '/notification.mp3'
 ];
 
 self.addEventListener('install', (event) => {
@@ -128,17 +129,37 @@ self.addEventListener('push', (event) => {
     body: data.body,
     icon: data.icon || '/icon-192.png',
     badge: data.badge || '/icon-192.png',
-    vibrate: [200, 100, 200],
-    tag: 'remanente-notification-' + Date.now(),
+    sound: data.sound || '/notification.wav',
+    silent: false,
+    vibrate: data.vibrate || [300, 100, 300, 100, 400],
+    requireInteraction: true, // Se mantiene visible en pantalla hasta que el usuario interactúe
+    tag: 'remanente-' + Date.now(),
     renotify: true,
     data: {
       url: (data.data && data.data.url) || data.url || '/'
-    }
+    },
+    actions: [
+      { action: 'open', title: 'Ver ahora 📖' }
+    ]
   };
 
-  event.waitUntil(
-    self.registration.showNotification(data.title, notificationOptions)
-  );
+  const showNotificationPromise = self.registration.showNotification(data.title, notificationOptions);
+
+  // Avisar inmediatamente a todas las ventanas abiertas para que reproduzcan el sonido y muestren banner in-app
+  const broadcastPromise = self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+    for (const client of clientList) {
+      client.postMessage({
+        type: 'PUSH_NOTIFICATION_RECEIVED',
+        payload: {
+          title: data.title,
+          body: data.body,
+          url: notificationOptions.data.url
+        }
+      });
+    }
+  });
+
+  event.waitUntil(Promise.all([showNotificationPromise, broadcastPromise]));
 });
 
 // Manejar click en la notificación

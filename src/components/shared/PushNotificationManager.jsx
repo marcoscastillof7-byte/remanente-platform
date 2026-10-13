@@ -20,6 +20,7 @@ import {
   unsubscribeFromPushNotifications, 
   sendTestPush 
 } from '../../utils/pushManager';
+import { playNotificationSound } from '../../utils/notificationSound';
 
 const PushNotificationManager = ({ compact = false }) => {
   const [status, setStatus] = useState({
@@ -99,11 +100,12 @@ const PushNotificationManager = ({ compact = false }) => {
     setActionLoading(true);
     setMessage(null);
     try {
+      playNotificationSound();
       await sendTestPush();
       setTestSent(true);
       setMessage({ 
         type: 'success', 
-        text: '¡Notificación de prueba enviada! Revisa la pantalla o el centro de notificaciones de tu dispositivo.' 
+        text: '¡Notificación enviada con sonido! Revisa tu pantalla o centro de notificaciones.' 
       });
       setTimeout(() => setTestSent(false), 5000);
     } catch (err) {

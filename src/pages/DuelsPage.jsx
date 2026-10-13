@@ -22,7 +22,22 @@ const DuelsPage = () => {
 
   useEffect(() => {
     fetchData();
-  }, []);
+
+    // Auto-actualizar duelos cada 10 segundos si no hay un duelo en curso activo
+    const interval = setInterval(() => {
+      if (!activeDuel) fetchData();
+    }, 10000);
+
+    const handlePush = () => {
+      if (!activeDuel) fetchData();
+    };
+    window.addEventListener('remanente-push-received', handlePush);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('remanente-push-received', handlePush);
+    };
+  }, [activeDuel]);
 
   const fetchData = async () => {
     try {
