@@ -14,8 +14,8 @@ self.addEventListener('push', (event) => {
   let data = {
     title: '📖 Remanente Platform',
     body: 'Tienes una nueva notificación en la plataforma.',
-    icon: '/favicon.svg',
-    badge: '/favicon.svg',
+    icon: '/icon-192.png',
+    badge: '/icon-192.png',
     url: '/'
   };
 
@@ -30,8 +30,8 @@ self.addEventListener('push', (event) => {
 
   const notificationOptions = {
     body: data.body,
-    icon: data.icon || '/favicon.svg',
-    badge: data.badge || '/favicon.svg',
+    icon: data.icon || '/icon-192.png',
+    badge: data.badge || '/icon-192.png',
     vibrate: [200, 100, 200],
     tag: 'remanente-notification-' + Date.now(),
     renotify: true,

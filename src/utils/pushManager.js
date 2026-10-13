@@ -22,10 +22,16 @@ function urlBase64ToUint8Array(base64String) {
  * Verifica si el navegador actual soporta Web Push
  */
 export function isPushSupported() {
-  return typeof window !== 'undefined' &&
-    'serviceWorker' in navigator &&
-    'PushManager' in window &&
-    'Notification' in window;
+  if (typeof window === 'undefined') return false;
+  // Soporte directo estándar
+  if ('serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window) {
+    return true;
+  }
+  // En iOS, el dispositivo SÍ lo soporta a través de PWA en pantalla de inicio (iOS 16.4+)
+  if (isIOSDevice()) {
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -66,22 +72,56 @@ export async function registerServiceWorker() {
  * Obtiene el estado actual de las notificaciones push en este dispositivo
  */
 export async function getPushStatus() {
-  if (!isPushSupported()) {
+  const isIOS = isIOSDevice();
+  const isStandalone = isStandalonePWA();
+  const hasNativePush = typeof window !== 'undefined' &&
+    'serviceWorker' in navigator &&
+    'PushManager' in window &&
+    'Notification' in window;
+
+  // Si no tiene APIs nativas y NO es iOS, no está soportado
+  if (!hasNativePush && !isIOS) {
     return {
       supported: false,
       permission: 'unsupported',
       isSubscribed: false,
-      isIOS: isIOSDevice(),
-      isStandalone: isStandalonePWA()
+      isIOS: false,
+      isStandalone: false,
+      needsIOSInstall: false
     };
   }
 
-  const permission = Notification.permission;
+  // Si es iOS pero está abierto en Safari regular (no en pantalla de inicio)
+  if (isIOS && !isStandalone) {
+    return {
+      supported: true,
+      permission: 'default',
+      isSubscribed: false,
+      isIOS: true,
+      isStandalone: false,
+      needsIOSInstall: true
+    };
+  }
+
+  // Si es iOS en modo inicio pero no tiene APIs, requiere actualizar iOS
+  if (isIOS && isStandalone && !hasNativePush) {
+    return {
+      supported: false,
+      permission: 'unsupported',
+      isSubscribed: false,
+      isIOS: true,
+      isStandalone: true,
+      needsIOSInstall: false,
+      unsupportedReason: 'Tu iPhone requiere iOS 16.4 o superior para Web Push. Por favor actualiza tu versión de iOS en Ajustes > General > Actualización de software.'
+    };
+  }
+
+  const permission = (typeof window !== 'undefined' && 'Notification' in window) ? Notification.permission : 'default';
   let isSubscribed = false;
 
   try {
     const reg = await navigator.serviceWorker.getRegistration();
-    if (reg) {
+    if (reg && reg.pushManager) {
       const sub = await reg.pushManager.getSubscription();
       isSubscribed = !!sub;
     }
@@ -93,8 +133,9 @@ export async function getPushStatus() {
     supported: true,
     permission,
     isSubscribed,
-    isIOS: isIOSDevice(),
-    isStandalone: isStandalonePWA()
+    isIOS,
+    isStandalone,
+    needsIOSInstall: false
   };
 }
 
@@ -102,22 +143,26 @@ export async function getPushStatus() {
  * Suscribe este dispositivo a notificaciones push
  */
 export async function subscribeToPushNotifications() {
-  if (!isPushSupported()) {
-    throw new Error('Tu navegador o dispositivo no soporta notificaciones push web.');
+  const isIOS = isIOSDevice();
+  const isStandalone = isStandalonePWA();
+
+  if (isIOS && !isStandalone) {
+    throw new Error('En iPhone/iPad debes añadir Remanente a tu pantalla de inicio primero (Compartir ⬆️ -> Añadir a la pantalla de inicio). Luego abre la app desde tu pantalla de inicio.');
+  }
+
+  if (typeof window === 'undefined' || !('Notification' in window)) {
+    throw new Error('Tu navegador no tiene activas las notificaciones push. Asegúrate de tener iOS 16.4 o superior y abrir la app desde la pantalla de inicio.');
   }
 
   // 1. Solicitar permiso al usuario
   const permission = await Notification.requestPermission();
   if (permission !== 'granted') {
-    throw new Error('El permiso de notificaciones fue denegado.');
+    throw new Error('El permiso de notificaciones fue denegado en tu dispositivo. Puedes activarlo en los Ajustes de tu iPhone.');
   }
 
   // 2. Asegurar registro del Service Worker
-  let reg = await navigator.serviceWorker.ready;
-  if (!reg) {
-    reg = await registerServiceWorker();
-    reg = await navigator.serviceWorker.ready;
-  }
+  await registerServiceWorker();
+  const reg = await navigator.serviceWorker.ready;
 
   // 3. Obtener clave pública VAPID
   const { publicKey } = await api.get('/push/vapid-key', false);
