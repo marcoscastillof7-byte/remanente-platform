@@ -1,6 +1,7 @@
 import express from 'express';
 import { getDb } from '../db/database.js';
 import { auth } from '../middleware/auth.js';
+import { sendPushNotification } from '../utils/pushNotifier.js';
 
 const router = express.Router();
 router.use(auth);
@@ -138,13 +139,19 @@ router.post('/challenge', async (req, res) => {
             throw dError;
         }
         
-        // Notificar al oponente
+        // Notificar al oponente (in-app y push)
         await supabase.from('notifications').insert([{
             user_id: opponent_id,
             title: '¡Nuevo Reto!',
             message: `Has sido desafiado a un Duelo Bíblico. Apuesta: ${wager} pts.`,
             link: '/duels'
         }]);
+
+        sendPushNotification(opponent_id, {
+            title: '⚔️ ¡Nuevo Duelo Bíblico!',
+            body: `${cUser?.username || 'Un hermano'} te ha retado por ${wager} pts. ¿Aceptas el reto?`,
+            url: '/duels'
+        }).catch(err => console.error('[Push] Error reto:', err.message));
 
         if (req.app.get('io')) {
             req.app.get('io').emit('duels-update');
@@ -173,7 +180,7 @@ router.post('/:id/accept', async (req, res) => {
         }
 
         // Check puntos oponente
-        const { data: userRecord, error: uErr } = await supabase.from('users').select('points').eq('id', userId).single();
+        const { data: userRecord, error: uErr } = await supabase.from('users').select('username, points').eq('id', userId).single();
         if (uErr) throw uErr;
 
         const userPts = typeof userRecord.points === 'number' ? userRecord.points : 0;
@@ -188,6 +195,12 @@ router.post('/:id/accept', async (req, res) => {
 
         const { error: updErr } = await supabase.from('duels').update({ status: 'pending' }).eq('id', duelId);
         if (updErr) throw updErr;
+
+        sendPushNotification(duel.challenger_id, {
+            title: '⚔️ Reto Aceptado',
+            body: `${userRecord?.username || 'Tu oponente'} aceptó tu reto de ${duel.wager} pts. ¡Que comience el duelo!`,
+            url: '/duels'
+        }).catch(err => console.error('[Push] Error accept:', err.message));
 
         if (req.app.get('io')) {
             req.app.get('io').emit('duels-update');
@@ -232,6 +245,12 @@ router.post('/:id/reject', async (req, res) => {
             message: `Tu reto fue rechazado. Se te han devuelto tus ${wager} puntos a tu saldo.`,
             link: '/duels'
         }]);
+
+        sendPushNotification(duel.challenger_id, {
+            title: '🛡️ Reto Rechazado',
+            body: `Tu reto fue rechazado. Se te han devuelto tus ${wager} puntos a tu saldo.`,
+            url: '/duels'
+        }).catch(err => console.error('[Push] Error reject:', err.message));
 
         // Actualizar estado a rechazado
         const { error: updErr } = await supabase.from('duels').update({ status: 'rejected' }).eq('id', duelId);
@@ -462,7 +481,7 @@ router.post('/:id/submit', async (req, res) => {
                 }
             }
 
-            // Notificar al perdedor/ganador
+            // Notificar al perdedor/ganador (in-app y push)
             const notifUser = isChallenger ? duel.opponent_id : duel.challenger_id;
             const resultMsg = updates.winner_id === duel.challenger_id ? 'El Retador ganó.' : updates.winner_id === duel.opponent_id ? 'El Oponente ganó.' : 'Fue un empate.';
             await supabase.from('notifications').insert([{
@@ -471,8 +490,40 @@ router.post('/:id/submit', async (req, res) => {
                 message: `El duelo ha terminado. ${resultMsg} Apuesta: ${wager} pts.`,
                 link: '/duels'
             }]);
+
+            if (updates.winner_id) {
+                const loserId = updates.winner_id === duel.challenger_id ? duel.opponent_id : duel.challenger_id;
+                sendPushNotification(updates.winner_id, {
+                    title: '🏆 ¡Victoria en el Duelo!',
+                    body: `¡Felicidades! Has ganado el duelo bíblico y te llevas ${wager * 2} puntos.`,
+                    url: '/duels'
+                }).catch(err => console.error('[Push] Error winner:', err.message));
+
+                sendPushNotification(loserId, {
+                    title: '⚔️ Duelo Finalizado',
+                    body: `El duelo ha terminado. Tu oponente se llevó la victoria. ¡Prepárate para la revancha!`,
+                    url: '/duels'
+                }).catch(err => console.error('[Push] Error loser:', err.message));
+            } else {
+                sendPushNotification(duel.challenger_id, {
+                    title: '🤝 ¡Empate en el Duelo!',
+                    body: `El duelo concluyó en empate. Se han devuelto tus ${wager} puntos.`,
+                    url: '/duels'
+                }).catch(err => console.error('[Push] Error tie:', err.message));
+                sendPushNotification(duel.opponent_id, {
+                    title: '🤝 ¡Empate en el Duelo!',
+                    body: `El duelo concluyó en empate. Se han devuelto tus ${wager} puntos.`,
+                    url: '/duels'
+                }).catch(err => console.error('[Push] Error tie:', err.message));
+            }
         } else {
             updates.status = 'active'; // Si cualquiera juega primero
+            const nextUserId = isChallenger ? duel.opponent_id : duel.challenger_id;
+            sendPushNotification(nextUserId, {
+                title: '⏱️ ¡Es tu turno en el duelo!',
+                body: `Tu oponente ya completó su partida. Entra a responder ahora para defender tu apuesta.`,
+                url: '/duels'
+            }).catch(err => console.error('[Push] Error turn:', err.message));
         }
 
         const { error: uError } = await supabase.from('duels').update(updates).eq('id', duelId);

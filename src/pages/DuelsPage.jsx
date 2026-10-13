@@ -4,6 +4,7 @@ import { useAuth } from '../hooks/useAuth';
 import { Swords, User, Play, Clock, Trophy, Check, X, Loader, MessageSquare, Flame } from 'lucide-react';
 import DuelEngine from '../components/duels/DuelEngine';
 import Modal from '../components/shared/Modal';
+import PushNotificationManager from '../components/shared/PushNotificationManager';
 
 const DuelsPage = () => {
   const { user, refreshUser } = useAuth();
@@ -196,6 +197,9 @@ const DuelsPage = () => {
       {/* Columna Derecha: Tus Duelos */}
       <div className="md:col-span-2 space-y-8">
         
+        {/* Banner de Notificaciones Push (para activar en 1 clic) */}
+        <PushNotificationManager compact={true} />
+
         {/* Retos Rechazados (Puntos Devueltos) */}
         {rejectedDuels.length > 0 && (
           <div>

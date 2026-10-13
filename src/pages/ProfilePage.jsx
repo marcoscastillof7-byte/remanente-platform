@@ -3,6 +3,7 @@ import { useAuth } from '../hooks/useAuth';
 import { api } from '../utils/api';
 import { getRankInfo } from '../utils/ranks';
 import { User, Mail, Shield, Award, Calendar, Loader, Lock, TrendingUp } from 'lucide-react';
+import PushNotificationManager from '../components/shared/PushNotificationManager';
 
 const ProfilePage = () => {
   const { user, logout } = useAuth();
@@ -90,6 +91,10 @@ const ProfilePage = () => {
               <div className="text-3xl font-bold text-green-500">{unlockedCount}/{achievements.length}</div>
               <div className="text-sm text-gray-500 uppercase mt-1">Logros</div>
             </div>
+          </div>
+
+          <div className="mb-8">
+            <PushNotificationManager />
           </div>
 
           <h2 className="font-cinzel text-xl font-bold text-[var(--color-primary-dark)] mb-6 flex items-center border-b pb-2">

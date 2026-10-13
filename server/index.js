@@ -19,6 +19,7 @@ import historicalRoutes from './routes/historical.js';
 import meetingsRoutes from './routes/meetings.js';
 import superAdminRoutes from './routes/superadmin.js';
 import groupsRoutes from './routes/groups.js';
+import pushRoutes from './routes/push.js';
 
 const app = express();
 const httpServer = createServer(app);
@@ -59,6 +60,7 @@ router.use('/historical-details', historicalRoutes);
 router.use('/meetings', meetingsRoutes);
 router.use('/superadmin', superAdminRoutes);
 router.use('/groups', groupsRoutes);
+router.use('/push', pushRoutes);
 
 // Usar el enrutador para el prefijo /api
 app.use('/api', router);

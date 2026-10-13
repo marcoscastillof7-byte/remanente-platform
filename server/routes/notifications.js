@@ -17,6 +17,7 @@ router.get('/', async (req, res) => {
             .from('notifications')
             .select('*')
             .eq('user_id', req.user.id)
+            .neq('title', '__PUSH_SUB__')
             .order('created_at', { ascending: false });
 
         if (error) throw error;
@@ -52,7 +53,8 @@ router.put('/read-all', async (req, res) => {
         const { error } = await supabase
             .from('notifications')
             .delete()
-            .eq('user_id', req.user.id);
+            .eq('user_id', req.user.id)
+            .neq('title', '__PUSH_SUB__');
 
         if (error) throw error;
         res.json({ success: true });

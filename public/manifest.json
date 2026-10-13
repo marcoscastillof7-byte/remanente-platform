@@ -1,0 +1,19 @@
+{
+  "name": "Remanente Platform",
+  "short_name": "Remanente",
+  "description": "Plataforma de Estudio Bíblico y Duelos",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#1e3a5f",
+  "theme_color": "#1e3a5f",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
