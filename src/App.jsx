@@ -28,6 +28,8 @@ const VideoManager = lazy(() => import('./pages/admin/VideoManager'));
 const DuelsPage = lazy(() => import('./pages/DuelsPage'));
 const SurvivalPage = lazy(() => import('./pages/SurvivalPage'));
 const SuperDashboard = lazy(() => import('./pages/superadmin/SuperDashboard'));
+const MeetListPage = lazy(() => import('./pages/MeetListPage'));
+const MeetRoomPage = lazy(() => import('./pages/MeetRoomPage'));
 
 const Layout = ({ children }) => (
   <div className="flex flex-col min-h-screen bg-[var(--color-parchment)]">
@@ -64,6 +66,8 @@ const App = () => {
               <Route path="/flashcards/:chapterId" element={<Layout><FlashcardsPage /></Layout>} />
               <Route path="/custom-quiz" element={<Layout><CustomQuizPage /></Layout>} />
               <Route path="/leaderboard" element={<Layout><LeaderboardPage /></Layout>} />
+              <Route path="/meet" element={<Layout><MeetListPage /></Layout>} />
+              <Route path="/meet/:id" element={<Layout><MeetRoomPage /></Layout>} />
               <Route path="/profile" element={<Layout><ProfilePage /></Layout>} />
               <Route path="/duels" element={<Layout><DuelsPage /></Layout>} />
               <Route path="/survival" element={<Layout><SurvivalPage /></Layout>} />

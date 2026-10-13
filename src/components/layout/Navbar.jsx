@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { Menu, User, LogOut, Shield, Bell, CheckCircle, Swords, Flame, MessageSquare } from 'lucide-react';
+import { Menu, User, LogOut, Shield, Bell, CheckCircle, Swords, Flame, MessageSquare, Users } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { api } from '../../utils/api';
 import { getRankInfo } from '../../utils/ranks';
@@ -141,6 +141,9 @@ const Navbar = () => {
           
           <div className="hidden md:flex items-center space-x-6">
             <Link to="/" className="hover:text-[var(--color-gold)] transition-colors">Inicio</Link>
+            <Link to="/meet" className="hover:text-[var(--color-gold)] transition-colors flex items-center relative">
+              <Users className="w-4 h-4 mr-1"/> Meet
+            </Link>
             <Link to="/duels" className="hover:text-[var(--color-gold)] transition-colors flex items-center relative">
               <Swords className="w-4 h-4 mr-1"/> Duelos
               {hasPendingDuel && (
@@ -249,8 +252,11 @@ const Navbar = () => {
       
       {menuOpen && (
         <div className="md:hidden bg-[var(--color-primary-dark)] px-2 pt-2 pb-3 space-y-1">
-          <Link to="/" className="block px-3 py-2 rounded-md text-base hover:bg-[var(--color-primary-light)] text-white">Inicio</Link>
-          <Link to="/duels" className="block px-3 py-2 rounded-md text-base hover:bg-[var(--color-primary-light)] text-white flex items-center justify-between">
+          <Link to="/" onClick={() => setMenuOpen(false)} className="block px-3 py-2 rounded-md text-base hover:bg-[var(--color-primary-light)] text-white">Inicio</Link>
+          <Link to="/meet" onClick={() => setMenuOpen(false)} className="block px-3 py-2 rounded-md text-base hover:bg-[var(--color-primary-light)] text-white flex items-center">
+            <Users className="w-4 h-4 mr-2"/> Meet en Vivo
+          </Link>
+          <Link to="/duels" onClick={() => setMenuOpen(false)} className="block px-3 py-2 rounded-md text-base hover:bg-[var(--color-primary-light)] text-white flex items-center justify-between">
             <div className="flex items-center"><Swords className="w-4 h-4 mr-2"/> Duelos Bíblicos</div>
             {hasPendingDuel && <span className="flex h-3 w-3 rounded-full bg-red-500"></span>}
           </Link>

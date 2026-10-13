@@ -20,6 +20,7 @@ import meetingsRoutes from './routes/meetings.js';
 import superAdminRoutes from './routes/superadmin.js';
 import groupsRoutes from './routes/groups.js';
 import pushRoutes from './routes/push.js';
+import { setupMeetSocket } from './socket/meetSocket.js';
 
 const app = express();
 app.disable('x-powered-by');
@@ -59,6 +60,7 @@ router.use('/duels', duelsRoutes);
 router.use('/survival', survivalRoutes);
 router.use('/historical-details', historicalRoutes);
 router.use('/meetings', meetingsRoutes);
+router.use('/meets', meetingsRoutes);
 router.use('/superadmin', superAdminRoutes);
 router.use('/groups', groupsRoutes);
 router.use('/push', pushRoutes);
@@ -71,6 +73,9 @@ app.use('/.netlify/functions/api', router);
 
 // Fallback universal por si serverless-http recorta la ruta base automáticamente
 app.use('/', router);
+
+// Configuración de WebSockets en tiempo real para Meets
+setupMeetSocket(io);
 
 io.on('connection', (socket) => {
     console.log('User connected via Socket.io');
