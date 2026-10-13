@@ -157,6 +157,18 @@ const MeetListPage = () => {
     }
   };
 
+  const handleClearPastMeets = async () => {
+    if (!confirm('¿Estás seguro de que deseas borrar todas las reuniones del historial de finalizadas? Esta acción eliminará permanentemente las reuniones pasadas.')) return;
+    try {
+      await api.del('/meetings/clear-past');
+      await fetchMeets(false);
+      alert('Se ha borrado el historial de reuniones pasadas con éxito.');
+    } catch (err) {
+      console.error(err);
+      alert('Error borrando el historial de reuniones.');
+    }
+  };
+
   const meetsList = Array.isArray(meets) ? meets : [];
   const liveMeets = meetsList.filter(m => m.status === 'live');
   const scheduledMeets = meetsList.filter(m => m.status === 'scheduled');
@@ -421,16 +433,40 @@ const MeetListPage = () => {
           {/* SECCIÓN 3: MEETS FINALIZADOS */}
           {pastMeets.length > 0 && (
             <div className="space-y-4 pt-4 border-t border-gray-200">
-              <h2 className="text-lg font-bold font-[Cinzel] text-gray-700">
-                Historial de Meets Finalizados ({pastMeets.length})
-              </h2>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 className="text-lg font-bold font-[Cinzel] text-gray-700">
+                  Historial de Meets Finalizados ({pastMeets.length})
+                </h2>
+
+                {isLeaderOrAdmin && (
+                  <button
+                    onClick={handleClearPastMeets}
+                    className="inline-flex items-center gap-1.5 text-xs text-red-600 hover:text-red-700 font-bold bg-red-50 hover:bg-red-100 border border-red-200 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+                    title="Borrar todas las reuniones finalizadas del historial"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Borrar Historial</span>
+                  </button>
+                )}
+              </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                {pastMeets.slice(0, 6).map(meet => (
-                  <div key={meet.id} className="bg-gray-50 border border-gray-200 p-4 rounded-xl text-xs space-y-1.5">
+                {pastMeets.map(meet => (
+                  <div key={meet.id} className="bg-gray-50 border border-gray-200 p-4 rounded-xl text-xs space-y-1.5 relative group">
                     <div className="flex justify-between items-center text-gray-400">
                       <span>{new Date(meet.scheduled_for).toLocaleDateString()}</span>
-                      <span className="bg-gray-200 text-gray-600 px-2 py-0.5 rounded text-[10px] font-bold">Finalizado</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="bg-gray-200 text-gray-600 px-2 py-0.5 rounded text-[10px] font-bold">Finalizado</span>
+                        {isLeaderOrAdmin && (
+                          <button
+                            onClick={() => handleDeleteMeet(meet.id)}
+                            className="text-gray-400 hover:text-red-600 p-0.5 transition-colors"
+                            title="Eliminar esta reunión del historial"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
                     </div>
                     <h4 className="font-bold text-gray-800 text-sm truncate font-[Cinzel]">{meet.title}</h4>
                     <p className="text-gray-500 truncate">{meet.bookName || 'Estudio general'}</p>

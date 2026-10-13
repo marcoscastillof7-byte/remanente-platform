@@ -564,6 +564,36 @@ router.put('/:id/status', async (req, res) => {
 });
 
 /**
+ * DELETE /api/meetings/clear-past
+ * Borrar todo el historial de reuniones pasadas/finalizadas (Solo Admins y Líderes)
+ */
+router.delete('/clear-past', async (req, res) => {
+    try {
+        if (!isLeaderOrAdmin(req.user)) {
+            return res.status(403).json({ error: 'Solo administradores o líderes pueden borrar el historial de reuniones.' });
+        }
+
+        const supabase = getDb();
+        const { data, error } = await supabase
+            .from('meetings')
+            .delete()
+            .in('status', ['ended', 'finished', 'closed'])
+            .select('id, title');
+
+        if (error) throw error;
+
+        if (req.app.get('io')) {
+            req.app.get('io').emit('meet:updated');
+        }
+
+        res.json({ success: true, count: data?.length || 0 });
+    } catch (error) {
+        console.error('[Meetings] Error borrando historial:', error);
+        res.status(500).json({ error: 'Error interno al borrar el historial de reuniones' });
+    }
+});
+
+/**
  * DELETE /api/meetings/:id
  * Eliminar un Meet
  */
