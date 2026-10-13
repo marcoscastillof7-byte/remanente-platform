@@ -43,9 +43,9 @@ async function fetchWithAuth(endpoint, options = {}, useCache = false) {
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  // Timeout preventivo de 12 segundos para conexiones móviles lentas
+  // Timeout preventivo de 40 segundos para conexiones móviles lentas y operaciones de red
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 12000);
+  const timeoutId = setTimeout(() => controller.abort(), 40000);
 
   const executeRequest = (async () => {
     try {
@@ -59,6 +59,10 @@ async function fetchWithAuth(endpoint, options = {}, useCache = false) {
         localStorage.removeItem('token');
         window.location.href = '/login';
         throw new Error('Unauthorized');
+      }
+
+      if (response.status === 413) {
+        throw new Error('El archivo o información enviada es demasiado pesada para el servidor.');
       }
 
       if (!response.ok) {

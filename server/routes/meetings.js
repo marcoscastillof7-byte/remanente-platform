@@ -183,6 +183,99 @@ Devuelve ÚNICAMENTE un Array JSON sin texto extra:
 });
 
 /**
+ * POST /api/meetings/signed-upload-url
+ * Genera una URL firmada de Supabase Storage para subir el PDF directamente a la nube
+ */
+router.post('/signed-upload-url', async (req, res) => {
+    try {
+        if (!isLeaderOrAdmin(req.user)) {
+            return res.status(403).json({ error: 'Acceso denegado.' });
+        }
+
+        const { fileName } = req.body;
+        const supabase = getDb();
+
+        const cleanName = (fileName || 'document.pdf')
+            .replace(/[^a-zA-Z0-9._-]/g, '_')
+            .toLowerCase();
+        const filePath = `pdf_${Date.now()}_${Math.random().toString(36).substring(7)}_${cleanName}`;
+
+        const { data, error } = await supabase.storage
+            .from('meet-pdfs')
+            .createSignedUploadUrl(filePath);
+
+        if (error) {
+            console.error('[Meetings] Error creando signed URL:', error);
+            return res.status(500).json({ error: 'Error al autorizar subida a la nube' });
+        }
+
+        const { data: publicUrlData } = supabase.storage
+            .from('meet-pdfs')
+            .getPublicUrl(filePath);
+
+        res.json({
+            signedUrl: data.signedUrl,
+            path: data.path,
+            token: data.token,
+            publicUrl: publicUrlData.publicUrl
+        });
+    } catch (err) {
+        console.error('[Meetings] Error en signed-upload-url:', err);
+        res.status(500).json({ error: 'Error interno en la preparación de subida' });
+    }
+});
+
+/**
+ * POST /api/meetings/upload-pdf
+ * Sube un archivo PDF directamente a Supabase Storage con Service Role (Respaldo)
+ */
+router.post('/upload-pdf', async (req, res) => {
+    try {
+        if (!isLeaderOrAdmin(req.user)) {
+            return res.status(403).json({ error: 'Acceso denegado.' });
+        }
+
+        const { fileName, fileBase64 } = req.body;
+        if (!fileBase64) {
+            return res.status(400).json({ error: 'No se recibió contenido del archivo.' });
+        }
+
+        const supabase = getDb();
+        const cleanName = (fileName || 'document.pdf')
+            .replace(/[^a-zA-Z0-9._-]/g, '_')
+            .toLowerCase();
+        const filePath = `pdf_${Date.now()}_${Math.random().toString(36).substring(7)}_${cleanName}`;
+
+        const base64Data = fileBase64.replace(/^data:.*?;base64,/, '');
+        const buffer = Buffer.from(base64Data, 'base64');
+
+        const { data, error } = await supabase.storage
+            .from('meet-pdfs')
+            .upload(filePath, buffer, {
+                contentType: 'application/pdf',
+                upsert: true
+            });
+
+        if (error) {
+            console.error('[Meetings] Error subiendo PDF a Supabase Storage:', error);
+            return res.status(500).json({ error: 'Error al almacenar el archivo en la nube.' });
+        }
+
+        const { data: publicUrlData } = supabase.storage
+            .from('meet-pdfs')
+            .getPublicUrl(filePath);
+
+        res.json({
+            publicUrl: publicUrlData.publicUrl,
+            path: filePath
+        });
+    } catch (err) {
+        console.error('[Meetings] Error procesando subida de PDF:', err);
+        res.status(500).json({ error: 'Error al procesar el archivo PDF.' });
+    }
+});
+
+/**
  * POST /api/meetings
  * Crear un nuevo Meet (Solo Administradores y Líderes)
  */
@@ -208,6 +301,26 @@ router.post('/', async (req, res) => {
             return res.status(400).json({ error: 'El título del Meet es obligatorio.' });
         }
 
+        let finalPdfUrl = pdf_url || '';
+
+        // Si por alguna razón llegó como base64 data URL, subir a Supabase Storage
+        if (finalPdfUrl && finalPdfUrl.startsWith('data:')) {
+            try {
+                const base64Data = finalPdfUrl.replace(/^data:.*?;base64,/, '');
+                const buffer = Buffer.from(base64Data, 'base64');
+                const filePath = `pdf_${Date.now()}_${Math.random().toString(36).substring(7)}_upload.pdf`;
+                const { error: upErr } = await supabase.storage
+                    .from('meet-pdfs')
+                    .upload(filePath, buffer, { contentType: 'application/pdf', upsert: true });
+
+                if (!upErr) {
+                    finalPdfUrl = supabase.storage.from('meet-pdfs').getPublicUrl(filePath).data.publicUrl;
+                }
+            } catch (convErr) {
+                console.error('[Meetings] Error procesando base64 en inserción:', convErr);
+            }
+        }
+
         const room_name = `meet_${Date.now()}_${Math.random().toString(36).substring(7)}`;
 
         const metaPayload = JSON.stringify({
@@ -215,7 +328,7 @@ router.post('/', async (req, res) => {
             book_id: book_id || null,
             book_name: book_name || '',
             chapters_selected: chapters_selected || [],
-            pdf_url: pdf_url || '',
+            pdf_url: finalPdfUrl,
             questions: Array.isArray(questions) ? questions : []
         });
 

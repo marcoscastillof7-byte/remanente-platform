@@ -27,6 +27,9 @@ const CreateMeetModal = ({ isOpen, onClose, onCreated }) => {
   const [pdfMode, setPdfMode] = useState('url'); // 'url' | 'upload'
   const [pdfUrl, setPdfUrl] = useState('');
   const [pdfFileName, setPdfFileName] = useState('');
+  const [pdfUploading, setPdfUploading] = useState(false);
+  const [pdfUploadError, setPdfUploadError] = useState('');
+  const [pdfUploadSuccess, setPdfUploadSuccess] = useState(false);
   
   // Preguntas e Importador Masivo (Método de Quizzes Oficial)
   const [questions, setQuestions] = useState([]);
@@ -86,22 +89,83 @@ const CreateMeetModal = ({ isOpen, onClose, onCreated }) => {
     );
   };
 
-  // Manejo de archivo PDF
-  const handlePdfFileUpload = (e) => {
+  // Manejo de archivo PDF con subida directa a la nube segura (Supabase Storage)
+  const handlePdfFileUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    if (file.type !== 'application/pdf') {
-      alert('Por favor selecciona un archivo PDF válido.');
+    if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+      alert('Por favor selecciona un archivo PDF válido (.pdf).');
+      return;
+    }
+
+    if (file.size > 50 * 1024 * 1024) {
+      alert('El archivo es demasiado grande. El límite máximo es de 50MB.');
       return;
     }
 
     setPdfFileName(file.name);
-    const reader = new FileReader();
-    reader.onload = () => {
-      setPdfUrl(reader.result);
-    };
-    reader.readAsDataURL(file);
+    setPdfUploading(true);
+    setPdfUploadError('');
+    setPdfUploadSuccess(false);
+
+    try {
+      // 1. Solicitar URL firmada de subida directa a Supabase Storage (evita límites y caídas)
+      const res = await api.post('/meetings/signed-upload-url', {
+        fileName: file.name
+      });
+
+      if (res && res.signedUrl) {
+        // Subida directa por PUT a la nube de Supabase
+        const uploadRes = await fetch(res.signedUrl, {
+          method: 'PUT',
+          body: file,
+          headers: {
+            'Content-Type': 'application/pdf'
+          }
+        });
+
+        if (uploadRes.ok) {
+          setPdfUrl(res.publicUrl);
+          setPdfUploadSuccess(true);
+          return;
+        }
+      }
+
+      // 2. Si la subida directa falló, intentar fallback a través de upload-pdf
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const fallbackRes = await api.post('/meetings/upload-pdf', {
+            fileName: file.name,
+            fileBase64: reader.result
+          });
+
+          if (fallbackRes && fallbackRes.publicUrl) {
+            setPdfUrl(fallbackRes.publicUrl);
+            setPdfUploadSuccess(true);
+          } else {
+            throw new Error('No se recibió la URL del documento');
+          }
+        } catch (fbErr) {
+          console.error('Error en fallback upload:', fbErr);
+          setPdfUploadError('No se pudo subir el archivo a la nube. Intenta pegando un enlace web directo.');
+        }
+      };
+      reader.readAsDataURL(file);
+
+    } catch (err) {
+      console.error('Error subiendo PDF a la nube:', err);
+      // Fallback final: leer como data URL
+      const reader = new FileReader();
+      reader.onload = () => {
+        setPdfUrl(reader.result);
+        setPdfUploadSuccess(true);
+      };
+      reader.readAsDataURL(file);
+    } finally {
+      setPdfUploading(false);
+    }
   };
 
   // Parseador de preguntas idéntico al método de quizzes de la plataforma principal
@@ -304,6 +368,11 @@ VERSICULO: 1 Samuel 17:49`;
   const handleSubmit = async (startImmediately = false) => {
     if (!title.trim()) {
       setError('Por favor escribe un título para el Meet.');
+      return;
+    }
+
+    if (pdfUploading) {
+      setError('Por favor espera a que termine de subirse el archivo PDF a la nube.');
       return;
     }
 
@@ -521,19 +590,57 @@ VERSICULO: 1 Samuel 17:49`;
               </div>
             ) : (
               <div>
-                <label className="border-2 border-dashed border-gray-300 hover:border-gold rounded-xl p-4 flex flex-col items-center justify-center cursor-pointer transition-colors bg-gray-50">
-                  <Upload className="w-8 h-8 text-gold mb-1" />
-                  <span className="text-xs font-bold text-gray-700">
-                    {pdfFileName || 'Haz clic para seleccionar un archivo PDF'}
-                  </span>
-                  <span className="text-[10px] text-gray-400 mt-0.5">Formato .PDF (Máx 25MB)</span>
-                  <input
-                    type="file"
-                    accept="application/pdf"
-                    onChange={handlePdfFileUpload}
-                    className="sr-only"
-                  />
-                </label>
+                {pdfUploading ? (
+                  <div className="border-2 border-dashed border-gold rounded-xl p-6 flex flex-col items-center justify-center bg-gold/5 space-y-2">
+                    <Loader className="w-8 h-8 text-gold animate-spin" />
+                    <span className="text-xs font-bold text-gray-800">
+                      Subiendo "{pdfFileName}" a la nube segura...
+                    </span>
+                    <span className="text-[11px] text-gray-500">
+                      Por favor espera un momento mientras se optimiza el archivo.
+                    </span>
+                  </div>
+                ) : pdfUploadSuccess && pdfUrl ? (
+                  <div className="border border-green-300 rounded-xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3 bg-green-50/70">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center text-green-600 shrink-0">
+                        <CheckCircle className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-green-900 truncate max-w-xs">{pdfFileName}</h4>
+                        <p className="text-[11px] text-green-700">✓ Documento PDF subido exitosamente a la nube</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => { setPdfUrl(''); setPdfFileName(''); setPdfUploadSuccess(false); }}
+                      className="text-xs text-red-600 hover:text-red-700 hover:underline font-semibold shrink-0 cursor-pointer"
+                    >
+                      Cambiar Archivo
+                    </button>
+                  </div>
+                ) : (
+                  <label className="border-2 border-dashed border-gray-300 hover:border-gold rounded-xl p-5 flex flex-col items-center justify-center cursor-pointer transition-colors bg-gray-50 hover:bg-gold/5 group">
+                    <Upload className="w-8 h-8 text-gold mb-1 group-hover:scale-110 transition-transform" />
+                    <span className="text-xs font-bold text-gray-700">
+                      {pdfFileName || 'Haz clic para seleccionar tu archivo PDF'}
+                    </span>
+                    <span className="text-[10px] text-gray-400 mt-0.5">Formato .PDF (Máx 50MB)</span>
+                    <input
+                      type="file"
+                      accept="application/pdf,.pdf"
+                      onChange={handlePdfFileUpload}
+                      className="sr-only"
+                    />
+                  </label>
+                )}
+
+                {pdfUploadError && (
+                  <div className="mt-2 text-xs text-red-700 bg-red-50 border border-red-200 p-2.5 rounded-lg flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+                    <span>{pdfUploadError}</span>
+                  </div>
+                )}
               </div>
             )}
           </div>
