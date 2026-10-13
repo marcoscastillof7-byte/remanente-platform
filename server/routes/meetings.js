@@ -355,6 +355,39 @@ router.post('/:id/start', async (req, res) => {
 });
 
 /**
+ * POST /api/meetings/close-all
+ * Cerrar todas las reuniones activas o programadas (Admin / Líder)
+ */
+router.post('/close-all', async (req, res) => {
+    try {
+        if (!isLeaderOrAdmin(req.user)) {
+            return res.status(403).json({ error: 'Solo administradores o líderes pueden cerrar las reuniones.' });
+        }
+
+        const supabase = getDb();
+        const { data, error } = await supabase
+            .from('meetings')
+            .update({ status: 'ended' })
+            .neq('status', 'ended')
+            .select('id, title, status');
+
+        if (error) throw error;
+
+        if (req.app.get('io')) {
+            const io = req.app.get('io');
+            io.emit('meet:phase-changed', { phase: 'finished' });
+            io.emit('meet:session-ended', { message: 'Todas las reuniones han sido finalizadas.' });
+            io.emit('meet:updated');
+        }
+
+        res.json({ success: true, count: data?.length || 0 });
+    } catch (error) {
+        console.error('[Meetings] Error cerrando todas las reuniones:', error);
+        res.status(500).json({ error: 'Error interno al cerrar las reuniones' });
+    }
+});
+
+/**
  * PUT /api/meetings/:id/status
  * Actualizar estado (scheduled, live, ended)
  */
@@ -375,6 +408,16 @@ router.put('/:id/status', async (req, res) => {
             .single();
 
         if (error) throw error;
+
+        if (req.app.get('io')) {
+            const io = req.app.get('io');
+            if (status === 'ended') {
+                io.to(`meet:${req.params.id}`).emit('meet:phase-changed', { phase: 'finished' });
+                io.to(`meet:${req.params.id}`).emit('meet:session-ended', { message: 'La reunión ha sido finalizada por el líder.' });
+            }
+            io.emit('meet:updated');
+        }
+
         res.json(data);
     } catch (error) {
         console.error(error);

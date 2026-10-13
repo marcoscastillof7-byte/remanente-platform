@@ -15,7 +15,8 @@ import {
   Loader,
   ArrowRight,
   ShieldCheck,
-  Award
+  Award,
+  XCircle
 } from 'lucide-react';
 import { api } from '../utils/api';
 import { useAuth } from '../hooks/useAuth';
@@ -74,6 +75,29 @@ const MeetListPage = () => {
     }
   };
 
+  const handleEndMeet = async (meetId) => {
+    if (!confirm('¿Deseas finalizar y cerrar esta reunión en vivo para todos los miembros?')) return;
+    try {
+      await api.put(`/meetings/${meetId}/status`, { status: 'ended' });
+      fetchMeets();
+    } catch (err) {
+      console.error(err);
+      alert('Error cerrando el Meet.');
+    }
+  };
+
+  const handleCloseAllMeets = async () => {
+    if (!confirm('¿Estás seguro de cerrar TODAS las reuniones activas y programadas? Pasarán al historial de finalizadas.')) return;
+    try {
+      await api.post('/meetings/close-all', {});
+      fetchMeets();
+      alert('Todas las reuniones han sido finalizadas con éxito.');
+    } catch (err) {
+      console.error(err);
+      alert('Error cerrando todas las reuniones.');
+    }
+  };
+
   const meetsList = Array.isArray(meets) ? meets : [];
   const liveMeets = meetsList.filter(m => m.status === 'live');
   const scheduledMeets = meetsList.filter(m => m.status === 'scheduled');
@@ -100,13 +124,26 @@ const MeetListPage = () => {
         </div>
 
         {isLeaderOrAdmin && (
-          <button
-            onClick={() => setIsCreateOpen(true)}
-            className="inline-flex items-center gap-2 bg-gradient-to-r from-gold to-gold-dark hover:from-gold-dark hover:to-gold text-white px-5 py-3 rounded-xl font-bold text-sm shadow-lg hover:shadow-gold/20 transition-all transform hover:-translate-y-0.5 shrink-0"
-          >
-            <Plus className="w-5 h-5" />
-            <span>+ Crear Nuevo Meet</span>
-          </button>
+          <div className="flex flex-wrap items-center gap-2.5">
+            <button
+              onClick={() => setIsCreateOpen(true)}
+              className="inline-flex items-center gap-2 bg-gradient-to-r from-gold to-gold-dark hover:from-gold-dark hover:to-gold text-white px-5 py-3 rounded-xl font-bold text-sm shadow-lg hover:shadow-gold/20 transition-all transform hover:-translate-y-0.5 shrink-0 cursor-pointer"
+            >
+              <Plus className="w-5 h-5" />
+              <span>+ Crear Nuevo Meet</span>
+            </button>
+
+            {(liveMeets.length > 0 || scheduledMeets.length > 0) && (
+              <button
+                onClick={handleCloseAllMeets}
+                className="inline-flex items-center gap-1.5 bg-red-600/80 hover:bg-red-600 text-white px-4 py-3 rounded-xl font-bold text-xs shadow-md transition-all shrink-0 cursor-pointer hover:scale-105"
+                title="Cerrar todas las reuniones activas y pasarlas al historial"
+              >
+                <XCircle className="w-4 h-4" />
+                <span>Cerrar Todas</span>
+              </button>
+            )}
+          </div>
         )}
       </div>
 
@@ -165,13 +202,26 @@ const MeetListPage = () => {
                       </div>
                     </div>
 
-                    <button
-                      onClick={() => navigate(`/meet/${meet.id}`)}
-                      className="w-full md:w-auto inline-flex items-center justify-center gap-2 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white px-8 py-4 rounded-xl font-black text-base shadow-lg shadow-red-600/30 hover:scale-105 transition-all shrink-0 cursor-pointer"
-                    >
-                      <Play className="w-5 h-5 fill-current" />
-                      <span>Conectar y Entrar al Room 📖</span>
-                    </button>
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full md:w-auto shrink-0">
+                      <button
+                        onClick={() => navigate(`/meet/${meet.id}`)}
+                        className="inline-flex items-center justify-center gap-2 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white px-7 py-3.5 rounded-xl font-black text-sm md:text-base shadow-lg shadow-red-600/30 hover:scale-105 transition-all shrink-0 cursor-pointer"
+                      >
+                        <Play className="w-5 h-5 fill-current" />
+                        <span>Conectar y Entrar al Room 📖</span>
+                      </button>
+
+                      {isLeaderOrAdmin && (
+                        <button
+                          onClick={() => handleEndMeet(meet.id)}
+                          className="inline-flex items-center justify-center gap-1.5 bg-red-100 hover:bg-red-200 text-red-800 border border-red-300 px-4 py-3.5 rounded-xl font-bold text-xs md:text-sm transition-all cursor-pointer"
+                          title="Finalizar y cerrar esta sesión en vivo para todos los miembros"
+                        >
+                          <XCircle className="w-4 h-4 text-red-600" />
+                          <span>Cerrar Meet</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>

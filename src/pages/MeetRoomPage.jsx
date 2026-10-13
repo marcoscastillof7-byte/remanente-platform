@@ -214,6 +214,17 @@ const MeetRoomPage = () => {
       playNotificationSound();
     });
 
+    s.on('meet:session-ended', ({ message, podium }) => {
+      if (podium && Array.isArray(podium) && podium.length > 0) {
+        setFinalPodium(podium);
+      }
+      setPhase('finished');
+      playNotificationSound();
+      if (message) {
+        alert(`ℹ️ ${message}`);
+      }
+    });
+
     s.on('meet:reaction-received', ({ reaction, id: reactionId }) => {
       const emojiObj = REACTION_EMOJIS.find(r => r.id === reaction) || { icon: '✨' };
       setFloatingReactions(prev => [
@@ -339,6 +350,19 @@ const MeetRoomPage = () => {
     }
   };
 
+  // Líder finaliza / cierra la reunión en vivo
+  const handleEndMeeting = async () => {
+    if (!confirm('¿Deseas finalizar y cerrar esta reunión en vivo para todos los miembros? Se registrarán las puntuaciones acumuladas y se mostrará el podio final.')) return;
+    if (socket) {
+      socket.emit('meet:end-session', { meetId: id });
+    }
+    try {
+      await api.put(`/meetings/${id}/status`, { status: 'ended' });
+    } catch (e) {
+      console.error('Error cerrando meet:', e);
+    }
+  };
+
   if (loading || !meet) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-3">
@@ -429,6 +453,18 @@ const MeetRoomPage = () => {
             >
               <Swords className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               <span>Preguntas ⚔️</span>
+            </button>
+          )}
+
+          {/* Botón Maestro del Líder para Cerrar / Finalizar Reunión en Vivo */}
+          {isHost && phase !== 'finished' && (
+            <button
+              onClick={handleEndMeeting}
+              className="inline-flex items-center gap-1.5 bg-red-600/90 hover:bg-red-600 text-white px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-md cursor-pointer hover:scale-105"
+              title="Finalizar y cerrar la sesión en vivo para todos los participantes"
+            >
+              <XCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
+              <span className="hidden xs:inline">Cerrar Meet</span>
             </button>
           )}
         </div>

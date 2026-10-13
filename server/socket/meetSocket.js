@@ -343,6 +343,48 @@ export function setupMeetSocket(io) {
             }
         });
 
+        // 9.1. FINALIZAR / CERRAR REUNIÓN EN VIVO MANUALMENTE (Líder / Admin)
+        socket.on('meet:end-session', async ({ meetId }) => {
+            const room = activeRooms.get(String(meetId));
+            if (!room) return;
+            const isAuthorized = currentUser && (
+                String(currentUser.id) === String(room.hostId) ||
+                ['admin', 'superadmin', 'lider', 'leader'].includes((currentUser.role || '').toLowerCase())
+            );
+
+            if (isAuthorized) {
+                room.status = 'ended';
+                room.phase = 'finished';
+
+                const finalPodium = Array.from(room.participants.values())
+                    .sort((a, b) => b.score - a.score);
+
+                io.to(`meet:${meetId}`).emit('meet:phase-changed', { phase: 'finished' });
+                io.to(`meet:${meetId}`).emit('meet:session-ended', { 
+                    message: 'La reunión ha sido finalizada por el líder.',
+                    podium: finalPodium 
+                });
+                io.to(`meet:${meetId}`).emit('meet:final-podium', { podium: finalPodium });
+
+                try {
+                    const supabase = getDb();
+                    for (let p of finalPodium) {
+                        if (p.score > 0) {
+                            const { data: u } = await supabase.from('users').select('points').eq('id', p.id).single();
+                            const currentPts = (u && u.points) ? u.points : 0;
+                            await supabase.from('users').update({ points: currentPts + p.score }).eq('id', p.id);
+                        }
+                    }
+                    await supabase.from('meetings').update({ status: 'ended' }).eq('id', meetId);
+                    activeRooms.delete(String(meetId));
+                    io.emit('leaderboard-update');
+                    io.emit('meet:updated');
+                } catch (dbErr) {
+                    console.error('[MeetSocket] Error finalizando reunión:', dbErr);
+                }
+            }
+        });
+
         // 10. REACCIONES BÍBLICAS EN VIVO (Amén, Fuego, Gloria)
         socket.on('meet:send-reaction', ({ meetId, reaction }) => {
             if (!meetId || !reaction || !currentUser) return;
