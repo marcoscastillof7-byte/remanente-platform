@@ -513,12 +513,22 @@ router.post('/close-all', async (req, res) => {
  */
 router.put('/:id/status', async (req, res) => {
     try {
-        if (!isLeaderOrAdmin(req.user)) {
-            return res.status(403).json({ error: 'No autorizado' });
-        }
-
         const { status } = req.body;
         const supabase = getDb();
+
+        // Verificar si el usuario es líder, admin, o el anfitrión del meet
+        const { data: currentMeet } = await supabase
+            .from('meetings')
+            .select('host_id')
+            .eq('id', req.params.id)
+            .single();
+
+        const isAuthorized = isLeaderOrAdmin(req.user) ||
+            (currentMeet && String(currentMeet.host_id) === String(req.user?.id));
+
+        if (!isAuthorized) {
+            return res.status(403).json({ error: 'No autorizado' });
+        }
 
         const { data, error } = await supabase
             .from('meetings')
@@ -533,17 +543,15 @@ router.put('/:id/status', async (req, res) => {
             const io = req.app.get('io');
             if (status === 'ended') {
                 endActiveRoom(req.params.id);
-                io.to(`meet:${req.params.id}`).emit('meet:phase-changed', { phase: 'finished' });
-                io.to(`meet:${req.params.id}`).emit('meet:session-ended', { 
+                const sessionEndedPayload = { 
                     meetId: String(req.params.id), 
                     message: 'La reunión ha sido finalizada por el líder.',
                     closed: true
-                });
-                io.emit('meet:session-ended', { 
-                    meetId: String(req.params.id), 
-                    message: 'La reunión ha sido finalizada por el líder.',
-                    closed: true 
-                });
+                };
+                io.to(`meet:${req.params.id}`).emit('meet:phase-changed', { phase: 'finished' });
+                io.emit('meet:phase-changed', { meetId: String(req.params.id), phase: 'finished' });
+                io.to(`meet:${req.params.id}`).emit('meet:session-ended', sessionEndedPayload);
+                io.emit('meet:session-ended', sessionEndedPayload);
             }
             io.emit('meet:updated');
         }

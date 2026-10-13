@@ -697,8 +697,21 @@ export function setupMeetSocket(io) {
         // 9.1. FINALIZAR / CERRAR REUNIÓN EN VIVO MANUALMENTE (Líder / Admin)
         socket.on('meet:end-session', async ({ meetId }) => {
             const room = activeRooms.get(String(meetId));
+            const supabase = getDb();
+            let isHostInDb = false;
+
+            if (currentUser && !['admin', 'superadmin', 'lider', 'leader'].includes((currentUser.role || '').toLowerCase())) {
+                try {
+                    const { data: dbMeet } = await supabase.from('meetings').select('host_id').eq('id', meetId).single();
+                    if (dbMeet && String(dbMeet.host_id) === String(currentUser.id)) {
+                        isHostInDb = true;
+                    }
+                } catch (e) {}
+            }
+
             const isAuthorized = currentUser && (
                 (room && String(currentUser.id) === String(room.hostId)) ||
+                isHostInDb ||
                 ['admin', 'superadmin', 'lider', 'leader'].includes((currentUser.role || '').toLowerCase())
             );
 
@@ -713,23 +726,19 @@ export function setupMeetSocket(io) {
                     totalAttendance = room.allTimeParticipants ? room.allTimeParticipants.size : room.participants.size;
                 }
 
-                io.to(`meet:${meetId}`).emit('meet:phase-changed', { phase: 'finished' });
-                io.to(`meet:${meetId}`).emit('meet:session-ended', { 
+                const endedPayload = { 
                     meetId: String(meetId),
                     message: 'La reunión ha sido finalizada por el líder.',
                     closed: true,
                     podium: finalPodium,
                     totalJoinedCount: totalAttendance,
                     platformOnlineCount: getPlatformOnlineCount()
-                });
-                io.emit('meet:session-ended', { 
-                    meetId: String(meetId),
-                    message: 'La reunión ha sido finalizada por el líder.',
-                    closed: true,
-                    podium: finalPodium,
-                    totalJoinedCount: totalAttendance,
-                    platformOnlineCount: getPlatformOnlineCount()
-                });
+                };
+
+                io.to(`meet:${meetId}`).emit('meet:phase-changed', { meetId: String(meetId), phase: 'finished' });
+                io.emit('meet:phase-changed', { meetId: String(meetId), phase: 'finished' });
+                io.to(`meet:${meetId}`).emit('meet:session-ended', endedPayload);
+                io.emit('meet:session-ended', endedPayload);
                 io.to(`meet:${meetId}`).emit('meet:final-podium', { 
                     podium: finalPodium,
                     totalJoinedCount: totalAttendance,

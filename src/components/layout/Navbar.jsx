@@ -123,7 +123,9 @@ const Navbar = () => {
 
     fetchOnlineCount();
 
-    const socketUrl = window.location.port === '5173' ? 'http://localhost:3001' : window.location.origin;
+    const socketUrl = window.location.port === '5173' 
+      ? `${window.location.protocol}//${window.location.hostname}:3001` 
+      : window.location.origin;
     const socket = io(socketUrl, {
       transports: ['websocket', 'polling']
     });

@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { api } from '../utils/api';
+import { supabase } from '../utils/supabase';
 import { playNotificationSound } from '../utils/notificationSound';
 
 const REACTION_EMOJIS = [
@@ -140,8 +141,10 @@ const MeetRoomPage = () => {
   useEffect(() => {
     if (!user || !meet) return;
 
-    // Detectar endpoint socket correcto (usar host actual o puerto 3001 si estamos en vite 5173 local)
-    const socketUrl = window.location.port === '5173' ? 'http://localhost:3001' : window.location.origin;
+    // Detectar endpoint socket correcto (usar host dinámico o puerto 3001 si estamos en vite 5173 local)
+    const socketUrl = window.location.port === '5173' 
+      ? `${window.location.protocol}//${window.location.hostname}:3001` 
+      : window.location.origin;
     const s = io(socketUrl, {
       transports: ['websocket', 'polling']
     });
@@ -157,6 +160,8 @@ const MeetRoomPage = () => {
     if (s.io) {
       s.io.on('reconnect', joinRoom);
     }
+    // Si ya está conectado o al inicializar, unirse de inmediato
+    joinRoom();
 
     s.on('meet:initial-state', (state) => {
       setPhase(state.phase || 'reading');
@@ -243,10 +248,18 @@ const MeetRoomPage = () => {
       }
     });
 
-    s.on('meet:phase-changed', ({ phase: newPhase }) => {
+    s.on('meet:phase-changed', ({ phase: newPhase, meetId: pMeetId }) => {
+      if (pMeetId && pMeetId !== 'all' && String(pMeetId).trim() !== String(id).trim()) {
+        return;
+      }
       setPhase(newPhase);
       if (newPhase === 'quiz') {
         playNotificationSound();
+      } else if (newPhase === 'finished') {
+        setSessionClosing(prev => prev || {
+          message: 'La reunión ha sido finalizada por el líder.',
+          countdown: 4
+        });
       }
     });
 
@@ -312,7 +325,7 @@ const MeetRoomPage = () => {
     });
 
     s.on('meet:session-ended', ({ message, podium, meetId: endedMeetId, totalJoinedCount: tjc, platformOnlineCount: poc }) => {
-      if (endedMeetId && endedMeetId !== 'all' && String(endedMeetId) !== String(id)) {
+      if (endedMeetId && endedMeetId !== 'all' && String(endedMeetId).trim() !== String(id).trim()) {
         return;
       }
       if (podium && Array.isArray(podium) && podium.length > 0) {
@@ -322,8 +335,8 @@ const MeetRoomPage = () => {
       if (poc) setPlatformOnlineCount(poc);
       setPhase('finished');
       playNotificationSound();
-      setSessionClosing({
-        message: message || 'La reunión ha sido finalizada por el líder o administrador.',
+      setSessionClosing(prev => prev || {
+        message: message || 'La reunión ha sido finalizada por el líder.',
         countdown: 4
       });
     });
@@ -343,6 +356,73 @@ const MeetRoomPage = () => {
       s.disconnect();
     };
   }, [user, meet, id]);
+
+  // Canal Supabase Realtime: Respaldo inmediato garantizado para todos los dispositivos móviles y navegadores
+  useEffect(() => {
+    if (!id) return;
+
+    const channel = supabase
+      .channel(`meet-realtime-status-${id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'meetings',
+          filter: `id=eq.${id}`
+        },
+        (payload) => {
+          if (payload.new && payload.new.status === 'ended') {
+            setSessionClosing(prev => prev || {
+              message: 'La reunión ha sido finalizada por el líder.',
+              countdown: 4
+            });
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [id]);
+
+  // Heartbeat Polling de alta frecuencia (cada 2.5s) y sincronización al desbloquear pantalla o enfocar pestaña
+  useEffect(() => {
+    if (!id || sessionClosing) return;
+
+    const checkEnded = async () => {
+      try {
+        const res = await api.get(`/meetings/${id}`, {}, false);
+        if (res && res.status === 'ended') {
+          setSessionClosing(prev => prev || {
+            message: 'La reunión ha sido finalizada por el líder.',
+            countdown: 4
+          });
+        }
+      } catch (err) {
+        // Silencioso
+      }
+    };
+
+    const interval = setInterval(checkEnded, 2500);
+
+    const handleFocus = () => checkEnded();
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        checkEnded();
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [id, sessionClosing]);
 
   // Manejo del conteo regresivo y cierre automático de la sala
   useEffect(() => {
