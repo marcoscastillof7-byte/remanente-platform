@@ -72,10 +72,21 @@ const DashboardPage = () => {
           </p>
           <div className="mt-6 flex flex-wrap gap-4">
             <div className="bg-white/10 rounded-lg p-3 flex items-center backdrop-blur-sm border border-white/20">
-              <Flame className="w-6 h-6 text-orange-400 mr-2" />
+              <Flame className={`w-6 h-6 mr-2 ${streak?.current_streak > 0 ? 'text-orange-400' : 'text-gray-300'}`} />
               <div>
                 <div className="text-xs opacity-80 uppercase tracking-wide">Racha Actual</div>
-                <div className="font-bold text-xl">{streak?.current_streak || 0} Días</div>
+                <div className="font-bold text-xl flex items-center gap-2">
+                  <span>{streak?.current_streak || 0} Días</span>
+                  {streak?.studied_today ? (
+                    <span className="text-[11px] bg-green-500/30 text-green-200 border border-green-400/30 px-1.5 py-0.5 rounded font-normal">
+                      ✓ Hoy
+                    </span>
+                  ) : streak?.current_streak > 0 ? (
+                    <span className="text-[11px] bg-amber-500/30 text-amber-200 border border-amber-400/30 px-1.5 py-0.5 rounded font-normal animate-pulse">
+                      ¡Estudia hoy!
+                    </span>
+                  ) : null}
+                </div>
               </div>
             </div>
             <div className="bg-white/10 rounded-lg p-3 flex items-center backdrop-blur-sm border border-white/20">

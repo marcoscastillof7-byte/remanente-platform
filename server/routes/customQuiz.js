@@ -1,6 +1,7 @@
 import express from 'express';
 import { getDb } from '../db/database.js';
 import { auth } from '../middleware/auth.js';
+import { recordStudySession } from '../utils/streaks.js';
 
 const router = express.Router();
 router.use(auth);
@@ -243,7 +244,38 @@ router.post('/:configId/submit', async (req, res) => {
             if (ansError) console.error("Error guardando custom answers:", ansError);
         }
 
-        res.json({ score, correctCount, totalQuestions: answers.length, results });
+        // --- STREAK & STREAK POINTS ---
+        const clientDate = req.body.clientDate || req.headers['x-client-date'] || null;
+        const streakResult = await recordStudySession(supabase, userId, clientDate);
+        const streakPointsEarned = streakResult.streakPointsEarned;
+        
+        // Base points: 10 base + 5 per correct
+        const quizPointsEarned = 10 + (correctCount * 5);
+        const totalPointsEarned = quizPointsEarned + streakPointsEarned;
+
+        if (totalPointsEarned > 0) {
+            const { data: u } = await supabase.from('users').select('points').eq('id', userId).single();
+            const currentPoints = (u && u.points) ? u.points : 0;
+            await supabase.from('users').update({ points: currentPoints + totalPointsEarned }).eq('id', userId);
+        }
+
+        if (req.app.get('io')) {
+            req.app.get('io').emit('leaderboard-update');
+        }
+
+        res.json({ 
+            score, 
+            correctCount, 
+            totalQuestions: answers.length, 
+            results,
+            pointsEarned: totalPointsEarned,
+            quizPointsEarned,
+            streakPointsEarned,
+            newStreak: streakResult.current_streak,
+            longestStreak: streakResult.longest_streak,
+            isNewDay: streakResult.isNewDay,
+            studiedToday: true
+        });
     } catch (error) {
         console.error(error);
         res.status(500).json({ error: 'Error interno' });

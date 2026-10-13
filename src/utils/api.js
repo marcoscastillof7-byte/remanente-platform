@@ -17,8 +17,10 @@ async function fetchWithAuth(endpoint, options = {}, useCache = false) {
   }
 
   const token = localStorage.getItem('token');
+  const localDate = new Date().toLocaleDateString('en-CA');
   const headers = {
     'Content-Type': 'application/json',
+    'x-client-date': localDate,
     ...options.headers,
   };
 

@@ -74,6 +74,10 @@ const QuizEngine = ({ questions, chapterId, isCustom = false, configId = null })
         results={results.results}
         questions={questions}
         chapterId={chapterId}
+        pointsEarned={results.pointsEarned}
+        streakPointsEarned={results.streakPointsEarned}
+        newStreak={results.newStreak}
+        isNewDay={results.isNewDay}
       />
     );
   }

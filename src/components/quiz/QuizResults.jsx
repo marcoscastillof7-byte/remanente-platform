@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
-import { Award, ArrowLeft, RefreshCw, ChevronDown, ChevronUp, Flag } from 'lucide-react';
+import { Award, ArrowLeft, RefreshCw, ChevronDown, ChevronUp, Flag, Flame } from 'lucide-react';
 import QuestionCard from './QuestionCard';
 import ReportModal from './ReportModal';
 
-const QuizResults = ({ score, correctCount, totalQuestions, results, questions, chapterId }) => {
+const QuizResults = ({ score, correctCount, totalQuestions, results, questions, chapterId, pointsEarned, streakPointsEarned, newStreak, isNewDay }) => {
   const [expandedQ, setExpandedQ] = useState(null);
   const [reportingQ, setReportingQ] = useState(null);
 
@@ -19,6 +19,28 @@ const QuizResults = ({ score, correctCount, totalQuestions, results, questions, 
         <h2 className="font-[Cinzel] text-3xl font-bold mt-4 text-primary-dark">¡Quiz Completado!</h2>
         <div className={`text-6xl font-bold mt-4 ${colorClass}`}>{score}%</div>
         <p className="text-lg text-gray-600 mt-2">Aciertos: {correctCount} de {totalQuestions}</p>
+
+        {(newStreak > 0 || pointsEarned > 0) && (
+          <div className="flex flex-wrap items-center justify-center gap-3 mt-4">
+            {newStreak > 0 && (
+              <div className="inline-flex items-center gap-1.5 bg-orange-50 border border-orange-200 text-orange-700 px-3.5 py-1.5 rounded-full text-sm font-bold shadow-sm">
+                <Flame className="w-5 h-5 text-orange-500 animate-pulse" />
+                <span>¡Racha: {newStreak} {newStreak === 1 ? 'Día' : 'Días'}!</span>
+                {streakPointsEarned > 0 && (
+                  <span className="text-xs bg-orange-200/70 text-orange-800 px-1.5 py-0.5 rounded font-semibold">
+                    +{streakPointsEarned} pts
+                  </span>
+                )}
+              </div>
+            )}
+            {pointsEarned > 0 && (
+              <div className="inline-flex items-center gap-1.5 bg-yellow-50 border border-yellow-200 text-yellow-800 px-3.5 py-1.5 rounded-full text-sm font-bold shadow-sm">
+                <Award className="w-5 h-5 text-gold" />
+                <span>+{pointsEarned} Pts ganados</span>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="flex justify-center gap-4 mb-8">

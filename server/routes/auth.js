@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { getDb } from '../db/database.js';
 import { auth } from '../middleware/auth.js';
+import { getSafeUserStreak } from '../utils/streaks.js';
 
 const router = express.Router();
 const SECRET = 'remanente_jwt_secret_2024';
@@ -107,11 +108,8 @@ router.get('/profile', auth, async (req, res) => {
             return res.status(404).json({ error: 'Usuario no encontrado' });
         }
 
-        const { data: streak } = await supabase
-            .from('study_streaks')
-            .select('*')
-            .eq('user_id', req.user.id)
-            .single();
+        const clientDate = req.query.clientDate || req.headers['x-client-date'] || null;
+        const streak = await getSafeUserStreak(supabase, req.user.id, clientDate);
 
         const { data: attempts } = await supabase
             .from('quiz_attempts')

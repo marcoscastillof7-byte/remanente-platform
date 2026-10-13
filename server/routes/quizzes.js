@@ -1,6 +1,7 @@
 import express from 'express';
 import { getDb } from '../db/database.js';
 import { auth } from '../middleware/auth.js';
+import { recordStudySession } from '../utils/streaks.js';
 
 const router = express.Router();
 
@@ -133,63 +134,12 @@ router.post('/:chapterId/submit', async (req, res) => {
         }
 
         // --- STREAK & STREAK POINTS ---
-        const { data: streakData } = await supabase.from('study_streaks').select('*').eq('user_id', userId).single();
-        let newStreak = 0;
-        let longestStreak = 0;
-        
-        if (streakData) {
-            const today = new Date().toISOString().split('T')[0];
-            const lastStudy = streakData.last_study_date ? streakData.last_study_date.split('T')[0] : null;
-
-            newStreak = streakData.current_streak;
-            longestStreak = streakData.longest_streak;
-
-            if (lastStudy !== today) {
-                newStreak = streakData.current_streak + 1;
-                
-                if (lastStudy) {
-                    const lastDate = new Date(lastStudy);
-                    const currDate = new Date(today);
-                    // Use round instead of ceil and ignore hours for accurate day diff
-                    const diffDays = Math.round(Math.abs(currDate - lastDate) / (1000 * 60 * 60 * 24)); 
-                    
-                    if (diffDays > 1) {
-                        newStreak = 1;
-                    }
-                }
-                
-                // Add streak points if it's a new day
-                if (newStreak === 1) streakPointsEarned = 10;
-                else if (newStreak === 2) streakPointsEarned = 20;
-                else if (newStreak === 3) streakPointsEarned = 30;
-                else if (newStreak >= 7) streakPointsEarned = 50;
-                else streakPointsEarned = 40; // For days 4, 5, 6
-                
-                totalPointsEarned += streakPointsEarned;
-
-                longestStreak = Math.max(streakData.longest_streak, newStreak);
-                await supabase
-                    .from('study_streaks')
-                    .update({ 
-                        current_streak: newStreak, 
-                        longest_streak: longestStreak, 
-                        last_study_date: new Date().toISOString() 
-                    })
-                    .eq('user_id', userId);
-            }
-        } else {
-            // First time studying ever
-            newStreak = 1;
-            longestStreak = 1;
-            streakPointsEarned = 10;
-            totalPointsEarned += streakPointsEarned;
-            await supabase.from('study_streaks').insert({
-                user_id: userId,
-                current_streak: 1,
-                longest_streak: 1,
-                last_study_date: new Date().toISOString()
-            });
-        }
+        const clientDate = req.body.clientDate || req.headers['x-client-date'] || null;
+        const streakResult = await recordStudySession(supabase, userId, clientDate);
+        const newStreak = streakResult.current_streak;
+        const longestStreak = streakResult.longest_streak;
+        streakPointsEarned = streakResult.streakPointsEarned;
+        totalPointsEarned += streakPointsEarned;
 
         // --- EVALUAR LOGROS & ACHIEVEMENT POINTS ---
         try {
@@ -253,7 +203,11 @@ router.post('/:chapterId/submit', async (req, res) => {
             pointsEarned: totalPointsEarned,
             quizPointsEarned,
             streakPointsEarned,
-            achievementPointsEarned
+            achievementPointsEarned,
+            newStreak,
+            longestStreak,
+            isNewDay: streakResult.isNewDay,
+            studiedToday: true
         });
     } catch (error) {
         console.error(error);

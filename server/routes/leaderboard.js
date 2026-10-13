@@ -1,6 +1,7 @@
 import express from 'express';
 import { getDb } from '../db/database.js';
 import { auth } from '../middleware/auth.js';
+import { getLocalDate, getDaysDiff } from '../utils/streaks.js';
 
 const router = express.Router();
 router.use(auth);
@@ -17,9 +18,12 @@ router.get('/', async (req, res) => {
             query = query.eq('group_id', groupId);
         }
 
+        const clientDate = req.query.clientDate || req.headers['x-client-date'] || null;
+        const today = clientDate && /^\d{4}-\d{2}-\d{2}$/.test(clientDate) ? clientDate : getLocalDate(new Date());
+
         const { data: users, error: uError } = await query;
         const { data: attempts, error: aError } = await supabase.from('quiz_attempts').select('user_id, score');
-        const { data: streaks, error: sError } = await supabase.from('study_streaks').select('user_id, current_streak');
+        const { data: streaks, error: sError } = await supabase.from('study_streaks').select('user_id, current_streak, last_study_date');
 
         if (uError || aError) throw (uError || aError);
 
@@ -31,6 +35,15 @@ router.get('/', async (req, res) => {
             const total_score = userAttempts.reduce((sum, a) => sum + (a.score || 0), 0);
             const avg_score = quizzes_completed > 0 ? total_score / quizzes_completed : 0;
             const points = u.points || 0;
+
+            let activeStreak = 0;
+            if (userStreak && userStreak.last_study_date) {
+                const lastDay = getLocalDate(userStreak.last_study_date);
+                const diff = getDaysDiff(lastDay, today);
+                if (diff === 0 || diff === 1) {
+                    activeStreak = userStreak.current_streak || 0;
+                }
+            }
             
             return {
                 username: u.username,
@@ -39,7 +52,7 @@ router.get('/', async (req, res) => {
                 total_score,
                 quizzes_completed,
                 avg_score,
-                current_streak: userStreak ? userStreak.current_streak : 0
+                current_streak: activeStreak
             };
         }).filter(u => u.points > 0 || u.quizzes_completed > 0)
           .sort((a, b) => b.points - a.points)

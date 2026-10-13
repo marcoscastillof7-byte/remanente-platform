@@ -2,6 +2,7 @@ import express from 'express';
 import { getDb } from '../db/database.js';
 import { auth } from '../middleware/auth.js';
 import { adminOnly } from '../middleware/adminOnly.js';
+import { getLocalDate, getDaysDiff, getSafeUserStreak } from '../utils/streaks.js';
 
 const router = express.Router();
 router.use(auth);
@@ -34,6 +35,8 @@ router.get('/users', async (req, res) => {
 
         if (uError) throw uError;
 
+        const today = getLocalDate(new Date());
+
         const result = users.map(u => {
             const userAttempts = attempts ? attempts.filter(a => a.user_id === u.id) : [];
             const userStreak = streaks ? streaks.find(s => s.user_id === u.id) : null;
@@ -42,12 +45,21 @@ router.get('/users', async (req, res) => {
             const totalScore = userAttempts.reduce((sum, a) => sum + (a.score || 0), 0);
             const avg_score = total_quizzes > 0 ? totalScore / total_quizzes : 0;
 
+            let activeStreak = 0;
+            if (userStreak && userStreak.last_study_date) {
+                const lastDay = getLocalDate(userStreak.last_study_date);
+                const diff = getDaysDiff(lastDay, today);
+                if (diff === 0 || diff === 1) {
+                    activeStreak = userStreak.current_streak || 0;
+                }
+            }
+
             return {
                 ...u,
                 total_quizzes,
                 avg_score,
-                current_streak: userStreak ? userStreak.current_streak : 0,
-                last_active: u.last_active || null
+                current_streak: activeStreak,
+                last_active: u.last_active || userStreak?.last_study_date || null
             };
         }).sort((a, b) => b.avg_score - a.avg_score);
 
@@ -67,7 +79,7 @@ router.get('/users/:userId/performance', async (req, res) => {
         if (uError) throw uError;
 
         const { data: attempts } = await supabase.from('quiz_attempts').select('score, chapter_id, completed_at').eq('user_id', userId);
-        const { data: streak } = await supabase.from('study_streaks').select('current_streak, last_study_date').eq('user_id', userId).single();
+        const streak = await getSafeUserStreak(supabase, userId);
         const { data: books } = await supabase.from('books').select('*').order('order_index');
         const { data: chapters } = await supabase.from('chapters').select('id, chapter_number, title, book_id');
         
