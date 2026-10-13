@@ -3,6 +3,37 @@ import { getDb } from '../db/database.js';
 // Almacén en memoria de salas activas para latencia 0ms
 const activeRooms = new Map();
 
+// Registro en memoria de sockets y usuarios conectados a la plataforma en tiempo real
+const globalPlatformSockets = new Map(); // socketId -> { userId, username, lastPing }
+
+/**
+ * Devuelve la cantidad de usuarios únicos actualmente conectados a la plataforma
+ */
+export function getPlatformOnlineCount() {
+    const uniqueUsers = new Set();
+    let anonymousCount = 0;
+    for (const info of globalPlatformSockets.values()) {
+        if (info.userId) {
+            uniqueUsers.add(String(info.userId));
+        } else {
+            anonymousCount++;
+        }
+    }
+    return Math.max(1, uniqueUsers.size + anonymousCount);
+}
+
+/**
+ * Emite las estadísticas de usuarios conectados a toda la plataforma
+ */
+export function broadcastPlatformOnlineStats(io) {
+    if (!io) return;
+    const onlineCount = getPlatformOnlineCount();
+    io.emit('platform:online-stats', {
+        onlineCount,
+        timestamp: Date.now()
+    });
+}
+
 /**
  * Limpia y marca como finalizada una sala activa en memoria
  */
@@ -69,6 +100,8 @@ async function getOrCreateRoom(meetId) {
         questionStartTime: null,
         questionTimeLimit: 25,
         participants: new Map(), // userId -> { id, username, score, handRaised, isHost, avatar }
+        allTimeParticipants: new Map(), // userId -> { id, username, role, firstJoinedAt }
+        peakAttendance: 0,
         answers: new Map(), // questionIndex -> Map(userId -> { selectedAnswer, isCorrect, points, timeTakenMs })
         handsRaised: new Set(),
         currentReader: null,
@@ -162,11 +195,35 @@ export function setupMeetSocket(io) {
         let currentMeetId = null;
         let currentUser = null;
 
+        // Registrar conexión activa en la plataforma
+        globalPlatformSockets.set(socket.id, { lastPing: Date.now() });
+        broadcastPlatformOnlineStats(io);
+
+        // Identificación de usuario conectado en cualquier parte de la plataforma
+        socket.on('platform:identify', (userData) => {
+            if (userData && (userData.id || userData.username)) {
+                globalPlatformSockets.set(socket.id, {
+                    userId: userData.id,
+                    username: userData.username,
+                    lastPing: Date.now()
+                });
+                broadcastPlatformOnlineStats(io);
+            }
+        });
+
         // 1. UNIRSE A LA SALA MEET
         socket.on('meet:join', async ({ meetId, user }) => {
             if (!meetId || !user) return;
             currentMeetId = String(meetId);
             currentUser = user;
+
+            // Actualizar identificación global en plataforma
+            globalPlatformSockets.set(socket.id, {
+                userId: user.id,
+                username: user.username,
+                lastPing: Date.now()
+            });
+            broadcastPlatformOnlineStats(io);
 
             socket.join(`meet:${currentMeetId}`);
             const room = await getOrCreateRoom(currentMeetId);
@@ -199,6 +256,17 @@ export function setupMeetSocket(io) {
                 handRaised: room.handsRaised.has(user.id),
                 socketId: socket.id
             });
+
+            // Registrar en el histórico de asistencia total de este Meet
+            if (!room.allTimeParticipants) {
+                room.allTimeParticipants = new Map();
+            }
+            room.allTimeParticipants.set(user.id, {
+                id: user.id,
+                username: user.username,
+                role: user.role
+            });
+            room.peakAttendance = Math.max(room.peakAttendance || 0, room.participants.size);
 
             // Enviar estado completo inicial al participante que se unió
             const sanitizedQuestions = room.questions.map((q, idx) => ({
@@ -292,13 +360,19 @@ export function setupMeetSocket(io) {
                 answerStatus: currentAnswerStatus,
                 timeLeft: currentRemainingTime,
                 hasAnswered: myHasAnswered,
-                selectedAnswer: mySelectedAnswer
+                selectedAnswer: mySelectedAnswer,
+                totalJoinedCount: room.allTimeParticipants ? room.allTimeParticipants.size : room.participants.size,
+                peakAttendance: room.peakAttendance || room.participants.size,
+                platformOnlineCount: getPlatformOnlineCount()
             });
 
             // Avisar a los demás
             io.to(`meet:${currentMeetId}`).emit('meet:participants-updated', {
                 participants: Array.from(room.participants.values()),
-                totalCount: room.participants.size
+                totalCount: room.participants.size,
+                totalJoinedCount: room.allTimeParticipants ? room.allTimeParticipants.size : room.participants.size,
+                peakAttendance: room.peakAttendance || room.participants.size,
+                platformOnlineCount: getPlatformOnlineCount()
             });
         });
 
@@ -592,8 +666,14 @@ export function setupMeetSocket(io) {
                 const finalPodium = Array.from(room.participants.values())
                     .sort((a, b) => (b.score || 0) - (a.score || 0));
 
+                const totalAttendance = room.allTimeParticipants ? room.allTimeParticipants.size : room.participants.size;
+
                 io.to(`meet:${meetId}`).emit('meet:phase-changed', { phase: 'finished' });
-                io.to(`meet:${meetId}`).emit('meet:final-podium', { podium: finalPodium });
+                io.to(`meet:${meetId}`).emit('meet:final-podium', { 
+                    podium: finalPodium,
+                    totalJoinedCount: totalAttendance,
+                    platformOnlineCount: getPlatformOnlineCount()
+                });
 
                 // Acreditar Puntos de Sabiduría a los participantes en la base de datos
                 try {
@@ -624,11 +704,13 @@ export function setupMeetSocket(io) {
 
             if (isAuthorized) {
                 let finalPodium = [];
+                let totalAttendance = 0;
                 if (room) {
                     room.status = 'ended';
                     room.phase = 'finished';
                     finalPodium = Array.from(room.participants.values())
                         .sort((a, b) => b.score - a.score);
+                    totalAttendance = room.allTimeParticipants ? room.allTimeParticipants.size : room.participants.size;
                 }
 
                 io.to(`meet:${meetId}`).emit('meet:phase-changed', { phase: 'finished' });
@@ -636,15 +718,23 @@ export function setupMeetSocket(io) {
                     meetId: String(meetId),
                     message: 'La reunión ha sido finalizada por el líder.',
                     closed: true,
-                    podium: finalPodium 
+                    podium: finalPodium,
+                    totalJoinedCount: totalAttendance,
+                    platformOnlineCount: getPlatformOnlineCount()
                 });
                 io.emit('meet:session-ended', { 
                     meetId: String(meetId),
                     message: 'La reunión ha sido finalizada por el líder.',
                     closed: true,
-                    podium: finalPodium 
+                    podium: finalPodium,
+                    totalJoinedCount: totalAttendance,
+                    platformOnlineCount: getPlatformOnlineCount()
                 });
-                io.to(`meet:${meetId}`).emit('meet:final-podium', { podium: finalPodium });
+                io.to(`meet:${meetId}`).emit('meet:final-podium', { 
+                    podium: finalPodium,
+                    totalJoinedCount: totalAttendance,
+                    platformOnlineCount: getPlatformOnlineCount()
+                });
 
                 try {
                     const supabase = getDb();
@@ -678,6 +768,9 @@ export function setupMeetSocket(io) {
 
         // 11. DESCONEXIÓN CON PROTECCIÓN PARA RECONEXIONES MÓVILES
         socket.on('disconnect', () => {
+            globalPlatformSockets.delete(socket.id);
+            broadcastPlatformOnlineStats(io);
+
             if (currentMeetId && currentUser) {
                 const room = activeRooms.get(currentMeetId);
                 if (room) {
@@ -688,7 +781,10 @@ export function setupMeetSocket(io) {
                         room.handsRaised.delete(currentUser.id);
                         io.to(`meet:${currentMeetId}`).emit('meet:participants-updated', {
                             participants: Array.from(room.participants.values()),
-                            totalCount: room.participants.size
+                            totalCount: room.participants.size,
+                            totalJoinedCount: room.allTimeParticipants ? room.allTimeParticipants.size : room.participants.size,
+                            peakAttendance: room.peakAttendance || room.participants.size,
+                            platformOnlineCount: getPlatformOnlineCount()
                         });
                     }
                 }

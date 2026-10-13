@@ -30,11 +30,22 @@ const MeetListPage = () => {
   const [loading, setLoading] = useState(true);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [startingId, setStartingId] = useState(null);
+  const [onlineCount, setOnlineCount] = useState(1);
 
   const isLeaderOrAdmin = user && ['admin', 'superadmin', 'lider', 'leader'].includes(user.role?.toLowerCase());
 
   useEffect(() => {
     fetchMeets(true);
+
+    const fetchOnline = async () => {
+      try {
+        const res = await api.get('/stats/online');
+        if (res && typeof res.onlineCount === 'number') {
+          setOnlineCount(Math.max(1, res.onlineCount));
+        }
+      } catch (e) {}
+    };
+    fetchOnline();
 
     const socketUrl = window.location.port === '5173' ? 'http://localhost:3001' : window.location.origin;
     const socket = io(socketUrl, {
@@ -45,19 +56,38 @@ const MeetListPage = () => {
       fetchMeets(false);
     };
 
+    const handleOnlineStats = (data) => {
+      if (data && typeof data.onlineCount === 'number') {
+        setOnlineCount(Math.max(1, data.onlineCount));
+      }
+    };
+
     socket.on('meet:updated', handleRealtimeUpdate);
     socket.on('meet:started', handleRealtimeUpdate);
     socket.on('meet:session-ended', handleRealtimeUpdate);
     socket.on('meet:phase-changed', handleRealtimeUpdate);
+    socket.on('platform:online-stats', handleOnlineStats);
 
-    const interval = setInterval(() => fetchMeets(false), 15000);
+    const handleOnlineWindow = (e) => {
+      if (e.detail && typeof e.detail.onlineCount === 'number') {
+        setOnlineCount(Math.max(1, e.detail.onlineCount));
+      }
+    };
+    window.addEventListener('platform-online-update', handleOnlineWindow);
+
+    const interval = setInterval(() => {
+      fetchMeets(false);
+      fetchOnline();
+    }, 15000);
 
     return () => {
       clearInterval(interval);
+      window.removeEventListener('platform-online-update', handleOnlineWindow);
       socket.off('meet:updated', handleRealtimeUpdate);
       socket.off('meet:started', handleRealtimeUpdate);
       socket.off('meet:session-ended', handleRealtimeUpdate);
       socket.off('meet:phase-changed', handleRealtimeUpdate);
+      socket.off('platform:online-stats', handleOnlineStats);
       socket.disconnect();
     };
   }, []);
@@ -136,9 +166,15 @@ const MeetListPage = () => {
         <div className="absolute top-0 right-0 w-64 h-64 bg-gold/10 rounded-full blur-3xl pointer-events-none" />
         
         <div>
-          <div className="inline-flex items-center gap-1.5 bg-gold/20 text-gold-light border border-gold/30 px-2.5 sm:px-3 py-1 rounded-full text-[11px] sm:text-xs font-bold uppercase tracking-wider mb-2">
-            <Radio className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gold animate-pulse" />
-            <span>Estudio en Vivo & Quiz Interactivo</span>
+          <div className="flex flex-wrap items-center gap-2 mb-2">
+            <div className="inline-flex items-center gap-1.5 bg-gold/20 text-gold-light border border-gold/30 px-2.5 sm:px-3 py-1 rounded-full text-[11px] sm:text-xs font-bold uppercase tracking-wider">
+              <Radio className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gold animate-pulse" />
+              <span>Estudio en Vivo & Quiz Interactivo</span>
+            </div>
+            <div className="inline-flex items-center gap-1.5 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2.5 sm:px-3 py-1 rounded-full text-[11px] sm:text-xs font-bold">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+              <span>{onlineCount} {onlineCount === 1 ? 'persona en línea' : 'personas en línea'}</span>
+            </div>
           </div>
           <h1 className="font-[Cinzel] text-2xl sm:text-3xl md:text-4xl font-bold text-white tracking-wide">
             📖 Remanente Meet

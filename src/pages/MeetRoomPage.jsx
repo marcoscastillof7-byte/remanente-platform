@@ -95,6 +95,8 @@ const MeetRoomPage = () => {
   const [revealedResults, setRevealedResults] = useState(null);
   const [mySessionScore, setMySessionScore] = useState(0);
   const [finalPodium, setFinalPodium] = useState([]);
+  const [totalJoinedCount, setTotalJoinedCount] = useState(0);
+  const [platformOnlineCount, setPlatformOnlineCount] = useState(1);
   const [sessionClosing, setSessionClosing] = useState(null); // { message, countdown: 4 }
   const [answerStatus, setAnswerStatus] = useState({
     answeredCount: 0,
@@ -190,6 +192,13 @@ const MeetRoomPage = () => {
         setSelectedAnswer(state.selectedAnswer);
       }
 
+      if (state.totalJoinedCount) {
+        setTotalJoinedCount(state.totalJoinedCount);
+      }
+      if (state.platformOnlineCount) {
+        setPlatformOnlineCount(state.platformOnlineCount);
+      }
+
       if (state.phase === 'quiz' && state.questions && state.questions.length > 0) {
         const qIdx = state.currentQuestionIndex >= 0 ? state.currentQuestionIndex : 0;
         setCurrentQuestionIndex(qIdx);
@@ -197,12 +206,20 @@ const MeetRoomPage = () => {
       }
     });
 
-    s.on('meet:participants-updated', ({ participants: pts }) => {
+    s.on('meet:participants-updated', ({ participants: pts, totalJoinedCount: tjc, platformOnlineCount: poc }) => {
       setParticipants(pts || []);
+      if (tjc) setTotalJoinedCount(tjc);
+      if (poc) setPlatformOnlineCount(poc);
       setAnswerStatus(prev => ({
         ...prev,
         totalParticipants: (pts || []).length
       }));
+    });
+
+    s.on('platform:online-stats', (data) => {
+      if (data && typeof data.onlineCount === 'number') {
+        setPlatformOnlineCount(Math.max(1, data.onlineCount));
+      }
     });
 
     s.on('meet:page-synced', ({ page }) => {
@@ -286,19 +303,23 @@ const MeetRoomPage = () => {
       if (message) alert(message);
     });
 
-    s.on('meet:final-podium', ({ podium }) => {
+    s.on('meet:final-podium', ({ podium, totalJoinedCount: tjc, platformOnlineCount: poc }) => {
       setFinalPodium(podium || []);
+      if (tjc) setTotalJoinedCount(tjc);
+      if (poc) setPlatformOnlineCount(poc);
       setPhase('finished');
       playNotificationSound();
     });
 
-    s.on('meet:session-ended', ({ message, podium, meetId: endedMeetId }) => {
+    s.on('meet:session-ended', ({ message, podium, meetId: endedMeetId, totalJoinedCount: tjc, platformOnlineCount: poc }) => {
       if (endedMeetId && endedMeetId !== 'all' && String(endedMeetId) !== String(id)) {
         return;
       }
       if (podium && Array.isArray(podium) && podium.length > 0) {
         setFinalPodium(podium);
       }
+      if (tjc) setTotalJoinedCount(tjc);
+      if (poc) setPlatformOnlineCount(poc);
       setPhase('finished');
       playNotificationSound();
       setSessionClosing({
@@ -568,9 +589,18 @@ const MeetRoomPage = () => {
             )}
           </button>
 
-          <div className="bg-white/10 text-gray-200 px-2 sm:px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1">
-            <Users className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gold" />
-            <span className="text-[11px] sm:text-xs">{participants.length} <span className="hidden sm:inline">en vivo</span></span>
+          <div className="bg-white/10 text-gray-200 px-2 sm:px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 border border-white/10 shadow-inner">
+            <div className="flex items-center gap-1" title={`${participants.length} participantes en esta sala en vivo (Total que asistieron: ${totalJoinedCount || participants.length})`}>
+              <Users className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gold shrink-0" />
+              <span className="text-[11px] sm:text-xs font-bold text-white">{participants.length}</span>
+              <span className="hidden sm:inline text-gray-300">en sala</span>
+            </div>
+            <span className="text-gray-500">•</span>
+            <div className="flex items-center gap-1" title={`${platformOnlineCount} personas conectadas en toda la plataforma`}>
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0"></span>
+              <span className="text-[11px] sm:text-xs font-bold text-emerald-300">{platformOnlineCount}</span>
+              <span className="hidden sm:inline text-gray-300">en plataforma</span>
+            </div>
           </div>
 
           {/* Botón Maestro del Líder para pasar a Quiz */}
@@ -1300,6 +1330,32 @@ const MeetRoomPage = () => {
               <p className="text-sm text-gray-300 mt-1">
                 La gloria sea a Dios por su Palabra. Los Puntos de Sabiduría han sido acreditados a tu cuenta.
               </p>
+            </div>
+
+            {/* Estadísticas de Asistencia del Meet y Conectados en Plataforma */}
+            <div className="grid grid-cols-2 gap-3 w-full max-w-md">
+              <div className="bg-slate-900/90 border border-gold/40 rounded-xl p-3 flex flex-col items-center shadow-lg">
+                <Users className="w-5 h-5 text-gold mb-1" />
+                <span className="text-[11px] text-gray-300 uppercase tracking-wider font-semibold">Asistencia Total al Meet</span>
+                <span className="text-xl font-black text-white">
+                  {totalJoinedCount || participants.length} {((totalJoinedCount || participants.length) === 1) ? 'persona' : 'personas'}
+                </span>
+                <span className="text-[10px] text-gray-400 mt-0.5">conectadas a esta sesión</span>
+              </div>
+              <div className="bg-slate-900/90 border border-emerald-500/40 rounded-xl p-3 flex flex-col items-center shadow-lg">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
+                  </span>
+                  <Users className="w-5 h-5 text-emerald-400" />
+                </div>
+                <span className="text-[11px] text-gray-300 uppercase tracking-wider font-semibold">En Toda la Plataforma</span>
+                <span className="text-xl font-black text-emerald-400">
+                  {platformOnlineCount} {platformOnlineCount === 1 ? 'activo' : 'activos'}
+                </span>
+                <span className="text-[10px] text-gray-400 mt-0.5">en tiempo real</span>
+              </div>
             </div>
 
             {/* Podio de los 3 Mejores */}

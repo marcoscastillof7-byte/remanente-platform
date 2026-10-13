@@ -22,23 +22,41 @@ const DashboardPage = () => {
   const [books, setBooks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [streak, setStreak] = useState(null);
+  const [onlineCount, setOnlineCount] = useState(1);
   const dailyVerse = verses[new Date().getDate() % verses.length];
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [booksData, profileData] = await Promise.all([
+        const [booksData, profileData, onlineData] = await Promise.all([
           api.get('/books'),
-          api.get('/auth/profile')
+          api.get('/auth/profile'),
+          api.get('/stats/online').catch(() => ({ onlineCount: 1 }))
         ]);
         setBooks(booksData);
-        setStreak(profileData.streak);      } catch (err) {
+        setStreak(profileData.streak);
+        if (onlineData && typeof onlineData.onlineCount === 'number') {
+          setOnlineCount(Math.max(1, onlineData.onlineCount));
+        }
+      } catch (err) {
         console.error('Error cargando dashboard:', err);
       } finally {
         setLoading(false);
       }
     };
     fetchData();
+
+    // Escuchar actualizaciones en tiempo real desde la plataforma
+    const handleOnlineUpdate = (e) => {
+      if (e.detail && typeof e.detail.onlineCount === 'number') {
+        setOnlineCount(Math.max(1, e.detail.onlineCount));
+      }
+    };
+
+    window.addEventListener('platform-online-update', handleOnlineUpdate);
+    return () => {
+      window.removeEventListener('platform-online-update', handleOnlineUpdate);
+    };
   }, []);
 
   if (loading) {
@@ -101,6 +119,22 @@ const DashboardPage = () => {
               <div>
                 <div className="text-[10px] sm:text-xs opacity-80 uppercase tracking-wide">Puntaje Medio</div>
                 <div className="font-bold text-base sm:text-xl">{avgScore}%</div>
+              </div>
+            </div>
+            <div className="bg-white/10 rounded-lg p-2.5 sm:p-3 flex items-center backdrop-blur-sm border border-white/20 flex-1 min-w-[130px]">
+              <div className="relative mr-2 shrink-0">
+                <Users className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-400" />
+                <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-emerald-400 rounded-full animate-ping"></span>
+                <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-emerald-400 rounded-full"></span>
+              </div>
+              <div>
+                <div className="text-[10px] sm:text-xs opacity-80 uppercase tracking-wide">En Plataforma</div>
+                <div className="font-bold text-base sm:text-xl text-emerald-300 flex items-center gap-1.5">
+                  <span>{onlineCount}</span>
+                  <span className="text-[10px] font-normal text-emerald-200/80 bg-emerald-500/20 px-1.5 py-0.5 rounded">
+                    {onlineCount === 1 ? 'activo' : 'activos'}
+                  </span>
+                </div>
               </div>
             </div>
           </div>

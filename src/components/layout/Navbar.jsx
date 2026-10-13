@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { Menu, User, LogOut, Shield, Bell, CheckCircle, Swords, Flame, MessageSquare, Users } from 'lucide-react';
+import { io } from 'socket.io-client';
 import { useAuth } from '../../hooks/useAuth';
 import { api } from '../../utils/api';
 import { getRankInfo } from '../../utils/ranks';
@@ -12,6 +13,7 @@ const Navbar = () => {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
+  const [onlineCount, setOnlineCount] = useState(1);
   
   const [showSuggestion, setShowSuggestion] = useState(false);
   const [suggestionType, setSuggestionType] = useState('Sugerencia de Mejora');
@@ -100,6 +102,62 @@ const Navbar = () => {
     };
   }, [user]);
 
+  // Seguimiento y sincronización en tiempo real de personas conectadas a la plataforma
+  useEffect(() => {
+    if (!user) return;
+
+    const fetchOnlineCount = async () => {
+      try {
+        const res = await api.get('/stats/online');
+        if (res && typeof res.onlineCount === 'number') {
+          const count = Math.max(1, res.onlineCount);
+          setOnlineCount(count);
+          window.dispatchEvent(new CustomEvent('platform-online-update', {
+            detail: { onlineCount: count }
+          }));
+        }
+      } catch (err) {
+        // Silencioso
+      }
+    };
+
+    fetchOnlineCount();
+
+    const socketUrl = window.location.port === '5173' ? 'http://localhost:3001' : window.location.origin;
+    const socket = io(socketUrl, {
+      transports: ['websocket', 'polling']
+    });
+
+    const handleStats = (data) => {
+      if (data && typeof data.onlineCount === 'number') {
+        const count = Math.max(1, data.onlineCount);
+        setOnlineCount(count);
+        window.dispatchEvent(new CustomEvent('platform-online-update', {
+          detail: { onlineCount: count }
+        }));
+      }
+    };
+
+    const identifyUser = () => {
+      socket.emit('platform:identify', {
+        id: user.id,
+        username: user.username
+      });
+    };
+
+    socket.on('connect', identifyUser);
+    socket.on('reconnect', identifyUser);
+    socket.on('platform:online-stats', handleStats);
+
+    const interval = setInterval(fetchOnlineCount, 30000);
+
+    return () => {
+      clearInterval(interval);
+      socket.off('platform:online-stats', handleStats);
+      socket.disconnect();
+    };
+  }, [user]);
+
   if (!user) return null;
 
   const handleLogout = () => {
@@ -167,8 +225,21 @@ const Navbar = () => {
             )}
           </div>
 
-          <div className="flex items-center space-x-4 relative">
+          <div className="flex items-center space-x-2 sm:space-x-3 relative">
             
+            {/* Contador de Personas Conectadas en Tiempo Real */}
+            <div 
+              className="flex items-center gap-1.5 px-2 sm:px-2.5 py-1 bg-white/10 hover:bg-white/15 transition-colors rounded-full text-xs text-gray-200 border border-white/15 shadow-sm shrink-0"
+              title={`${onlineCount} ${onlineCount === 1 ? 'persona conectada' : 'personas conectadas'} en tiempo real`}
+            >
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
+              </span>
+              <span className="font-bold text-emerald-300">{onlineCount}</span>
+              <span className="hidden sm:inline text-gray-300 font-medium">en línea</span>
+            </div>
+
             {/* Notificaciones */}
             <div className="relative">
               <button 
@@ -251,6 +322,13 @@ const Navbar = () => {
       
       {menuOpen && (
         <div className="md:hidden bg-[var(--color-primary-dark)] px-2 pt-2 pb-3 space-y-1">
+          <div className="flex items-center justify-between px-3 py-2 bg-white/5 rounded-md text-xs text-gray-300 mb-1 border border-white/10">
+            <span className="text-gray-300 font-medium">Usuarios conectados:</span>
+            <span className="flex items-center gap-1.5 font-bold text-emerald-300">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+              {onlineCount} {onlineCount === 1 ? 'en línea' : 'en línea'}
+            </span>
+          </div>
           <Link to="/" onClick={() => setMenuOpen(false)} className="block px-3 py-2 rounded-md text-base hover:bg-[var(--color-primary-light)] text-white">Inicio</Link>
           <Link to="/meet" onClick={() => setMenuOpen(false)} className="block px-3 py-2 rounded-md text-base hover:bg-[var(--color-primary-light)] text-white flex items-center">
             <Users className="w-4 h-4 mr-2"/> Meet en Vivo
