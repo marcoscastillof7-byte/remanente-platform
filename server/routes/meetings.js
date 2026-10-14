@@ -654,6 +654,52 @@ router.post('/:id/end-session', async (req, res) => {
 });
 
 /**
+ * PUT /api/meetings/:id/phase
+ * Cambiar fase de la reunión (reading, quiz, finished) por el líder / anfitrión
+ */
+router.put('/:id/phase', async (req, res) => {
+    try {
+        const { phase } = req.body;
+        if (!phase) return res.status(400).json({ error: 'Fase requerida' });
+
+        const supabase = getDb();
+        const { data: meeting } = await supabase.from('meetings').select('host_id, description').eq('id', req.params.id).single();
+        const isAuthorized = isLeaderOrAdmin(req.user) || (meeting && String(meeting.host_id) === String(req.user?.id));
+        if (!isAuthorized) {
+            return res.status(403).json({ error: 'No autorizado' });
+        }
+
+        const idStr = String(req.params.id);
+        const room = activeRooms.get(idStr);
+        if (room) {
+            room.phase = phase;
+            if (phase === 'reading') {
+                room.revealedResults = null;
+            }
+        }
+
+        let meta = {};
+        try { meta = JSON.parse(meeting.description || '{}'); } catch {}
+        meta.phase = phase;
+        if (phase === 'reading') {
+            meta.revealedResults = null;
+        }
+        await supabase.from('meetings').update({ description: JSON.stringify(meta) }).eq('id', idStr);
+
+        const io = req.app.get('io');
+        if (io) {
+            io.to(`meet:${idStr}`).emit('meet:phase-changed', { meetId: idStr, phase });
+            io.emit('meet:phase-changed', { meetId: idStr, phase });
+        }
+
+        res.json({ success: true, phase });
+    } catch (err) {
+        console.error('[Meetings] Error en change-phase HTTP:', err);
+        res.status(500).json({ error: 'Error cambiando fase de reunión' });
+    }
+});
+
+/**
  * PUT /api/meetings/:id/status
  * Actualizar estado (scheduled, live, ended)
  */

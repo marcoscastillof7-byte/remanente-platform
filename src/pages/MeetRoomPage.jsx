@@ -29,6 +29,7 @@ import {
   Target,
   TrendingUp,
   Filter,
+  RotateCcw,
   X
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
@@ -129,6 +130,7 @@ const MeetRoomPage = () => {
   const [sessionClosing, setSessionClosing] = useState(null); // { message, countdown: 4 }
   const [liveLeaderboard, setLiveLeaderboard] = useState([]);
   const [activeResultsTab, setActiveResultsTab] = useState('posiciones'); // 'posiciones' | 'revision' | 'estadisticas' | 'global'
+  const [resultsViewMode, setResultsViewMode] = useState('results'); // 'results' | 'reading' (permite alternar lectura y resultados)
   const [recapFilter, setRecapFilter] = useState('todos'); // 'todos' | 'aciertos' | 'falladas'
   const [selectedUserForRecap, setSelectedUserForRecap] = useState(null); // null = current user
   const [globalLeaderboard, setGlobalLeaderboard] = useState([]);
@@ -142,6 +144,7 @@ const MeetRoomPage = () => {
   const pdfContainerRef = useRef(null);
   const broadcastChannelRef = useRef(null);
   const roomPresenceChannelRef = useRef(null);
+  const lastLaserSentRef = useRef(0);
 
   // Lista activa de preguntas con soporte para preguntas completas reveladas
   const activeQuestions = (() => {
@@ -157,8 +160,8 @@ const MeetRoomPage = () => {
     return meet?.questions || [];
   })();
   const currentQuestion = activeQuestions[myQuestionIndex] || null;
-  const myCorrectCount = activeQuestions.reduce((acc, q, idx) => {
-    const ans = myAnswers[idx];
+  const myCorrectCount = (Array.isArray(activeQuestions) ? activeQuestions : []).reduce((acc, q, idx) => {
+    const ans = myAnswers?.[idx];
     if (ans && ans.isCorrect) return acc + 1;
     return acc;
   }, 0);
@@ -432,7 +435,11 @@ const MeetRoomPage = () => {
         setRevealedResults(null);
         setMyQuestionIndex(0);
         setMyAnswers({});
+        setResultsViewMode('results');
         playNotificationSound();
+      }
+      if (newPhase === 'reading') {
+        setResultsViewMode('reading');
       }
       // Nota: phase === 'finished' muestra resultados, podio y recap. NO cierra la sala.
     });
@@ -819,8 +826,15 @@ const MeetRoomPage = () => {
           setIsSelfFinished(false);
           setCurrentFeedback(null);
           setRevealedResults(null);
+          setResultsViewMode('results');
           setTimeLeft(res.questions?.[0]?.time_limit_seconds || 25);
           playNotificationSound();
+        }
+
+        // 1.1. Sincronización automática si el líder reanuda lectura
+        if (res?.phase === 'reading' && phase !== 'reading') {
+          setPhase('reading');
+          setResultsViewMode('reading');
         }
 
         // 2. Sincronización automática si el líder reveló resultados
@@ -846,7 +860,8 @@ const MeetRoomPage = () => {
       } catch (err) {}
     };
 
-    const interval = setInterval(checkSync, 2500);
+    // Polling ligero optimizado cada 5s para no saturar con 15+ personas
+    const interval = setInterval(checkSync, 5000);
     return () => clearInterval(interval);
   }, [id, sessionClosing, phase, revealedResults, autoAdvanceTimer]);
 
@@ -1088,9 +1103,13 @@ const MeetRoomPage = () => {
     }
   };
 
-  // Movimiento del Puntero Láser
+  // Movimiento del Puntero Láser (con throttling para soportar 15+ personas)
   const handlePointerCoords = (clientX, clientY) => {
     if (!isHost || !laserModeActive || !pdfContainerRef.current) return;
+    const now = Date.now();
+    if (now - lastLaserSentRef.current < 45) return; // ~22 fps máx, ahorra 80% de ancho de banda y evita cuellos de botella
+    lastLaserSentRef.current = now;
+
     const rect = pdfContainerRef.current.getBoundingClientRect();
     if (!rect.width || !rect.height) return;
     const x = Math.max(0, Math.min(100, ((clientX - rect.left) / rect.width) * 100));
@@ -1223,6 +1242,39 @@ const MeetRoomPage = () => {
       }
     } catch (err) {
       console.warn('[Meet] Respaldo HTTP reveal-results:', err);
+    }
+  };
+
+  // 4.1. LÍDER REANUDA LA LECTURA GUIADA PARA TODOS LOS PARTICIPANTES
+  const handleResumeReadingForEveryone = async () => {
+    if (!isHost) return;
+    if (!confirm('¿Deseas regresar a la lectura del documento para todos los participantes? Los resultados del quiz se conservarán para revisarlos cuando lo deseen.')) return;
+
+    if (socket && socket.connected) {
+      socket.emit('meet:change-phase', { meetId: id, phase: 'reading' });
+    }
+
+    if (broadcastChannelRef.current) {
+      broadcastChannelRef.current.send({
+        type: 'broadcast',
+        event: 'meet:phase-changed',
+        payload: { phase: 'reading', meetId: id }
+      }).catch(() => {});
+    }
+
+    setPhase('reading');
+    setResultsViewMode('reading');
+
+    try {
+      await api.put(`/meetings/${id}/phase`, { phase: 'reading' });
+    } catch (e) {
+      try {
+        const { data: dbMeet } = await supabase.from('meetings').select('description').eq('id', id).single();
+        let meta = {};
+        try { meta = JSON.parse(dbMeet?.description || '{}'); } catch {}
+        meta.phase = 'reading';
+        await supabase.from('meetings').update({ description: JSON.stringify(meta) }).eq('id', id);
+      } catch (err) {}
     }
   };
 
@@ -1371,6 +1423,29 @@ const MeetRoomPage = () => {
             </button>
           )}
 
+          {/* Botón para alternar entre ver resultados y volver a la lectura */}
+          {(phase === 'finished' || revealedResults) && (
+            <button
+              onClick={() => setResultsViewMode(prev => prev === 'results' ? 'reading' : 'results')}
+              className="inline-flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold transition-all border shadow cursor-pointer hover:scale-105 bg-gold/20 text-gold-light border-gold/40 hover:bg-gold/30"
+              title={resultsViewMode === 'results' ? 'Regresar a la lectura del documento' : 'Ver resultados y podio del quiz'}
+            >
+              {resultsViewMode === 'results' ? (
+                <>
+                  <BookOpen className="w-3.5 h-3.5 text-gold-light" />
+                  <span className="hidden sm:inline">Ver Lectura</span>
+                  <span className="sm:hidden">Lectura</span>
+                </>
+              ) : (
+                <>
+                  <Trophy className="w-3.5 h-3.5 text-yellow-300" />
+                  <span className="hidden sm:inline">Ver Resultados</span>
+                  <span className="sm:hidden">Podio</span>
+                </>
+              )}
+            </button>
+          )}
+
           {/* Botón Maestro del Líder para Cerrar / Finalizar Reunión en Vivo */}
           {isHost && !sessionClosing && (
             <button
@@ -1389,8 +1464,27 @@ const MeetRoomPage = () => {
       <div className="flex-1 flex flex-col min-h-0 bg-slate-950/80 relative overflow-hidden">
         
         {/* ---------------- FASE A: LECTURA GUIADA ---------------- */}
-        {phase === 'reading' && (
+        {(phase === 'reading' || ((phase === 'finished' || revealedResults) && resultsViewMode === 'reading')) && (
           <div className="flex-1 flex flex-col min-h-0 relative">
+            {/* Banner de aviso cuando se vuelve a la lectura tras los resultados */}
+            {(phase === 'finished' || revealedResults) && (
+              <div className="bg-gradient-to-r from-slate-900 via-amber-950/90 to-slate-900 border-b border-gold/40 px-3 sm:px-4 py-2 flex items-center justify-between text-xs text-gold-light shadow-md z-30 shrink-0">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Trophy className="w-4 h-4 text-gold shrink-0 animate-bounce" />
+                  <span className="font-semibold truncate">
+                    Modo Lectura • Resultados y podio del quiz disponibles
+                  </span>
+                </div>
+                <button
+                  onClick={() => setResultsViewMode('results')}
+                  className="px-3 py-1 bg-gradient-to-r from-gold to-gold-dark text-slate-950 font-black text-xs rounded-lg shadow hover:scale-105 transition-all shrink-0 flex items-center gap-1.5 cursor-pointer ml-2"
+                >
+                  <Trophy className="w-3.5 h-3.5 text-slate-950" />
+                  <span>Ver Resultados 🏆</span>
+                </button>
+              </div>
+            )}
+
             <div 
               ref={pdfContainerRef}
               onMouseMove={handleMouseMove}
@@ -1814,7 +1908,7 @@ const MeetRoomPage = () => {
         )}
 
         {/* ---------------- FASE C: PODIO FINAL & RESULTADOS COMPLETOS (SALA PERMANECE ABIERTA) ---------------- */}
-        {(phase === 'finished' || revealedResults) && (() => {
+        {(phase === 'finished' || revealedResults) && resultsViewMode === 'results' && (() => {
           const leaderboardList = (revealedResults?.leaderboard && revealedResults.leaderboard.length > 0)
             ? revealedResults.leaderboard
             : (finalPodium && finalPodium.length > 0)
@@ -1824,8 +1918,40 @@ const MeetRoomPage = () => {
             : allRoomParticipants;
 
           return (
-            <div className="flex-1 flex flex-col p-4 sm:p-6 md:p-8 max-w-4xl mx-auto w-full overflow-y-auto space-y-6 text-white animate-fadeIn pb-20">
+            <div className="flex-1 flex flex-col p-3 sm:p-6 md:p-8 max-w-4xl mx-auto w-full overflow-y-auto space-y-5 sm:space-y-6 text-white animate-fadeIn pb-24">
               
+              {/* Barra de Acciones Superior: Volver a la Lectura del Documento */}
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-900/90 border border-gold/40 rounded-2xl p-3 sm:p-4 shadow-xl">
+                <div className="flex items-center gap-2">
+                  <Trophy className="w-5 h-5 text-gold shrink-0 animate-bounce" />
+                  <span className="text-xs sm:text-sm font-bold text-gray-200">
+                    Estudio Bíblico y Resultados del Quiz
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center justify-center gap-2 w-full sm:w-auto">
+                  <button
+                    onClick={() => setResultsViewMode('reading')}
+                    className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 px-4 py-2 sm:px-5 sm:py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs sm:text-sm rounded-xl border border-blue-400/50 shadow-xl hover:scale-105 transition-all cursor-pointer"
+                    title="Volver a la lectura principal del documento bíblico"
+                  >
+                    <BookOpen className="w-4 h-4 text-gold-light" />
+                    <span>📖 Volver a la Lectura del Documento</span>
+                  </button>
+
+                  {isHost && (
+                    <button
+                      onClick={handleResumeReadingForEveryone}
+                      className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-gray-200 font-bold text-xs rounded-xl border border-gold/30 shadow hover:scale-105 transition-all cursor-pointer"
+                      title="Reanudar la lectura para todos los participantes de la sala"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5 text-gold" />
+                      <span className="hidden md:inline">Reanudar Lectura para Todos</span>
+                      <span className="md:hidden">Lectura Todos 🔄</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
               {/* Encabezado Celebratorio */}
               <div className="text-center space-y-2">
                 <Trophy className="w-14 h-14 sm:w-16 sm:h-16 text-gold animate-bounce mx-auto" />
@@ -1865,7 +1991,7 @@ const MeetRoomPage = () => {
                   <Award className="w-4 h-4 text-amber-400 mb-1" />
                   <span className="text-[10px] text-gray-400 uppercase font-bold">Tu Puntaje</span>
                   <span className="text-base sm:text-lg font-black text-amber-300 font-mono">
-                    {mySessionScore || myAnswers.reduce((acc, a) => acc + (a?.points || 0), 0)} pts
+                    {(mySessionScore !== undefined && mySessionScore !== null) ? mySessionScore : Object.values(myAnswers || {}).reduce((acc, a) => acc + (Number(a?.points) || 0), 0)} pts
                   </span>
                 </div>
               </div>
@@ -1962,13 +2088,13 @@ const MeetRoomPage = () => {
 
               {/* Pestañas de Resultados: Tabla de Posicionamiento, Recap de Respuestas, Estadísticas de la Sala y Tabla Global */}
               <div className="bg-slate-900 border border-gold/40 rounded-2xl overflow-hidden shadow-2xl">
-                <div className="flex border-b border-gold/20 bg-slate-950/70 overflow-x-auto scrollbar-none">
+                <div className="sticky top-0 z-20 flex border-b border-gold/20 bg-slate-950/95 backdrop-blur-md overflow-x-auto scrollbar-thin scrollbar-thumb-gold/30 touch-pan-x p-1.5 gap-1.5">
                   <button
                     onClick={() => setActiveResultsTab('posiciones')}
-                    className={`flex-1 min-w-[130px] py-3 px-3 text-xs sm:text-sm font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                    className={`flex-1 min-w-[130px] py-2.5 px-3 text-xs sm:text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
                       activeResultsTab === 'posiciones' 
-                        ? 'bg-gold/20 text-gold-light border-b-2 border-gold shadow-inner' 
-                        : 'text-gray-400 hover:text-white'
+                        ? 'bg-gold/25 text-gold-light border border-gold/60 shadow-inner' 
+                        : 'text-gray-400 hover:text-white hover:bg-white/5'
                     }`}
                   >
                     <Trophy className="w-4 h-4 text-gold shrink-0" />
@@ -1976,37 +2102,43 @@ const MeetRoomPage = () => {
                   </button>
                   <button
                     onClick={() => setActiveResultsTab('revision')}
-                    className={`flex-1 min-w-[140px] py-3 px-3 text-xs sm:text-sm font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                    className={`flex-1 min-w-[140px] py-2.5 px-3 text-xs sm:text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
                       activeResultsTab === 'revision' 
-                        ? 'bg-gold/20 text-gold-light border-b-2 border-gold shadow-inner' 
-                        : 'text-gray-400 hover:text-white'
+                        ? 'bg-gold/25 text-gold-light border border-gold/60 shadow-inner' 
+                        : 'text-gray-400 hover:text-white hover:bg-white/5'
                     }`}
                   >
                     <FileText className="w-4 h-4 text-emerald-400 shrink-0" />
-                    <span>Recap de Respuestas ({myCorrectCount}/{activeQuestions.length})</span>
+                    <span>Recap ({myCorrectCount}/{activeQuestions.length})</span>
                   </button>
                   <button
                     onClick={() => setActiveResultsTab('estadisticas')}
-                    className={`flex-1 min-w-[140px] py-3 px-3 text-xs sm:text-sm font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                    className={`flex-1 min-w-[140px] py-2.5 px-3 text-xs sm:text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
                       activeResultsTab === 'estadisticas' 
-                        ? 'bg-gold/20 text-gold-light border-b-2 border-gold shadow-inner' 
-                        : 'text-gray-400 hover:text-white'
+                        ? 'bg-gold/25 text-gold-light border border-gold/60 shadow-inner' 
+                        : 'text-gray-400 hover:text-white hover:bg-white/5'
                     }`}
                   >
                     <BarChart3 className="w-4 h-4 text-blue-400 shrink-0" />
-                    <span>Estadísticas de la Sala</span>
+                    <span>Estadísticas Sala</span>
                   </button>
                   <button
                     onClick={() => setActiveResultsTab('global')}
-                    className={`flex-1 min-w-[130px] py-3 px-3 text-xs sm:text-sm font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                    className={`flex-1 min-w-[130px] py-2.5 px-3 text-xs sm:text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
                       activeResultsTab === 'global' 
-                        ? 'bg-gold/20 text-gold-light border-b-2 border-gold shadow-inner' 
-                        : 'text-gray-400 hover:text-white'
+                        ? 'bg-gold/25 text-gold-light border border-gold/60 shadow-inner' 
+                        : 'text-gray-400 hover:text-white hover:bg-white/5'
                     }`}
                   >
                     <Crown className="w-4 h-4 text-amber-300 shrink-0" />
-                    <span>Tabla de Honor Global</span>
+                    <span>Tabla Global</span>
                   </button>
+                </div>
+
+                {/* Sub-barra de ayuda móvil para deslizar pestañas */}
+                <div className="sm:hidden px-3 py-1 bg-slate-950/60 border-b border-gold/15 text-[10px] text-gray-400 flex items-center justify-between">
+                  <span>← Desliza las pestañas →</span>
+                  <span className="text-gold font-bold uppercase">{activeResultsTab}</span>
                 </div>
 
                 <div className="p-3 sm:p-5">
@@ -2018,7 +2150,7 @@ const MeetRoomPage = () => {
                         <span className="font-mono">{leaderboardList.length} en clasificación</span>
                       </div>
 
-                      <div className="space-y-2">
+                      <div className="max-h-[55vh] sm:max-h-[480px] overflow-y-auto space-y-2 pr-1.5 scrollbar-thin scrollbar-thumb-gold/30">
                         {leaderboardList.map((p, idx) => {
                           const isMe = String(p.id) === String(user?.id);
                           const isConnected = p.connected !== false;
@@ -2116,8 +2248,8 @@ const MeetRoomPage = () => {
                     const targetName = targetParticipant?.username || user?.username || 'Participante';
                     const targetIsMe = String(targetUserId) === String(user?.id);
 
-                    const targetCorrectCount = activeQuestions.reduce((acc, q, idx) => {
-                      const ans = targetUserAnswers[idx];
+                    const targetCorrectCount = (Array.isArray(activeQuestions) ? activeQuestions : []).reduce((acc, q, idx) => {
+                      const ans = targetUserAnswers?.[idx];
                       if (ans && ans.isCorrect) return acc + 1;
                       return acc;
                     }, 0);
@@ -2193,7 +2325,7 @@ const MeetRoomPage = () => {
                             No hay preguntas en esta categoría de filtro.
                           </div>
                         ) : (
-                          <div className="space-y-4">
+                          <div className="max-h-[55vh] sm:max-h-[550px] overflow-y-auto space-y-4 pr-1.5 scrollbar-thin scrollbar-thumb-gold/30">
                             {filteredQuestionsWithIdx.map(({ q, idx: qIdx }) => {
                               const userAns = targetUserAnswers[qIdx];
                               const correctLetter = getQuestionCorrectLetter(q);
@@ -2352,7 +2484,7 @@ const MeetRoomPage = () => {
 
                     const totalQs = statsList.length;
                     const avgAccuracy = totalQs > 0 
-                      ? Math.round(statsList.reduce((acc, curr) => acc + (curr.correctPercentage || 0), 0) / totalQs) 
+                      ? Math.round((Array.isArray(statsList) ? statsList : []).reduce((acc, curr) => acc + (curr.correctPercentage || 0), 0) / totalQs) 
                       : 0;
 
                     const bestQuestion = [...statsList].sort((a, b) => (b.correctPercentage || 0) - (a.correctPercentage || 0))[0];
@@ -2381,7 +2513,7 @@ const MeetRoomPage = () => {
                         </div>
 
                         {/* Tabla de Rendimiento por Pregunta */}
-                        <div className="space-y-3">
+                        <div className="max-h-[55vh] sm:max-h-[550px] overflow-y-auto space-y-3 pr-1.5 scrollbar-thin scrollbar-thumb-gold/30">
                           {statsList.map((stat, sIdx) => {
                             const qNumber = (stat.questionIndex !== undefined ? stat.questionIndex : sIdx) + 1;
                             const correctL = stat.correctAnswer || getQuestionCorrectLetter(stat);
@@ -2476,7 +2608,7 @@ const MeetRoomPage = () => {
                           No se encontraron registros en la tabla global.
                         </div>
                       ) : (
-                        <div className="space-y-2">
+                        <div className="max-h-[55vh] sm:max-h-[480px] overflow-y-auto space-y-2 pr-1.5 scrollbar-thin scrollbar-thumb-gold/30">
                           {globalLeaderboard.map((item, gIdx) => {
                             const isMe = String(item.id) === String(user?.id);
                             return (
@@ -2555,7 +2687,15 @@ const MeetRoomPage = () => {
                   </div>
                 )}
 
-                <div className="flex justify-center">
+                <div className="flex flex-wrap items-center justify-center gap-3">
+                  <button
+                    onClick={() => setResultsViewMode('reading')}
+                    className="inline-flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white border border-blue-400/50 px-5 py-2.5 rounded-xl font-bold text-xs sm:text-sm shadow-xl hover:scale-105 transition-all cursor-pointer"
+                  >
+                    <BookOpen className="w-4 h-4 text-gold-light" />
+                    <span>📖 Volver a la Lectura del Documento</span>
+                  </button>
+
                   <button
                     onClick={() => {
                       if (socket) socket.disconnect();

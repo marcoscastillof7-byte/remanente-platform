@@ -64,8 +64,8 @@ const ChapterPage = () => {
     );
   }
 
-  const bestScore = history.length > 0 ? Math.max(...history.map(h => h.score)) : null;
-  const avgScore = history.length > 0 ? Math.round(history.reduce((sum, h) => sum + h.score, 0) / history.length) : null;
+  const bestScore = Array.isArray(history) && history.length > 0 ? Math.max(...history.map(h => h.score || 0)) : null;
+  const avgScore = Array.isArray(history) && history.length > 0 ? Math.round(history.reduce((sum, h) => sum + (h.score || 0), 0) / history.length) : null;
 
   return (
     <div className="max-w-4xl mx-auto">

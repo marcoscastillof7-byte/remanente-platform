@@ -104,3 +104,20 @@ a[href*="netlify.com"] {
   animation: bounce-short 0.5s ease-in-out;
 }
 
+/* Soporte táctil y deslizamiento fluido en móviles */
+html, body {
+  -webkit-overflow-scrolling: touch;
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: rgba(212, 175, 55, 0.4);
+  border-radius: 3px;
+}
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.4);
+}
+

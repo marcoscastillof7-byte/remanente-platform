@@ -67,9 +67,11 @@ const DashboardPage = () => {
     );
   }
 
-  const totalQuizzes = books.reduce((sum, b) => sum + (b.quizzes_completed || 0), 0);
-  const avgScore = books.filter(b => b.avg_score).length > 0
-    ? Math.round(books.reduce((sum, b) => sum + (b.avg_score || 0), 0) / books.filter(b => b.avg_score).length)
+  const safeBooks = Array.isArray(books) ? books : [];
+  const totalQuizzes = safeBooks.reduce((sum, b) => sum + (b?.quizzes_completed || 0), 0);
+  const booksWithScore = safeBooks.filter(b => b?.avg_score);
+  const avgScore = booksWithScore.length > 0
+    ? Math.round(booksWithScore.reduce((sum, b) => sum + (b?.avg_score || 0), 0) / booksWithScore.length)
     : 0;
 
   return (

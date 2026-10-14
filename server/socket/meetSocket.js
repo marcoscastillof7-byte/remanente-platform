@@ -570,6 +570,64 @@ export async function startRoomQuiz(meetId, payloadQuestions = null, io = null) 
     };
 }
 
+const pendingPersistTimers = new Map();
+
+/**
+ * Guarda en lote las respuestas y participantes de la sala en Supabase.
+ * Diseñado específicamente para que 15+ personas respondiendo concurrentemente
+ * no saturen la base de datos ni provoquen colisiones o carreras.
+ */
+export async function flushRoomPersist(room, idStr) {
+    if (!room || !idStr) return;
+    if (pendingPersistTimers.has(idStr)) {
+        clearTimeout(pendingPersistTimers.get(idStr));
+        pendingPersistTimers.delete(idStr);
+    }
+    try {
+        const supabase = getDb();
+        const { data: currentMeet } = await supabase.from('meetings').select('description').eq('id', idStr).single();
+        let currentMeta = {};
+        try { currentMeta = JSON.parse(currentMeet?.description || '{}'); } catch {}
+        if (!currentMeta.savedUserAnswers) currentMeta.savedUserAnswers = {};
+        
+        if (room.userAnswers) {
+            room.userAnswers.forEach((ansMap, uId) => {
+                const uIdStr = String(uId);
+                if (!currentMeta.savedUserAnswers[uIdStr]) currentMeta.savedUserAnswers[uIdStr] = {};
+                ansMap.forEach((entry, qIdx) => {
+                    currentMeta.savedUserAnswers[uIdStr][qIdx] = entry;
+                });
+            });
+        }
+        if (room.participants) {
+            if (!currentMeta.savedParticipants) currentMeta.savedParticipants = {};
+            room.participants.forEach((p, uId) => {
+                const uIdStr = String(uId);
+                currentMeta.savedParticipants[uIdStr] = {
+                    id: p.id,
+                    username: p.username,
+                    score: p.score || 0,
+                    role: p.role || 'user',
+                    isHost: p.isHost || false
+                };
+            });
+        }
+        await supabase.from('meetings').update({ description: JSON.stringify(currentMeta) }).eq('id', idStr);
+    } catch (err) {
+        console.warn('[meetSocket] Error en flushRoomPersist:', err.message);
+    }
+}
+
+export function scheduleRoomPersist(room, idStr) {
+    if (!room || !idStr) return;
+    if (pendingPersistTimers.has(idStr)) return;
+    const timer = setTimeout(() => {
+        pendingPersistTimers.delete(idStr);
+        flushRoomPersist(room, idStr);
+    }, 400); // 400ms debounce
+    pendingPersistTimers.set(idStr, timer);
+}
+
 /**
  * Procesa la respuesta de un usuario a una pregunta a su propio ritmo
  */
@@ -679,19 +737,8 @@ export async function submitRoomAnswer(meetId, questionIndex, selectedAnswer, ti
         }
     }
 
-    // Persistencia continua inmediata en Supabase para blindar contra recarga y caídas
-    try {
-        const supabase = getDb();
-        const { data: currentMeet } = await supabase.from('meetings').select('description').eq('id', idStr).single();
-        let currentMeta = {};
-        try { currentMeta = JSON.parse(currentMeet?.description || '{}'); } catch {}
-        if (!currentMeta.savedUserAnswers) currentMeta.savedUserAnswers = {};
-        if (!currentMeta.savedUserAnswers[userIdStr]) currentMeta.savedUserAnswers[userIdStr] = {};
-        currentMeta.savedUserAnswers[userIdStr][qIdxNum] = answerEntry;
-        await supabase.from('meetings').update({ description: JSON.stringify(currentMeta) }).eq('id', idStr);
-    } catch (saveErr) {
-        console.warn('[meetSocket] Error guardando respuesta persistente:', saveErr.message);
-    }
+    // Persistencia continua por lotes (debounce 400ms) para blindar contra recarga y caídas sin colisiones
+    scheduleRoomPersist(room, idStr);
 
     return {
         success: true,
@@ -721,6 +768,9 @@ export async function revealRoomQuizResults(meetId, io = null) {
     if (!room) return { error: 'Sala Meet no encontrada' };
 
     room.phase = 'finished';
+
+    // Asegurar que todas las respuestas pendientes se consoliden en la base de datos
+    await flushRoomPersist(room, idStr);
 
     // 1. Preparar lista completa de preguntas con respuestas y explicaciones reales
     const fullQuestions = (room.questions || []).map((q, idx) => ({
@@ -1331,6 +1381,39 @@ export function setupMeetSocket(io) {
             if (!isAuthorized) return;
 
             await revealRoomQuizResults(meetId, io);
+        });
+
+        // 8.1. CAMBIAR FASE DE LA REUNIÓN (Líder / Admin reanuda lectura o cambia fase)
+        socket.on('meet:change-phase', async ({ meetId, phase }) => {
+            const idStr = String(meetId);
+            const room = activeRooms.get(idStr);
+            const isAuthorized = currentUser && (
+                ['admin', 'superadmin', 'lider', 'leader'].includes((currentUser.role || '').toLowerCase()) ||
+                (room && String(currentUser.id) === String(room.hostId))
+            );
+            if (!isAuthorized) return;
+
+            if (room) {
+                room.phase = phase;
+                if (phase === 'reading') {
+                    room.revealedResults = null;
+                }
+            }
+
+            try {
+                const supabase = getDb();
+                const { data: currentMeet } = await supabase.from('meetings').select('description').eq('id', idStr).single();
+                let currentMeta = {};
+                try { currentMeta = JSON.parse(currentMeet?.description || '{}'); } catch {}
+                currentMeta.phase = phase;
+                if (phase === 'reading') {
+                    currentMeta.revealedResults = null;
+                }
+                await supabase.from('meetings').update({ description: JSON.stringify(currentMeta) }).eq('id', idStr);
+            } catch (e) {}
+
+            io.to(`meet:${idStr}`).emit('meet:phase-changed', { meetId: idStr, phase });
+            io.emit('meet:phase-changed', { meetId: idStr, phase });
         });
 
         // 9. FINALIZAR / CERRAR REUNIÓN EN VIVO MANUALMENTE (Líder / Admin)
