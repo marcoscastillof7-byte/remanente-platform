@@ -25,13 +25,37 @@ import {
   Hourglass,
   CheckCheck,
   HelpCircle,
-  Crown
+  Crown,
+  Target,
+  TrendingUp,
+  Filter
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { api } from '../utils/api';
 import { supabase } from '../utils/supabase';
 import { playNotificationSound } from '../utils/notificationSound';
 import ManageQuestionsModal from '../components/meet/ManageQuestionsModal';
+
+export function getQuestionCorrectLetter(q) {
+  if (!q) return 'a';
+  const raw = String(q.correct_answer || q.correctAnswer || '').trim().toLowerCase();
+  if (['a', 'b', 'c', 'd'].includes(raw)) return raw;
+
+  const optA = String(q.option_a || q.optionA || '').trim().toLowerCase();
+  const optB = String(q.option_b || q.optionB || '').trim().toLowerCase();
+  const optC = String(q.option_c || q.optionC || '').trim().toLowerCase();
+  const optD = String(q.option_d || q.optionD || '').trim().toLowerCase();
+
+  if (raw && optA && raw === optA) return 'a';
+  if (raw && optB && raw === optB) return 'b';
+  if (raw && optC && raw === optC) return 'c';
+  if (raw && optD && raw === optD) return 'd';
+
+  const match = raw.match(/^[\(\[]?([a-d])[\)\]\.\:\-]/);
+  if (match && match[1]) return match[1];
+
+  return raw || 'a';
+}
 
 export function getUniversalPdfViewerUrl(url, page = 1) {
   if (!url) return '';
@@ -102,16 +126,35 @@ const MeetRoomPage = () => {
   const [platformOnlineCount, setPlatformOnlineCount] = useState(1);
   const [sessionClosing, setSessionClosing] = useState(null); // { message, countdown: 4 }
   const [liveLeaderboard, setLiveLeaderboard] = useState([]);
-  const [activeResultsTab, setActiveResultsTab] = useState('posiciones'); // 'posiciones' | 'revision' | 'estadisticas'
+  const [activeResultsTab, setActiveResultsTab] = useState('posiciones'); // 'posiciones' | 'revision' | 'estadisticas' | 'global'
+  const [recapFilter, setRecapFilter] = useState('todos'); // 'todos' | 'aciertos' | 'falladas'
+  const [selectedUserForRecap, setSelectedUserForRecap] = useState(null); // null = current user
+  const [globalLeaderboard, setGlobalLeaderboard] = useState([]);
+  const [loadingGlobalLeaderboard, setLoadingGlobalLeaderboard] = useState(false);
   const [isManageQuestionsOpen, setIsManageQuestionsOpen] = useState(false);
 
   const isHost = meet && (String(user?.id) === String(meet.host_id) || ['admin', 'superadmin', 'lider', 'leader'].includes(user?.role?.toLowerCase()));
   const pdfContainerRef = useRef(null);
 
-  // Lista activa de preguntas
-  const activeQuestions = quizQuestions.length > 0 ? quizQuestions : (meet?.questions || []);
+  // Lista activa de preguntas con soporte para preguntas completas reveladas
+  const activeQuestions = (() => {
+    if (revealedResults?.fullQuestions && Array.isArray(revealedResults.fullQuestions) && revealedResults.fullQuestions.length > 0) {
+      return revealedResults.fullQuestions;
+    }
+    if (revealedResults?.questionsResults && Array.isArray(revealedResults.questionsResults) && revealedResults.questionsResults.length > 0) {
+      return revealedResults.questionsResults;
+    }
+    if (quizQuestions && quizQuestions.length > 0) {
+      return quizQuestions;
+    }
+    return meet?.questions || [];
+  })();
   const currentQuestion = activeQuestions[myQuestionIndex] || null;
-  const myCorrectCount = Object.values(myAnswers).filter(a => a.isCorrect).length;
+  const myCorrectCount = activeQuestions.reduce((acc, q, idx) => {
+    const ans = myAnswers[idx];
+    if (ans && ans.isCorrect) return acc + 1;
+    return acc;
+  }, 0);
   const connectedParticipants = participants.filter(p => p.connected !== false);
   const connectedCount = Math.max(1, connectedParticipants.length);
 
@@ -222,6 +265,16 @@ const MeetRoomPage = () => {
         setRevealedResults(state.revealedResults);
         setPhase('finished');
         if (state.revealedResults.podium) setFinalPodium(state.revealedResults.podium);
+        if (state.revealedResults.leaderboard) setLiveLeaderboard(state.revealedResults.leaderboard);
+        if (state.revealedResults.fullQuestions && Array.isArray(state.revealedResults.fullQuestions) && state.revealedResults.fullQuestions.length > 0) {
+          setQuizQuestions(state.revealedResults.fullQuestions);
+        }
+        if (state.revealedResults.allUserAnswers && user?.id && state.revealedResults.allUserAnswers[String(user.id)]) {
+          setMyAnswers(prev => ({
+            ...state.revealedResults.allUserAnswers[String(user.id)],
+            ...prev
+          }));
+        }
       }
 
       if (state.totalJoinedCount) setTotalJoinedCount(state.totalJoinedCount);
@@ -263,12 +316,8 @@ const MeetRoomPage = () => {
       setPhase(newPhase);
       if (newPhase === 'quiz') {
         playNotificationSound();
-      } else if (newPhase === 'finished') {
-        setSessionClosing(prev => prev || {
-          message: 'La reunión ha sido finalizada por el líder.',
-          countdown: 4
-        });
       }
+      // Nota: phase === 'finished' muestra resultados, podio y recap. NO cierra la sala.
     });
 
     // Evento de inicio del Quiz: cada persona recibe el set completo y empieza a responder a su ritmo
@@ -312,12 +361,22 @@ const MeetRoomPage = () => {
       setPhase('finished');
       if (results.leaderboard) setLiveLeaderboard(results.leaderboard);
       if (results.podium) setFinalPodium(results.podium);
+      if (results.fullQuestions && Array.isArray(results.fullQuestions) && results.fullQuestions.length > 0) {
+        setQuizQuestions(results.fullQuestions);
+      }
+      if (results.allUserAnswers && user?.id && results.allUserAnswers[String(user.id)]) {
+        setMyAnswers(prev => ({
+          ...results.allUserAnswers[String(user.id)],
+          ...prev
+        }));
+      }
       const me = (results.leaderboard || []).find(p => String(p.id) === String(user?.id));
       if (me && me.score !== undefined) {
         setMySessionScore(me.score);
       }
       playNotificationSound();
     });
+
 
     s.on('meet:questions-updated', ({ questions: updatedQs, count }) => {
       setMeet(prev => prev ? {
@@ -456,6 +515,19 @@ const MeetRoomPage = () => {
       }
     };
   }, [id, user, socket]);
+
+  // Cargar tabla de honor global cuando se activa la pestaña 'global'
+  useEffect(() => {
+    if (activeResultsTab === 'global' && globalLeaderboard.length === 0) {
+      setLoadingGlobalLeaderboard(true);
+      api.get('/leaderboard')
+        .then(data => {
+          if (Array.isArray(data)) setGlobalLeaderboard(data.slice(0, 15));
+        })
+        .catch(err => console.warn('[Meet] Error cargando tabla de honor global:', err))
+        .finally(() => setLoadingGlobalLeaderboard(false));
+    }
+  }, [activeResultsTab, globalLeaderboard.length]);
 
   // 1. AVANZAR A LA SIGUIENTE PREGUNTA DEL SET O FINALIZAR
   const handleGoToNextQuestion = () => {
@@ -716,6 +788,17 @@ const MeetRoomPage = () => {
       if (res?.results) {
         setRevealedResults(res.results);
         setPhase('finished');
+        if (res.results.leaderboard) setLiveLeaderboard(res.results.leaderboard);
+        if (res.results.podium) setFinalPodium(res.results.podium);
+        if (res.results.fullQuestions && Array.isArray(res.results.fullQuestions) && res.results.fullQuestions.length > 0) {
+          setQuizQuestions(res.results.fullQuestions);
+        }
+        if (res.results.allUserAnswers && user?.id && res.results.allUserAnswers[String(user.id)]) {
+          setMyAnswers(prev => ({
+            ...res.results.allUserAnswers[String(user.id)],
+            ...prev
+          }));
+        }
       }
     } catch (err) {
       console.warn('[Meet] Respaldo HTTP reveal-results:', err);
@@ -1443,181 +1526,577 @@ const MeetRoomPage = () => {
                 </div>
               )}
 
-              {/* Pestañas de Resultados: Tabla de Posicionamiento vs Revisión de Respuestas */}
+              {/* Pestañas de Resultados: Tabla de Posicionamiento, Recap de Respuestas, Estadísticas de la Sala y Tabla Global */}
               <div className="bg-slate-900 border border-gold/40 rounded-2xl overflow-hidden shadow-2xl">
-                <div className="flex border-b border-gold/20 bg-slate-950/70">
+                <div className="flex border-b border-gold/20 bg-slate-950/70 overflow-x-auto scrollbar-none">
                   <button
                     onClick={() => setActiveResultsTab('posiciones')}
-                    className={`flex-1 py-3 px-3 text-xs sm:text-sm font-bold transition-colors flex items-center justify-center gap-1.5 cursor-pointer ${
+                    className={`flex-1 min-w-[130px] py-3 px-3 text-xs sm:text-sm font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
                       activeResultsTab === 'posiciones' 
-                        ? 'bg-gold/20 text-gold-light border-b-2 border-gold' 
+                        ? 'bg-gold/20 text-gold-light border-b-2 border-gold shadow-inner' 
                         : 'text-gray-400 hover:text-white'
                     }`}
                   >
-                    <Trophy className="w-4 h-4 text-gold" />
-                    <span>Tabla de Posicionamiento ({leaderboardList.length})</span>
+                    <Trophy className="w-4 h-4 text-gold shrink-0" />
+                    <span>Posicionamiento ({leaderboardList.length})</span>
                   </button>
                   <button
                     onClick={() => setActiveResultsTab('revision')}
-                    className={`flex-1 py-3 px-3 text-xs sm:text-sm font-bold transition-colors flex items-center justify-center gap-1.5 cursor-pointer ${
+                    className={`flex-1 min-w-[140px] py-3 px-3 text-xs sm:text-sm font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
                       activeResultsTab === 'revision' 
-                        ? 'bg-gold/20 text-gold-light border-b-2 border-gold' 
+                        ? 'bg-gold/20 text-gold-light border-b-2 border-gold shadow-inner' 
                         : 'text-gray-400 hover:text-white'
                     }`}
                   >
-                    <FileText className="w-4 h-4" />
-                    <span>Revisión de Mis Respuestas ({myCorrectCount}/{activeQuestions.length})</span>
+                    <FileText className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span>Recap de Respuestas ({myCorrectCount}/{activeQuestions.length})</span>
+                  </button>
+                  <button
+                    onClick={() => setActiveResultsTab('estadisticas')}
+                    className={`flex-1 min-w-[140px] py-3 px-3 text-xs sm:text-sm font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                      activeResultsTab === 'estadisticas' 
+                        ? 'bg-gold/20 text-gold-light border-b-2 border-gold shadow-inner' 
+                        : 'text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    <BarChart3 className="w-4 h-4 text-blue-400 shrink-0" />
+                    <span>Estadísticas de la Sala</span>
+                  </button>
+                  <button
+                    onClick={() => setActiveResultsTab('global')}
+                    className={`flex-1 min-w-[130px] py-3 px-3 text-xs sm:text-sm font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                      activeResultsTab === 'global' 
+                        ? 'bg-gold/20 text-gold-light border-b-2 border-gold shadow-inner' 
+                        : 'text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    <Crown className="w-4 h-4 text-amber-300 shrink-0" />
+                    <span>Tabla de Honor Global</span>
                   </button>
                 </div>
 
-                <div className="p-4 sm:p-5">
-                  {activeResultsTab === 'posiciones' ? (
-                    /* TAB 1: TABLA DE POSICIONAMIENTO COMPLETA (LEADERBOARD) */
-                    <div className="space-y-2">
-                      {leaderboardList.map((p, idx) => {
-                        const isMe = String(p.id) === String(user?.id);
-                        return (
-                          <div
-                            key={p.id || idx}
-                            className={`flex items-center justify-between p-3 sm:p-3.5 rounded-xl border text-xs sm:text-sm font-semibold transition-all ${
-                              isMe 
-                                ? 'bg-gold/25 border-gold text-gold-light ring-1 ring-gold shadow-md' 
-                                : idx === 0 
-                                ? 'bg-amber-500/15 border-amber-400 text-amber-200' 
-                                : idx === 1 
-                                ? 'bg-slate-400/15 border-slate-300 text-slate-200' 
-                                : idx === 2 
-                                ? 'bg-amber-800/15 border-amber-700 text-amber-300' 
-                                : 'bg-white/5 border-white/10 text-gray-300'
-                            }`}
-                          >
-                            <div className="flex items-center gap-3 min-w-0">
-                              <span className="font-bold text-sm sm:text-base w-7 sm:w-8 shrink-0">
-                                {idx === 0 ? '🥇 1º' : idx === 1 ? '🥈 2º' : idx === 2 ? '🥉 3º' : `${idx + 1}º`}
-                              </span>
-                              <div className="flex flex-col min-w-0">
-                                <div className="flex items-center gap-1.5 truncate">
-                                  <span className="truncate">{p.username}</span>
-                                  {isMe && (
-                                    <span className="text-[10px] bg-gold/20 text-gold-light px-1.5 py-0.5 rounded border border-gold/40 font-bold shrink-0">
-                                      (Tú)
-                                    </span>
-                                  )}
-                                  {(p.isHost || ['admin', 'superadmin', 'lider', 'leader'].includes(p.role?.toLowerCase())) && (
-                                    <span className="text-[10px] bg-blue-500/20 text-blue-300 px-1.5 py-0.5 rounded border border-blue-400/30 font-bold shrink-0">
-                                      Líder
+                <div className="p-3 sm:p-5">
+                  {/* TAB 1: TABLA DE POSICIONAMIENTO COMPLETA */}
+                  {activeResultsTab === 'posiciones' && (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between text-xs text-gray-400 px-2 py-1">
+                        <span>Participantes clasificados por puntuación, aciertos y velocidad</span>
+                        <span className="font-mono">{leaderboardList.length} en clasificación</span>
+                      </div>
+
+                      <div className="space-y-2">
+                        {leaderboardList.map((p, idx) => {
+                          const isMe = String(p.id) === String(user?.id);
+                          const isConnected = p.connected !== false;
+                          const correctCnt = p.correctCount !== undefined ? p.correctCount : 0;
+                          const totalQs = p.totalQuestions || activeQuestions.length;
+                          const accuracyPct = totalQs > 0 ? Math.round((correctCnt / totalQs) * 100) : 0;
+
+                          return (
+                            <div
+                              key={p.id || idx}
+                              className={`flex flex-col sm:flex-row sm:items-center justify-between p-3 sm:p-3.5 rounded-xl border text-xs sm:text-sm font-semibold transition-all gap-2.5 ${
+                                isMe 
+                                  ? 'bg-gold/25 border-gold text-gold-light ring-1 ring-gold shadow-md' 
+                                  : idx === 0 
+                                  ? 'bg-amber-500/15 border-amber-400/60 text-amber-200' 
+                                  : idx === 1 
+                                  ? 'bg-slate-400/15 border-slate-300/60 text-slate-200' 
+                                  : idx === 2 
+                                  ? 'bg-amber-800/15 border-amber-700/60 text-amber-300' 
+                                  : 'bg-white/5 border-white/10 text-gray-300'
+                              }`}
+                            >
+                              <div className="flex items-center gap-3 min-w-0">
+                                <span className="font-black text-sm sm:text-base w-7 sm:w-8 shrink-0">
+                                  {idx === 0 ? '🥇 1º' : idx === 1 ? '🥈 2º' : idx === 2 ? '🥉 3º' : `${idx + 1}º`}
+                                </span>
+                                
+                                <div className="w-8 h-8 rounded-full bg-slate-800 border border-white/20 flex items-center justify-center text-xs font-bold shrink-0 text-white shadow">
+                                  {(p.username || 'P').charAt(0).toUpperCase()}
+                                </div>
+
+                                <div className="flex flex-col min-w-0">
+                                  <div className="flex items-center gap-1.5 truncate">
+                                    <span className="truncate font-bold text-white">{p.username}</span>
+                                    {isMe && (
+                                      <span className="text-[10px] bg-gold/20 text-gold-light px-1.5 py-0.5 rounded border border-gold/40 font-bold shrink-0">
+                                        (Tú)
+                                      </span>
+                                    )}
+                                    {(p.isHost || ['admin', 'superadmin', 'lider', 'leader'].includes(p.role?.toLowerCase())) && (
+                                      <span className="text-[10px] bg-blue-500/20 text-blue-300 px-1.5 py-0.5 rounded border border-blue-400/30 font-bold shrink-0">
+                                        Líder
+                                      </span>
+                                    )}
+                                    <span 
+                                      className={`w-2 h-2 rounded-full shrink-0 ${isConnected ? 'bg-emerald-400 animate-pulse' : 'bg-gray-500'}`}
+                                      title={isConnected ? 'Conectado a la sala' : 'Desconectado'}
+                                    />
+                                  </div>
+                                  <div className="flex items-center gap-2 text-[11px] text-gray-400">
+                                    <span>{correctCnt}/{totalQs} aciertos ({accuracyPct}%)</span>
+                                    {p.avgTimeSec ? <span>• {p.avgTimeSec}s prom</span> : null}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-white/10">
+                                <div className="text-left sm:text-right">
+                                  <span className="font-mono font-black text-gold text-sm sm:text-base block">
+                                    +{p.score || 0} pts
+                                  </span>
+                                  {p.totalPlatformPoints && (
+                                    <span className="text-[10px] text-amber-300/80 font-mono block">
+                                      🌟 {p.totalPlatformPoints} acum.
                                     </span>
                                   )}
                                 </div>
-                                {p.correctCount !== undefined && (
-                                  <span className="text-[10px] text-gray-400">
-                                    {p.correctCount} de {p.totalQuestions || activeQuestions.length} aciertos
-                                  </span>
-                                )}
+
+                                <button
+                                  onClick={() => {
+                                    setSelectedUserForRecap(p.id);
+                                    setActiveResultsTab('revision');
+                                  }}
+                                  className="px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-[11px] font-bold text-gray-200 transition-all cursor-pointer whitespace-nowrap"
+                                  title="Ver respuestas de este participante"
+                                >
+                                  Ver Recap 🔍
+                                </button>
                               </div>
                             </div>
-                            <div className="text-right shrink-0">
-                              <span className="font-mono font-bold text-gold text-sm sm:text-base block">
-                                {p.score || 0} pts
-                              </span>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    /* TAB 2: REVISIÓN PREGUNTA POR PREGUNTA */
-                    <div className="space-y-4">
-                      {activeQuestions.map((q, qIdx) => {
-                        const userAns = myAnswers[qIdx];
-                        const correctLetter = (() => {
-                          const raw = String(q.correct_answer || '').trim().toLowerCase();
-                          if (['a', 'b', 'c', 'd'].includes(raw)) return raw;
-                          if (String(q.option_a || '').trim().toLowerCase() === raw) return 'a';
-                          if (String(q.option_b || '').trim().toLowerCase() === raw) return 'b';
-                          if (String(q.option_c || '').trim().toLowerCase() === raw) return 'c';
-                          if (String(q.option_d || '').trim().toLowerCase() === raw) return 'd';
-                          return raw || 'a';
-                        })();
-
-                        const isRight = userAns && userAns.isCorrect;
-                        const hasAnswered = !!userAns;
-
-                        return (
-                          <div 
-                            key={q.id || qIdx}
-                            className={`p-3.5 sm:p-4 rounded-xl border space-y-2 text-left ${
-                              isRight 
-                                ? 'bg-emerald-950/20 border-emerald-500/40' 
-                                : hasAnswered 
-                                ? 'bg-red-950/20 border-red-500/40' 
-                                : 'bg-slate-950/40 border-gray-700'
-                            }`}
-                          >
-                            <div className="flex items-start justify-between gap-2">
-                              <h4 className="text-xs sm:text-sm font-bold text-white leading-snug">
-                                <span className="text-gold font-mono mr-1.5">#{qIdx + 1}</span>
-                                {q.question_text}
-                              </h4>
-                              <span className="shrink-0 text-xs font-bold">
-                                {isRight ? (
-                                  <span className="inline-flex items-center gap-1 text-emerald-400">
-                                    <CheckCircle className="w-4 h-4" />
-                                    <span>+{userAns.points} pts</span>
-                                  </span>
-                                ) : hasAnswered ? (
-                                  <span className="inline-flex items-center gap-1 text-red-400">
-                                    <XCircle className="w-4 h-4" />
-                                    <span>0 pts</span>
-                                  </span>
-                                ) : (
-                                  <span className="text-gray-500 italic text-[11px]">No respondida</span>
-                                )}
-                              </span>
-                            </div>
-
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-xs">
-                              {['a', 'b', 'c', 'd'].map(optKey => {
-                                const text = q[`option_${optKey}`];
-                                if (!text) return null;
-                                const isThisCorrect = optKey === correctLetter;
-                                const isThisUserPick = userAns?.selectedAnswer === optKey;
-
-                                let style = 'bg-white/5 border-white/10 text-gray-300';
-                                if (isThisCorrect) {
-                                  style = 'bg-emerald-900/40 border-emerald-500 text-emerald-200 font-bold';
-                                } else if (isThisUserPick && !isThisCorrect) {
-                                  style = 'bg-red-900/40 border-red-500 text-red-200 line-through';
-                                }
-
-                                return (
-                                  <div key={optKey} className={`p-2 rounded-lg border flex items-center justify-between gap-2 ${style}`}>
-                                    <div className="flex items-center gap-1.5 truncate">
-                                      <span className="font-bold uppercase text-[11px] w-4">{optKey})</span>
-                                      <span className="truncate">{text}</span>
-                                    </div>
-                                    {isThisCorrect && <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />}
-                                    {isThisUserPick && !isThisCorrect && <XCircle className="w-3.5 h-3.5 text-red-400 shrink-0" />}
-                                  </div>
-                                );
-                              })}
-                            </div>
-
-                            {q.explanation && (
-                              <p className="text-[11px] text-gray-300 leading-relaxed border-t border-white/10 pt-1.5 mt-1">
-                                💡 <strong>Explicación:</strong> {q.explanation}
-                                {q.verse_reference && (
-                                  <span className="text-gold font-semibold ml-1.5">📖 {q.verse_reference}</span>
-                                )}
-                              </p>
-                            )}
-                          </div>
-                        );
-                      })}
+                          );
+                        })}
+                      </div>
                     </div>
                   )}
+
+                  {/* TAB 2: RECAP DE RESPUESTAS INFALIBLE */}
+                  {activeResultsTab === 'revision' && (() => {
+                    const targetUserId = selectedUserForRecap || (user?.id ? String(user.id) : null);
+                    const targetUserAnswers = (targetUserId && revealedResults?.allUserAnswers?.[targetUserId])
+                      ? revealedResults.allUserAnswers[targetUserId]
+                      : myAnswers;
+
+                    const targetParticipant = leaderboardList.find(p => String(p.id) === String(targetUserId));
+                    const targetName = targetParticipant?.username || user?.username || 'Participante';
+                    const targetIsMe = String(targetUserId) === String(user?.id);
+
+                    const targetCorrectCount = activeQuestions.reduce((acc, q, idx) => {
+                      const ans = targetUserAnswers[idx];
+                      if (ans && ans.isCorrect) return acc + 1;
+                      return acc;
+                    }, 0);
+
+                    const filteredQuestionsWithIdx = activeQuestions.map((q, idx) => ({ q, idx })).filter(({ q, idx }) => {
+                      const ans = targetUserAnswers[idx];
+                      if (recapFilter === 'aciertos') return ans && ans.isCorrect;
+                      if (recapFilter === 'falladas') return !ans || !ans.isCorrect;
+                      return true;
+                    });
+
+                    return (
+                      <div className="space-y-4">
+                        {/* Selector de Participante & Resumen */}
+                        <div className="bg-slate-950/60 border border-white/10 rounded-xl p-3 sm:p-4 flex flex-col md:flex-row items-center justify-between gap-3">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-xs font-bold text-gray-300">Recap de:</span>
+                            {isHost && leaderboardList.length > 1 ? (
+                              <select
+                                value={targetUserId || ''}
+                                onChange={(e) => setSelectedUserForRecap(e.target.value)}
+                                className="bg-slate-800 border border-gold/40 text-gold-light font-bold text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-gold cursor-pointer"
+                              >
+                                {leaderboardList.map(p => (
+                                  <option key={p.id} value={p.id}>
+                                    {p.username} {String(p.id) === String(user?.id) ? '(Tú)' : ''} ({p.score || 0} pts)
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <span className="text-xs font-bold text-gold bg-gold/15 px-2.5 py-1 rounded-md border border-gold/30">
+                                {targetName} {targetIsMe ? '(Tus Respuestas)' : ''}
+                              </span>
+                            )}
+
+                            <span className="text-xs font-semibold text-emerald-400 bg-emerald-950/40 border border-emerald-500/40 px-2 py-1 rounded-md">
+                              {targetCorrectCount} de {activeQuestions.length} aciertos ({activeQuestions.length > 0 ? Math.round((targetCorrectCount / activeQuestions.length) * 100) : 0}%)
+                            </span>
+                          </div>
+
+                          {/* Filtros rápidos: Todos / Aciertos / Falladas */}
+                          <div className="flex items-center gap-1.5 bg-slate-900 border border-white/10 p-1 rounded-lg text-xs font-bold">
+                            <button
+                              onClick={() => setRecapFilter('todos')}
+                              className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
+                                recapFilter === 'todos' ? 'bg-gold text-slate-900 shadow' : 'text-gray-400 hover:text-white'
+                              }`}
+                            >
+                              Todas ({activeQuestions.length})
+                            </button>
+                            <button
+                              onClick={() => setRecapFilter('aciertos')}
+                              className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
+                                recapFilter === 'aciertos' ? 'bg-emerald-500 text-slate-900 shadow' : 'text-gray-400 hover:text-white'
+                              }`}
+                            >
+                              Aciertos ({targetCorrectCount})
+                            </button>
+                            <button
+                              onClick={() => setRecapFilter('falladas')}
+                              className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
+                                recapFilter === 'falladas' ? 'bg-red-500 text-white shadow' : 'text-gray-400 hover:text-white'
+                              }`}
+                            >
+                              Falladas ({activeQuestions.length - targetCorrectCount})
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Lista de preguntas revisadas */}
+                        {filteredQuestionsWithIdx.length === 0 ? (
+                          <div className="p-8 text-center text-gray-400 text-xs">
+                            No hay preguntas en esta categoría de filtro.
+                          </div>
+                        ) : (
+                          <div className="space-y-4">
+                            {filteredQuestionsWithIdx.map(({ q, idx: qIdx }) => {
+                              const userAns = targetUserAnswers[qIdx];
+                              const correctLetter = getQuestionCorrectLetter(q);
+
+                              const isTimeout = userAns?.selectedAnswer === 'timeout' || userAns?.isTimeout;
+                              const isRight = userAns && userAns.isCorrect && !isTimeout;
+                              const hasAnswered = !!userAns;
+                              const selectedKey = userAns?.selectedAnswer;
+
+                              const qText = q.question_text || q.questionText || `Pregunta ${qIdx + 1}`;
+                              const explanation = q.explanation;
+                              const verseRef = q.verse_reference || q.verseReference;
+
+                              return (
+                                <div 
+                                  key={q.id || qIdx}
+                                  className={`p-4 sm:p-5 rounded-2xl border space-y-3 text-left transition-all shadow-md ${
+                                    isRight 
+                                      ? 'bg-emerald-950/25 border-emerald-500/50 shadow-emerald-950/20' 
+                                      : isTimeout 
+                                      ? 'bg-amber-950/25 border-amber-500/50 shadow-amber-950/20'
+                                      : hasAnswered 
+                                      ? 'bg-red-950/25 border-red-500/50 shadow-red-950/20' 
+                                      : 'bg-slate-950/40 border-gray-700'
+                                  }`}
+                                >
+                                  {/* Encabezado de la Pregunta */}
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div className="space-y-1 min-w-0">
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-gold font-mono font-black text-xs px-2 py-0.5 rounded bg-gold/15 border border-gold/30">
+                                          #{qIdx + 1}
+                                        </span>
+                                        {verseRef && (
+                                          <span className="text-xs text-amber-300 font-semibold italic">
+                                            📖 {verseRef}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <h4 className="text-xs sm:text-base font-bold text-white leading-snug">
+                                        {qText}
+                                      </h4>
+                                    </div>
+
+                                    <div className="shrink-0 text-right">
+                                      {isRight ? (
+                                        <span className="inline-flex items-center gap-1.5 text-xs font-black text-emerald-400 bg-emerald-500/20 px-2.5 py-1 rounded-lg border border-emerald-400/40">
+                                          <CheckCircle className="w-4 h-4" />
+                                          <span>+{userAns.points || 50} pts</span>
+                                        </span>
+                                      ) : isTimeout ? (
+                                        <span className="inline-flex items-center gap-1.5 text-xs font-black text-amber-300 bg-amber-500/20 px-2.5 py-1 rounded-lg border border-amber-400/40">
+                                          <Clock className="w-4 h-4" />
+                                          <span>0 pts (Tiempo)</span>
+                                        </span>
+                                      ) : hasAnswered ? (
+                                        <span className="inline-flex items-center gap-1.5 text-xs font-black text-red-400 bg-red-500/20 px-2.5 py-1 rounded-lg border border-red-400/40">
+                                          <XCircle className="w-4 h-4" />
+                                          <span>0 pts</span>
+                                        </span>
+                                      ) : (
+                                        <span className="text-gray-500 italic text-[11px] bg-white/5 px-2 py-1 rounded">
+                                          No respondida (0 pts)
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  {/* Las 4 Opciones Bíblicas con Estado Visual */}
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                                    {['a', 'b', 'c', 'd'].map(optKey => {
+                                      const text = q[`option_${optKey}`] || q[`option${optKey.toUpperCase()}`];
+                                      if (!text) return null;
+                                      
+                                      const isCorrectOpt = optKey === correctLetter;
+                                      const isUserSelected = selectedKey === optKey;
+
+                                      let optStyle = 'bg-white/5 border-white/10 text-gray-300';
+                                      let badgeLabel = null;
+
+                                      if (isCorrectOpt) {
+                                        optStyle = 'bg-emerald-900/40 border-emerald-400 text-emerald-100 font-bold ring-1 ring-emerald-400 shadow-sm';
+                                        badgeLabel = isUserSelected ? '✓ Tu Acierto' : '✓ Correcta';
+                                      } else if (isUserSelected && !isCorrectOpt) {
+                                        optStyle = 'bg-red-900/40 border-red-500 text-red-200 line-through ring-1 ring-red-400';
+                                        badgeLabel = '✗ Tu Selección';
+                                      }
+
+                                      return (
+                                        <div 
+                                          key={optKey} 
+                                          className={`p-2.5 rounded-xl border flex items-center justify-between gap-2 transition-all ${optStyle}`}
+                                        >
+                                          <div className="flex items-center gap-2 min-w-0">
+                                            <span className={`w-5 h-5 rounded flex items-center justify-center font-bold uppercase text-[10px] shrink-0 ${
+                                              isCorrectOpt ? 'bg-emerald-500 text-slate-900' : isUserSelected ? 'bg-red-500 text-white' : 'bg-white/10 text-gray-300'
+                                            }`}>
+                                              {optKey}
+                                            </span>
+                                            <span className="truncate">{text}</span>
+                                          </div>
+
+                                          {badgeLabel && (
+                                            <span className={`text-[10px] uppercase tracking-wider font-black px-1.5 py-0.5 rounded shrink-0 ${
+                                              isCorrectOpt ? 'bg-emerald-500/30 text-emerald-300' : 'bg-red-500/30 text-red-300'
+                                            }`}>
+                                              {badgeLabel}
+                                            </span>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+
+                                  {/* Explicación Bíblica y Citas */}
+                                  {explanation && (
+                                    <div className="bg-slate-900/80 border border-gold/30 rounded-xl p-3 text-[11px] sm:text-xs text-gray-200 leading-relaxed space-y-1">
+                                      <div className="flex items-center gap-1.5 text-gold font-bold">
+                                        <Sparkles className="w-3.5 h-3.5" />
+                                        <span>Explicación Bíblica:</span>
+                                      </div>
+                                      <p className="text-gray-300">{explanation}</p>
+                                      {verseRef && (
+                                        <p className="text-gold font-semibold italic text-[11px] pt-1">
+                                          Fundamentado en: 📖 {verseRef}
+                                        </p>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+
+                  {/* TAB 3: ESTADÍSTICAS DE LA SALA (RENDIMIENTO POR PREGUNTA) */}
+                  {activeResultsTab === 'estadisticas' && (() => {
+                    const statsList = (revealedResults?.questionsResults && revealedResults.questionsResults.length > 0)
+                      ? revealedResults.questionsResults
+                      : activeQuestions.map((q, idx) => {
+                          const correctL = getQuestionCorrectLetter(q);
+                          return {
+                            ...q,
+                            questionIndex: idx,
+                            correctAnswer: correctL,
+                            correctPercentage: 0,
+                            correctCount: 0,
+                            incorrectCount: 0,
+                            totalAnswered: 0,
+                            breakdown: { a: 0, b: 0, c: 0, d: 0, timeout: 0 }
+                          };
+                        });
+
+                    const totalQs = statsList.length;
+                    const avgAccuracy = totalQs > 0 
+                      ? Math.round(statsList.reduce((acc, curr) => acc + (curr.correctPercentage || 0), 0) / totalQs) 
+                      : 0;
+
+                    const bestQuestion = [...statsList].sort((a, b) => (b.correctPercentage || 0) - (a.correctPercentage || 0))[0];
+                    const hardestQuestion = [...statsList].sort((a, b) => (a.correctPercentage || 0) - (b.correctPercentage || 0))[0];
+
+                    return (
+                      <div className="space-y-4">
+                        {/* KPI Cards de la Sala */}
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                          <div className="bg-slate-950/70 border border-blue-500/40 rounded-xl p-3 text-center">
+                            <span className="text-[10px] text-gray-400 uppercase font-bold block">Acierto Promedio de la Sala</span>
+                            <span className="text-xl sm:text-2xl font-black text-blue-400 font-mono">{avgAccuracy}%</span>
+                          </div>
+                          <div className="bg-slate-950/70 border border-emerald-500/40 rounded-xl p-3 text-center">
+                            <span className="text-[10px] text-gray-400 uppercase font-bold block">Pregunta Más Acertada</span>
+                            <span className="text-xs sm:text-sm font-bold text-emerald-300 truncate block mt-1">
+                              #{((bestQuestion?.questionIndex ?? 0) + 1)} ({bestQuestion?.correctPercentage || 0}%)
+                            </span>
+                          </div>
+                          <div className="bg-slate-950/70 border border-amber-500/40 rounded-xl p-3 text-center">
+                            <span className="text-[10px] text-gray-400 uppercase font-bold block">Pregunta Más Desafiante</span>
+                            <span className="text-xs sm:text-sm font-bold text-amber-300 truncate block mt-1">
+                              #{((hardestQuestion?.questionIndex ?? 0) + 1)} ({hardestQuestion?.correctPercentage || 0}%)
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Tabla de Rendimiento por Pregunta */}
+                        <div className="space-y-3">
+                          {statsList.map((stat, sIdx) => {
+                            const qNumber = (stat.questionIndex !== undefined ? stat.questionIndex : sIdx) + 1;
+                            const correctL = stat.correctAnswer || getQuestionCorrectLetter(stat);
+                            const qText = stat.question_text || stat.questionText || `Pregunta ${qNumber}`;
+                            const correctPct = stat.correctPercentage || 0;
+                            const breakdown = stat.breakdown || { a: 0, b: 0, c: 0, d: 0, timeout: 0 };
+                            
+                            const difficultyLabel = correctPct >= 70 
+                              ? { text: 'Accesible', color: 'text-emerald-400 bg-emerald-950/40 border-emerald-500/30' } 
+                              : correctPct >= 40 
+                              ? { text: 'Intermedia', color: 'text-yellow-400 bg-yellow-950/40 border-yellow-500/30' } 
+                              : { text: 'Desafiante', color: 'text-red-400 bg-red-950/40 border-red-500/30' };
+
+                            return (
+                              <div key={sIdx} className="bg-slate-950/50 border border-white/10 rounded-xl p-3.5 space-y-2.5">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <span className="text-gold font-mono font-bold text-xs bg-gold/15 px-2 py-0.5 rounded border border-gold/30">
+                                      #{qNumber}
+                                    </span>
+                                    <h5 className="text-xs sm:text-sm font-bold text-white truncate">
+                                      {qText}
+                                    </h5>
+                                  </div>
+
+                                  <div className="flex items-center gap-2 shrink-0">
+                                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${difficultyLabel.color}`}>
+                                      {difficultyLabel.text}
+                                    </span>
+                                    <span className="text-xs font-mono font-bold text-gold">
+                                      {correctPct}% acierto
+                                    </span>
+                                  </div>
+                                </div>
+
+                                {/* Barra visual de acierto */}
+                                <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                                  <div 
+                                    className={`h-full transition-all ${correctPct >= 70 ? 'bg-emerald-400' : correctPct >= 40 ? 'bg-yellow-400' : 'bg-red-400'}`}
+                                    style={{ width: `${correctPct}%` }}
+                                  />
+                                </div>
+
+                                {/* Distribución de votos A, B, C, D */}
+                                <div className="flex flex-wrap items-center gap-2 text-[11px] text-gray-300">
+                                  <span className="text-gray-400 font-medium">Elecciones:</span>
+                                  {['a', 'b', 'c', 'd'].map(opt => {
+                                    const isCorrect = opt === correctL;
+                                    const count = breakdown[opt] || 0;
+                                    return (
+                                      <span 
+                                        key={opt}
+                                        className={`px-2 py-0.5 rounded border font-mono ${
+                                          isCorrect 
+                                            ? 'bg-emerald-950/60 border-emerald-500/50 text-emerald-300 font-bold' 
+                                            : 'bg-white/5 border-white/10 text-gray-400'
+                                        }`}
+                                      >
+                                        {opt.toUpperCase()}: {count} {isCorrect ? '★' : ''}
+                                      </span>
+                                    );
+                                  })}
+                                  {breakdown.timeout > 0 && (
+                                    <span className="px-2 py-0.5 rounded border border-amber-500/40 bg-amber-950/40 text-amber-300 font-mono">
+                                      ⏰ Tiempo: {breakdown.timeout}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* TAB 4: TABLA DE HONOR GLOBAL DE LA PLATAFORMA */}
+                  {activeResultsTab === 'global' && (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between text-xs text-gray-400 px-2 py-1">
+                        <span>Puntuación acumulada histórica de los miembros de Remanente Platform</span>
+                        <Crown className="w-4 h-4 text-gold" />
+                      </div>
+
+                      {loadingGlobalLeaderboard ? (
+                        <div className="p-8 text-center text-gray-400 text-xs flex items-center justify-center gap-2">
+                          <Loader2 className="w-4 h-4 animate-spin text-gold" />
+                          <span>Cargando Tabla de Honor Global...</span>
+                        </div>
+                      ) : globalLeaderboard.length === 0 ? (
+                        <div className="p-8 text-center text-gray-400 text-xs">
+                          No se encontraron registros en la tabla global.
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {globalLeaderboard.map((item, gIdx) => {
+                            const isMe = String(item.id) === String(user?.id);
+                            return (
+                              <div
+                                key={item.id || gIdx}
+                                className={`flex items-center justify-between p-3 rounded-xl border text-xs sm:text-sm font-semibold transition-all ${
+                                  isMe 
+                                    ? 'bg-gold/25 border-gold text-gold-light ring-1 ring-gold shadow-md' 
+                                    : gIdx === 0 
+                                    ? 'bg-amber-500/15 border-amber-400 text-amber-200' 
+                                    : gIdx === 1 
+                                    ? 'bg-slate-400/15 border-slate-300 text-slate-200' 
+                                    : gIdx === 2 
+                                    ? 'bg-amber-800/15 border-amber-700 text-amber-300' 
+                                    : 'bg-white/5 border-white/10 text-gray-300'
+                                }`}
+                              >
+                                <div className="flex items-center gap-3 min-w-0">
+                                  <span className="font-black text-sm sm:text-base w-7 sm:w-8 shrink-0">
+                                    {gIdx === 0 ? '🥇 1º' : gIdx === 1 ? '🥈 2º' : gIdx === 2 ? '🥉 3º' : `${gIdx + 1}º`}
+                                  </span>
+
+                                  <div className="flex flex-col min-w-0">
+                                    <div className="flex items-center gap-1.5 truncate">
+                                      <span className="truncate font-bold text-white">{item.username}</span>
+                                      {isMe && (
+                                        <span className="text-[10px] bg-gold/20 text-gold-light px-1.5 py-0.5 rounded border border-gold/40 font-bold shrink-0">
+                                          (Tú)
+                                        </span>
+                                      )}
+                                    </div>
+                                    <span className="text-[11px] text-gray-400">
+                                      {item.quizzes_completed || 0} quizzes completados
+                                      {item.current_streak > 0 ? ` • 🔥 ${item.current_streak} días` : ''}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <div className="text-right shrink-0">
+                                  <span className="font-mono font-black text-gold text-sm sm:text-base block">
+                                    {item.total_score || item.points || 0} pts
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                 </div>
               </div>
+
 
               {/* Controles y Acciones Finales: La sala permanece abierta */}
               <div className="space-y-3 pt-2">

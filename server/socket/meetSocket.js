@@ -199,18 +199,27 @@ export function getRoomQuizProgress(room) {
         const isFinished = totalQuestions > 0 && completedCount >= totalQuestions;
         
         let correctCount = 0;
+        let calculatedScore = 0;
+        let totalTimeTakenMs = 0;
         uAnswers.forEach(ans => {
             if (ans.isCorrect) correctCount++;
+            calculatedScore += (ans.points || 0);
+            totalTimeTakenMs += (ans.timeTakenMs || 0);
         });
+
+        const effectiveScore = Math.max(p.score || 0, calculatedScore);
+        const avgTimeSec = completedCount > 0 ? parseFloat(((totalTimeTakenMs / completedCount) / 1000).toFixed(1)) : 0;
 
         return {
             id: uIdStr,
-            username: p.username,
+            username: p.username || 'Participante',
             role: p.role,
             isHost: p.isHost,
-            score: p.score || 0,
+            score: effectiveScore,
             completedCount,
             correctCount,
+            totalTimeTakenMs,
+            avgTimeSec,
             totalQuestions,
             isFinished,
             connected: p.connected !== false
@@ -220,7 +229,20 @@ export function getRoomQuizProgress(room) {
     const finishedCount = participantsList.filter(p => p.isFinished).length;
     const totalParticipants = participantsList.length;
     const allFinished = totalParticipants > 0 && finishedCount >= totalParticipants;
-    const liveLeaderboard = [...participantsList].sort((a, b) => (b.score || 0) - (a.score || 0));
+
+    // Ordenamiento oficial de posicionamiento con desempate infalible
+    const liveLeaderboard = [...participantsList].sort((a, b) => {
+        // 1. Mayor puntuación
+        if ((b.score || 0) !== (a.score || 0)) {
+            return (b.score || 0) - (a.score || 0);
+        }
+        // 2. Mayor número de aciertos
+        if ((b.correctCount || 0) !== (a.correctCount || 0)) {
+            return (b.correctCount || 0) - (a.correctCount || 0);
+        }
+        // 3. Menor tiempo total empleado (más rápido)
+        return (a.totalTimeTakenMs || 0) - (b.totalTimeTakenMs || 0);
+    }).map((p, idx) => ({ ...p, rank: idx + 1 }));
 
     return {
         meetId: String(room.meetId),
@@ -232,6 +254,7 @@ export function getRoomQuizProgress(room) {
         leaderboard: liveLeaderboard
     };
 }
+
 
 /**
  * Inicia la fase de Quiz en vivo de una reunión de manera infalible
@@ -511,14 +534,39 @@ export async function revealRoomQuizResults(meetId, io = null) {
 
     room.phase = 'finished';
 
-    // Generar resultados detallados de cada pregunta de la reunión
-    const allQuestionsResults = (room.questions || []).map((q, qIdx) => {
-        const correctLetter = getCorrectOptionLetter(q);
+    // 1. Preparar lista completa de preguntas con respuestas y explicaciones reales
+    const fullQuestions = (room.questions || []).map((q, idx) => ({
+        id: q.id || `q_${idx}`,
+        question_text: q.question_text || q.questionText,
+        questionText: q.question_text || q.questionText,
+        option_a: q.option_a || q.optionA,
+        optionA: q.option_a || q.optionA,
+        option_b: q.option_b || q.optionB,
+        optionB: q.option_b || q.optionB,
+        option_c: q.option_c || q.optionC,
+        optionC: q.option_c || q.optionC,
+        option_d: q.option_d || q.optionD,
+        optionD: q.option_d || q.optionD,
+        correct_answer: getCorrectOptionLetter(q),
+        correctAnswer: getCorrectOptionLetter(q),
+        explanation: q.explanation || 'Respuesta bíblica fundamentada en las Sagradas Escrituras.',
+        verse_reference: q.verse_reference || q.verseReference || '',
+        verseReference: q.verse_reference || q.verseReference || '',
+        time_limit_seconds: q.time_limit_seconds || 25
+    }));
+
+    // 2. Generar resultados y estadísticas detalladas por cada pregunta
+    const allQuestionsResults = fullQuestions.map((q, qIdx) => {
+        const correctLetter = q.correct_answer;
         const qAnswers = room.answers?.get(qIdx) || new Map();
 
-        const breakdown = { a: 0, b: 0, c: 0, d: 0 };
+        const breakdown = { a: 0, b: 0, c: 0, d: 0, timeout: 0 };
         qAnswers.forEach((ans) => {
             let opt = String(ans.selectedAnswer || '').trim().toLowerCase();
+            if (opt === 'timeout') {
+                breakdown.timeout = (breakdown.timeout || 0) + 1;
+                return;
+            }
             if (!['a', 'b', 'c', 'd'].includes(opt)) {
                 if (opt === String(q.option_a || '').trim().toLowerCase()) opt = 'a';
                 else if (opt === String(q.option_b || '').trim().toLowerCase()) opt = 'b';
@@ -541,7 +589,7 @@ export async function revealRoomQuizResults(meetId, io = null) {
                 if (ans.isCorrect) {
                     correctParticipants.push({
                         id: pIdStr,
-                        username: p.username,
+                        username: p.username || 'Participante',
                         selectedAnswer: ans.selectedAnswer,
                         pointsGained: ans.points,
                         timeTakenMs: ans.timeTakenMs
@@ -549,7 +597,7 @@ export async function revealRoomQuizResults(meetId, io = null) {
                 } else {
                     incorrectParticipants.push({
                         id: pIdStr,
-                        username: p.username,
+                        username: p.username || 'Participante',
                         selectedAnswer: ans.selectedAnswer,
                         pointsGained: 0,
                         timeTakenMs: ans.timeTakenMs
@@ -558,43 +606,88 @@ export async function revealRoomQuizResults(meetId, io = null) {
             } else {
                 unrespondedParticipants.push({
                     id: pIdStr,
-                    username: p.username,
+                    username: p.username || 'Participante',
                     selectedAnswer: null,
                     pointsGained: 0
                 });
             }
         });
 
+        const totalAnswered = correctParticipants.length + incorrectParticipants.length;
+        const correctPercentage = totalAnswered > 0 
+            ? Math.round((correctParticipants.length / totalAnswered) * 100) 
+            : 0;
+
         return {
+            ...q,
             questionIndex: qIdx,
-            questionText: q.question_text,
-            optionA: q.option_a,
-            optionB: q.option_b,
-            optionC: q.option_c,
-            optionD: q.option_d,
-            correctAnswer: correctLetter,
-            correctAnswerText: q[`option_${correctLetter}`] || '',
-            explanation: q.explanation || 'Respuesta bíblica fundamentada.',
-            verseReference: q.verse_reference || '',
+            correctAnswerText: q[`option_${correctLetter}`] || q[`option${correctLetter.toUpperCase()}`] || '',
             breakdown,
+            totalAnswered,
+            correctCount: correctParticipants.length,
+            incorrectCount: incorrectParticipants.length,
+            unrespondedCount: unrespondedParticipants.length,
+            correctPercentage,
             correctParticipants,
             incorrectParticipants,
             unrespondedParticipants
         };
     });
 
+    // 3. Serializar todas las respuestas de los usuarios para el Recap infalible
+    const allUserAnswers = {};
+    if (room.userAnswers) {
+        room.userAnswers.forEach((ansMap, uId) => {
+            allUserAnswers[uId] = {};
+            ansMap.forEach((ans, qIdx) => {
+                const targetQ = fullQuestions[qIdx];
+                allUserAnswers[uId][qIdx] = {
+                    ...ans,
+                    correctAnswer: targetQ ? targetQ.correct_answer : 'a',
+                    explanation: targetQ ? targetQ.explanation : '',
+                    verseReference: targetQ ? targetQ.verse_reference : ''
+                };
+            });
+        });
+    }
+
     const quizProg = getRoomQuizProgress(room);
     const finalPodium = (quizProg?.leaderboard && quizProg.leaderboard.length > 0)
         ? quizProg.leaderboard
-        : Array.from(room.participants.values()).sort((a, b) => (b.score || 0) - (a.score || 0));
+        : Array.from(room.participants.values()).sort((a, b) => (b.score || 0) - (a.score || 0)).map((p, idx) => ({ ...p, rank: idx + 1 }));
+
+    // 4. Acreditar Puntos de Sabiduría a los participantes en la base de datos (solo una vez)
+    if (!room.pointsAwarded) {
+        room.pointsAwarded = true;
+        try {
+            const supabase = getDb();
+            for (let p of finalPodium) {
+                if (p.score > 0) {
+                    const { data: u } = await supabase.from('users').select('points').eq('id', p.id).single();
+                    const currentPts = (u && u.points) ? u.points : 0;
+                    const newPts = currentPts + p.score;
+                    await supabase.from('users').update({ points: newPts }).eq('id', p.id);
+                    p.totalPlatformPoints = newPts;
+                }
+            }
+            if (io) {
+                io.emit('leaderboard-update');
+                io.emit('meet:updated');
+            }
+        } catch (dbErr) {
+            console.error('[MeetSocket] Error guardando puntos finales:', dbErr);
+        }
+    }
 
     const totalAttendance = room.allTimeParticipants ? room.allTimeParticipants.size : room.participants.size;
 
     const resultsPayload = {
         meetId: idStr,
         phase: 'finished',
-        totalQuestions: room.questions.length,
+        totalQuestions: fullQuestions.length,
+        fullQuestions,
         questionsResults: allQuestionsResults,
+        allUserAnswers,
         podium: finalPodium,
         leaderboard: finalPodium,
         totalJoinedCount: totalAttendance,
@@ -604,9 +697,11 @@ export async function revealRoomQuizResults(meetId, io = null) {
     room.revealedResults = resultsPayload;
 
     if (io) {
+        // Notificar cambio de fase a 'finished' (Visualización de Resultados y Podio)
         io.to(`meet:${idStr}`).emit('meet:phase-changed', { phase: 'finished', meetId: idStr });
         io.emit('meet:phase-changed', { phase: 'finished', meetId: idStr });
 
+        // Emitir resultados completos para todos los participantes
         io.to(`meet:${idStr}`).emit('meet:quiz-results-revealed', resultsPayload);
         io.emit('meet:quiz-results-revealed', resultsPayload);
 
@@ -622,30 +717,6 @@ export async function revealRoomQuizResults(meetId, io = null) {
             totalJoinedCount: totalAttendance,
             platformOnlineCount: getPlatformOnlineCount()
         });
-    }
-
-    // Acreditar Puntos de Sabiduría a los participantes en la base de datos (solo una vez)
-    if (!room.pointsAwarded) {
-        room.pointsAwarded = true;
-        try {
-            const supabase = getDb();
-            for (let p of finalPodium) {
-                if (p.score > 0) {
-                    const { data: u } = await supabase.from('users').select('points').eq('id', p.id).single();
-                    const currentPts = (u && u.points) ? u.points : 0;
-                    await supabase.from('users').update({ points: currentPts + p.score }).eq('id', p.id);
-                }
-            }
-            // NOTA: NO cambiar status = 'ended' en meetings aquí.
-            // La reunión se mantiene activa para que todos vean la tabla de posiciones, podio y revisión.
-            // La reunión solo se finaliza cuando el líder presione "Cerrar Reunión para Todos".
-            if (io) {
-                io.emit('leaderboard-update');
-                io.emit('meet:updated');
-            }
-        } catch (dbErr) {
-            console.error('[MeetSocket] Error guardando puntos finales:', dbErr);
-        }
     }
 
     return { success: true, results: resultsPayload };
