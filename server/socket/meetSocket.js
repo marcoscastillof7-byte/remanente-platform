@@ -38,6 +38,83 @@ export function getPlatformOnlineUsers() {
     return Array.from(usersMap.values());
 }
 
+let cachedPlatformStats = { onlineCount: 1, users: [], lastUpdated: 0 };
+
+/**
+ * Devuelve las estadísticas completas de usuarios conectados (Sockets + Supabase DB last_active)
+ */
+export async function getPlatformOnlineStats() {
+    cleanupStaleSockets();
+    const now = Date.now();
+    
+    // Cache de 3 segundos para responder instantáneamente y evitar saturar la base de datos
+    if (now - cachedPlatformStats.lastUpdated < 3000 && cachedPlatformStats.users.length > 0) {
+        return cachedPlatformStats;
+    }
+
+    const socketUsers = getPlatformOnlineUsers();
+    const usersMap = new Map();
+
+    for (const u of socketUsers) {
+        if (u.id) {
+            usersMap.set(String(u.id), {
+                ...u,
+                source: 'socket'
+            });
+        }
+    }
+
+    try {
+        const supabase = getDb();
+        if (supabase) {
+            // Usuarios activos en los últimos 4 minutos en Supabase
+            const fourMinAgo = new Date(now - 4 * 60 * 1000).toISOString();
+            const { data: dbActive, error } = await supabase
+                .from('users')
+                .select('id, username, role, points, last_active')
+                .gte('last_active', fourMinAgo)
+                .order('last_active', { ascending: false });
+
+            if (!error && Array.isArray(dbActive)) {
+                for (const u of dbActive) {
+                    const idStr = String(u.id);
+                    if (!usersMap.has(idStr)) {
+                        usersMap.set(idStr, {
+                            id: u.id,
+                            username: u.username,
+                            role: u.role || 'user',
+                            points: u.points || 0,
+                            lastActive: u.last_active,
+                            source: 'db'
+                        });
+                    }
+                }
+            }
+        }
+    } catch (dbErr) {
+        // En caso de fallo con Supabase, continuar con sockets
+    }
+
+    // Contar también sockets anónimos
+    let anonymousCount = 0;
+    for (const info of globalPlatformSockets.values()) {
+        if (!info.userId) {
+            anonymousCount++;
+        }
+    }
+
+    const mergedUsers = Array.from(usersMap.values());
+    const onlineCount = Math.max(1, mergedUsers.length + anonymousCount);
+
+    cachedPlatformStats = {
+        onlineCount,
+        users: mergedUsers,
+        lastUpdated: now
+    };
+
+    return cachedPlatformStats;
+}
+
 /**
  * Devuelve la cantidad de usuarios únicos actualmente conectados a la plataforma
  */
@@ -52,22 +129,30 @@ export function getPlatformOnlineCount() {
             anonymousCount++;
         }
     }
-    return Math.max(1, uniqueUsers.size + anonymousCount);
+    const socketTotal = uniqueUsers.size + anonymousCount;
+    return Math.max(1, Math.max(socketTotal, cachedPlatformStats.onlineCount || 1));
 }
 
 /**
  * Emite las estadísticas de usuarios conectados a toda la plataforma
  */
-export function broadcastPlatformOnlineStats(io) {
+export async function broadcastPlatformOnlineStats(io) {
     if (!io) return;
-    cleanupStaleSockets();
-    const onlineCount = getPlatformOnlineCount();
-    const users = getPlatformOnlineUsers();
-    io.emit('platform:online-stats', {
-        onlineCount,
-        users,
-        timestamp: Date.now()
-    });
+    try {
+        const stats = await getPlatformOnlineStats();
+        io.emit('platform:online-stats', {
+            onlineCount: stats.onlineCount,
+            users: stats.users,
+            timestamp: Date.now()
+        });
+    } catch (e) {
+        cleanupStaleSockets();
+        io.emit('platform:online-stats', {
+            onlineCount: getPlatformOnlineCount(),
+            users: getPlatformOnlineUsers(),
+            timestamp: Date.now()
+        });
+    }
 }
 
 /**
@@ -1026,8 +1111,12 @@ export function setupMeetSocket(io) {
 
             const isHost = userIdStr === String(room.hostId) || user.role === 'admin' || user.role === 'superadmin';
             
-            // Si el usuario ya estaba, preservar score
+            // Si el usuario ya estaba, preservar score y cancelar cualquier temporizador de desconexión previo
             const existing = room.participants.get(userIdStr);
+            if (existing && existing.disconnectTimer) {
+                clearTimeout(existing.disconnectTimer);
+                existing.disconnectTimer = null;
+            }
             const score = existing ? (existing.score || 0) : 0;
 
             room.participants.set(userIdStr, {
@@ -1290,7 +1379,12 @@ export function setupMeetSocket(io) {
                 const userIdStr = String(targetUser.id);
                 const p = room.participants.get(userIdStr);
                 if (p) {
+                    if (p.disconnectTimer) {
+                        clearTimeout(p.disconnectTimer);
+                        p.disconnectTimer = null;
+                    }
                     p.connected = false;
+                    p.socketDisconnected = true;
                     p.lastDisconnectedAt = Date.now();
                 }
                 room.handsRaised.delete(userIdStr);
@@ -1318,21 +1412,29 @@ export function setupMeetSocket(io) {
                 if (room) {
                     const userIdStr = String(currentUser.id);
                     const p = room.participants.get(userIdStr);
-                    // Solo marcar como desconectado si el socket desconectado coincide con el socket registrado (evita borrar una reconexión entrante)
+                    // Solo activar período de gracia si coincide el socket desconectado
                     if (p && p.socketId === socket.id) {
-                        p.connected = false;
+                        p.socketDisconnected = true;
                         p.lastDisconnectedAt = Date.now();
-                        room.handsRaised.delete(userIdStr);
+                        
+                        // Período de gracia de 35s antes de dar por desconectado
+                        if (p.disconnectTimer) clearTimeout(p.disconnectTimer);
+                        p.disconnectTimer = setTimeout(() => {
+                            if (p.socketDisconnected && p.socketId === socket.id) {
+                                p.connected = false;
+                                room.handsRaised.delete(userIdStr);
 
-                        const activeCount = Array.from(room.participants.values()).filter(part => part.connected !== false).length;
-                        io.to(`meet:${currentMeetId}`).emit('meet:participants-updated', {
-                            participants: Array.from(room.participants.values()),
-                            connectedCount: activeCount,
-                            totalCount: room.participants.size,
-                            totalJoinedCount: room.allTimeParticipants ? room.allTimeParticipants.size : room.participants.size,
-                            peakAttendance: room.peakAttendance || room.participants.size,
-                            platformOnlineCount: getPlatformOnlineCount()
-                        });
+                                const activeCount = Array.from(room.participants.values()).filter(part => part.connected !== false).length;
+                                io.to(`meet:${currentMeetId}`).emit('meet:participants-updated', {
+                                    participants: Array.from(room.participants.values()),
+                                    connectedCount: activeCount,
+                                    totalCount: room.participants.size,
+                                    totalJoinedCount: room.allTimeParticipants ? room.allTimeParticipants.size : room.participants.size,
+                                    peakAttendance: room.peakAttendance || room.participants.size,
+                                    platformOnlineCount: getPlatformOnlineCount()
+                                });
+                            }
+                        }, 35000);
                     }
                 }
             }

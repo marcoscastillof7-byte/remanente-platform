@@ -113,10 +113,15 @@ const Navbar = () => {
         const res = await api.get('/stats/online');
         if (res) {
           if (typeof res.onlineCount === 'number') {
-            setOnlineCount(Math.max(1, res.onlineCount));
+            setOnlineCount(prev => Math.max(1, res.onlineCount, prev));
           }
           if (Array.isArray(res.users) && res.users.length > 0) {
-            setOnlineUsers(res.users);
+            setOnlineUsers(prev => {
+              const map = new Map();
+              (prev || []).forEach(u => u && u.id && map.set(String(u.id), u));
+              res.users.forEach(u => u && u.id && map.set(String(u.id), u));
+              return Array.from(map.values());
+            });
           }
         }
       } catch (err) {}
@@ -136,13 +141,28 @@ const Navbar = () => {
     };
 
     window.addEventListener('platform-online-update', handleOnlineUpdate);
-    const interval = setInterval(fetchOnlineCount, 20000);
+    const interval = setInterval(fetchOnlineCount, 25000);
 
     return () => {
       clearInterval(interval);
       window.removeEventListener('platform-online-update', handleOnlineUpdate);
     };
   }, [user]);
+
+  // Lista autoritativa de usuarios conectados garantizando inclusión del usuario actual
+  const effectiveOnlineUsers = useMemo(() => {
+    const list = [...(onlineUsers || [])];
+    if (user?.id && !list.some(u => String(u.id) === String(user.id))) {
+      list.unshift({
+        id: user.id,
+        username: user.username,
+        role: user.role,
+        points: user.points || 0,
+        onlineAt: new Date().toISOString()
+      });
+    }
+    return list;
+  }, [onlineUsers, user]);
 
   if (!user) return null;
 
@@ -439,8 +459,8 @@ const Navbar = () => {
 
             {/* Lista de Usuarios Conectados */}
             <div className="p-4 overflow-y-auto space-y-3 flex-1 divide-y divide-gray-100">
-              {onlineUsers && onlineUsers.length > 0 ? (
-                onlineUsers.map((u, i) => {
+              {effectiveOnlineUsers && effectiveOnlineUsers.length > 0 ? (
+                effectiveOnlineUsers.map((u, i) => {
                   const rank = getRankInfo(u.points);
                   const isMe = String(u.id) === String(user.id);
                   return (

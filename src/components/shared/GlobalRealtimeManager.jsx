@@ -7,18 +7,36 @@ const GlobalRealtimeManager = () => {
   const { user } = useAuth();
   const socketRef = useRef(null);
   const presenceChannelRef = useRef(null);
+  const knownOnlineUsersRef = useRef(new Map()); // id -> user object
 
   useEffect(() => {
-    // Si no hay usuario, permitimos presencia anónima o salimos
     const currentUserId = user?.id ? String(user.id) : null;
-    const currentUsername = user?.username || 'Invitado';
+    const currentUsername = user?.username || 'Invitado en línea';
     const currentRole = user?.role || 'user';
     const currentPoints = user?.points || 0;
 
+    // Helper para emitir el conteo unificado sin fluctuaciones
+    const emitUnifiedOnlineStats = (source = 'realtime') => {
+      const usersList = Array.from(knownOnlineUsersRef.current.values());
+      const onlineCount = Math.max(1, usersList.length);
+
+      window.dispatchEvent(new CustomEvent('platform-online-update', {
+        detail: {
+          onlineCount,
+          users: usersList,
+          timestamp: Date.now(),
+          source
+        }
+      }));
+    };
+
     // ==========================================
-    // 1. SUPABASE REALTIME PRESENCE (PRESENCIA GLOBAL)
+    // 1. SUPABASE REALTIME PRESENCE (PRESENCIA GLOBAL UNIVERSAL)
     // ==========================================
-    const presenceKey = currentUserId ? `user_${currentUserId}` : `anon_${Math.random().toString(36).substring(2, 9)}`;
+    const presenceKey = currentUserId 
+      ? `user_${currentUserId}` 
+      : `anon_${Math.random().toString(36).substring(2, 9)}`;
+
     const presenceChannel = supabase.channel('remanente_platform_presence', {
       config: {
         presence: {
@@ -29,49 +47,62 @@ const GlobalRealtimeManager = () => {
 
     presenceChannelRef.current = presenceChannel;
 
+    const trackPresence = async () => {
+      try {
+        if (!presenceChannel) return;
+        await presenceChannel.track({
+          id: currentUserId || `guest_${presenceKey}`,
+          userId: currentUserId,
+          username: currentUsername,
+          role: currentRole,
+          points: currentPoints,
+          isGuest: !currentUserId,
+          onlineAt: new Date().toISOString()
+        });
+      } catch (trackErr) {
+        // Silencioso
+      }
+    };
+
     const handlePresenceSync = () => {
       try {
         const state = presenceChannel.presenceState();
-        const usersList = [];
-        const seenIds = new Set();
+        const activeNow = new Map();
 
         for (const key of Object.keys(state)) {
           const presences = state[key] || [];
           for (const p of presences) {
-            if (p && p.id) {
-              const idStr = String(p.id);
-              if (!seenIds.has(idStr)) {
-                seenIds.add(idStr);
-                usersList.push({
-                  id: p.id,
-                  username: p.username,
-                  role: p.role || 'user',
-                  points: p.points || 0,
-                  onlineAt: p.onlineAt || new Date().toISOString()
-                });
-              }
-            } else if (p && p.username) {
-              usersList.push({
-                id: `anon_${Math.random()}`,
-                username: p.username,
-                role: 'user',
-                points: 0,
-                onlineAt: new Date().toISOString()
-              });
-            }
+            if (!p) continue;
+            const uId = String(p.id || p.userId || p.username || key);
+            activeNow.set(uId, {
+              id: uId,
+              userId: p.userId,
+              username: p.username || (p.isGuest ? 'Invitado en línea' : 'Hermano en línea'),
+              role: p.role || 'user',
+              points: p.points || 0,
+              isGuest: Boolean(p.isGuest),
+              onlineAt: p.onlineAt || new Date().toISOString()
+            });
           }
         }
 
-        const onlineCount = Math.max(1, usersList.length);
+        // Siempre asegurar que el usuario actual esté presente en el mapa
+        const myId = currentUserId || `guest_${presenceKey}`;
+        if (!activeNow.has(myId)) {
+          activeNow.set(myId, {
+            id: myId,
+            userId: currentUserId,
+            username: currentUsername,
+            role: currentRole,
+            points: currentPoints,
+            isGuest: !currentUserId,
+            onlineAt: new Date().toISOString()
+          });
+        }
 
-        window.dispatchEvent(new CustomEvent('platform-online-update', {
-          detail: {
-            onlineCount,
-            users: usersList,
-            timestamp: Date.now(),
-            source: 'supabase-presence'
-          }
-        }));
+        // Actualizar el registro maestro de presencia
+        knownOnlineUsersRef.current = activeNow;
+        emitUnifiedOnlineStats('supabase-presence');
       } catch (err) {
         console.error('Error procesando sincronización de presencia:', err);
       }
@@ -79,50 +110,60 @@ const GlobalRealtimeManager = () => {
 
     presenceChannel
       .on('presence', { event: 'sync' }, handlePresenceSync)
-      .on('presence', { event: 'join' }, ({ key, newPresences }) => {
-        handlePresenceSync();
-      })
-      .on('presence', { event: 'leave' }, ({ key, leftPresences }) => {
-        handlePresenceSync();
-      })
+      .on('presence', { event: 'join' }, handlePresenceSync)
+      .on('presence', { event: 'leave' }, handlePresenceSync)
       .subscribe(async (status) => {
-        if (status === 'SUBSCRIBED' && user && user.id) {
-          try {
-            await presenceChannel.track({
-              id: user.id,
-              username: user.username,
-              role: user.role || 'user',
-              points: user.points || 0,
-              onlineAt: new Date().toISOString()
-            });
-          } catch (trackErr) {
-            console.error('Error registrando presencia en Supabase:', trackErr);
-          }
+        if (status === 'SUBSCRIBED') {
+          await trackPresence();
         }
       });
 
     // ==========================================
-    // 2. ACTUALIZACIÓN PERIÓDICA DE ACTIVIDAD (last_active)
+    // 2. ACTUALIZACIÓN PERIÓDICA DE ACTIVIDAD EN BD (last_active)
     // ==========================================
     let lastActiveInterval = null;
-    if (user && user.id) {
-      const touchLastActive = async () => {
-        try {
-          await supabase
-            .from('users')
-            .update({ last_active: new Date().toISOString() })
-            .eq('id', user.id);
-        } catch (e) {
-          // Silencioso
-        }
-      };
+    const touchLastActive = async () => {
+      if (!user?.id) return;
+      try {
+        await supabase
+          .from('users')
+          .update({ last_active: new Date().toISOString() })
+          .eq('id', user.id);
+      } catch (e) {
+        // Silencioso
+      }
+    };
 
+    if (user?.id) {
       touchLastActive();
-      lastActiveInterval = setInterval(touchLastActive, 60000); // Cada 60 segundos
+      lastActiveInterval = setInterval(touchLastActive, 45000); // Cada 45 segundos
     }
 
     // ==========================================
-    // 3. SOCKET.IO (TIEMPO REAL DE WEBSOCKETS)
+    // 3. LISTENERS DE VISIBILIDAD, RED Y ENFOQUE (ANTI-SLEEP MÓVIL)
+    // ==========================================
+    const handleRecheck = () => {
+      trackPresence();
+      if (user?.id) touchLastActive();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        handleRecheck();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('online', handleRecheck);
+    window.addEventListener('focus', handleRecheck);
+
+    // Heartbeat de presencia cada 25 segundos para renovar arrendamiento en Supabase
+    const presenceHeartbeat = setInterval(() => {
+      trackPresence();
+    }, 25000);
+
+    // ==========================================
+    // 4. SOCKET.IO (TIEMPO REAL DE WEBSOCKETS EN SERVIDOR)
     // ==========================================
     const socketUrl = window.location.port === '5173' 
       ? `${window.location.protocol}//${window.location.hostname}:3001` 
@@ -152,37 +193,40 @@ const GlobalRealtimeManager = () => {
     socket.on('reconnect', identify);
     identify();
 
-    // Ping periódico de presencia activa
+    // Ping periódico al socket
     const pingInterval = setInterval(() => {
       if (socket.connected) {
         socket.emit('platform:ping');
       }
     }, 15000);
 
-    // Eventos de presencia del socket
-    socket.on('platform:online-stats', (data) => {
-      if (data && typeof data.onlineCount === 'number') {
-        window.dispatchEvent(new CustomEvent('platform-online-update', { 
-          detail: {
-            onlineCount: data.onlineCount,
-            users: data.users || [],
-            source: 'socket'
+    // Manejador unificado de estadísticas provenientes del socket
+    const handleSocketOnlineData = (data) => {
+      if (!data) return;
+      
+      // Si el socket trae usuarios, fusionarlos sin borrar los ya confirmados en presencia
+      if (Array.isArray(data.users) && data.users.length > 0) {
+        data.users.forEach(u => {
+          if (u && (u.id || u.username)) {
+            const uId = String(u.id || u.username);
+            if (!knownOnlineUsersRef.current.has(uId)) {
+              knownOnlineUsersRef.current.set(uId, {
+                id: uId,
+                username: u.username,
+                role: u.role || 'user',
+                points: u.points || 0,
+                onlineAt: new Date().toISOString()
+              });
+            }
           }
-        }));
+        });
       }
-    });
 
-    socket.on('platform:pong', (data) => {
-      if (data && typeof data.onlineCount === 'number') {
-        window.dispatchEvent(new CustomEvent('platform-online-update', { 
-          detail: {
-            onlineCount: data.onlineCount,
-            users: data.users || [],
-            source: 'socket'
-          }
-        }));
-      }
-    });
+      emitUnifiedOnlineStats('socket');
+    };
+
+    socket.on('platform:online-stats', handleSocketOnlineData);
+    socket.on('platform:pong', handleSocketOnlineData);
 
     // Notificaciones de reuniones en vivo iniciadas
     socket.on('meet:started', (data) => {
@@ -210,7 +254,7 @@ const GlobalRealtimeManager = () => {
     });
 
     // ==========================================
-    // 4. SUSCRIPCIÓN GLOBAL A CAMBIOS DE TABLAS EN SUPABASE
+    // 5. SUSCRIPCIÓN GLOBAL A CAMBIOS DE TABLAS EN SUPABASE
     // ==========================================
     const dbChangesChannel = supabase
       .channel('global_platform_db_changes')
@@ -232,7 +276,12 @@ const GlobalRealtimeManager = () => {
 
     return () => {
       clearInterval(pingInterval);
+      clearInterval(presenceHeartbeat);
       if (lastActiveInterval) clearInterval(lastActiveInterval);
+
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('online', handleRecheck);
+      window.removeEventListener('focus', handleRecheck);
       
       try {
         if (presenceChannel) {

@@ -20,7 +20,7 @@ import meetingsRoutes from './routes/meetings.js';
 import superAdminRoutes from './routes/superadmin.js';
 import groupsRoutes from './routes/groups.js';
 import pushRoutes from './routes/push.js';
-import { setupMeetSocket, getPlatformOnlineCount, getPlatformOnlineUsers } from './socket/meetSocket.js';
+import { setupMeetSocket, getPlatformOnlineCount, getPlatformOnlineUsers, getPlatformOnlineStats } from './socket/meetSocket.js';
 
 const app = express();
 app.disable('x-powered-by');
@@ -67,11 +67,16 @@ router.use('/groups', groupsRoutes);
 router.use('/push', pushRoutes);
 
 // Contador global de usuarios en línea en tiempo real
-router.get('/stats/online', (req, res) => {
-    res.json({ 
-        onlineCount: getPlatformOnlineCount(),
-        users: getPlatformOnlineUsers()
-    });
+router.get('/stats/online', async (req, res) => {
+    try {
+        const stats = await getPlatformOnlineStats();
+        res.json(stats);
+    } catch (err) {
+        res.json({ 
+            onlineCount: getPlatformOnlineCount(),
+            users: getPlatformOnlineUsers()
+        });
+    }
 });
 
 // Usar el enrutador para el prefijo /api

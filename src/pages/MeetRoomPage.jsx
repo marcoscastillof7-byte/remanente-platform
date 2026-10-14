@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router';
 import { io } from 'socket.io-client';
 import { 
@@ -28,7 +28,8 @@ import {
   Crown,
   Target,
   TrendingUp,
-  Filter
+  Filter,
+  X
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { api } from '../utils/api';
@@ -124,6 +125,7 @@ const MeetRoomPage = () => {
   const [finalPodium, setFinalPodium] = useState([]);
   const [totalJoinedCount, setTotalJoinedCount] = useState(0);
   const [platformOnlineCount, setPlatformOnlineCount] = useState(1);
+  const [platformOnlineUsers, setPlatformOnlineUsers] = useState([]);
   const [sessionClosing, setSessionClosing] = useState(null); // { message, countdown: 4 }
   const [liveLeaderboard, setLiveLeaderboard] = useState([]);
   const [activeResultsTab, setActiveResultsTab] = useState('posiciones'); // 'posiciones' | 'revision' | 'estadisticas' | 'global'
@@ -132,10 +134,14 @@ const MeetRoomPage = () => {
   const [globalLeaderboard, setGlobalLeaderboard] = useState([]);
   const [loadingGlobalLeaderboard, setLoadingGlobalLeaderboard] = useState(false);
   const [isManageQuestionsOpen, setIsManageQuestionsOpen] = useState(false);
+  const [isRoomParticipantsModalOpen, setIsRoomParticipantsModalOpen] = useState(false);
+  const [participantsModalTab, setParticipantsModalTab] = useState('room'); // 'room' | 'platform'
+  const [roomPresenceUsers, setRoomPresenceUsers] = useState([]);
 
   const isHost = meet && (String(user?.id) === String(meet.host_id) || ['admin', 'superadmin', 'lider', 'leader'].includes(user?.role?.toLowerCase()));
   const pdfContainerRef = useRef(null);
   const broadcastChannelRef = useRef(null);
+  const roomPresenceChannelRef = useRef(null);
 
   // Lista activa de preguntas con soporte para preguntas completas reveladas
   const activeQuestions = (() => {
@@ -156,8 +162,75 @@ const MeetRoomPage = () => {
     if (ans && ans.isCorrect) return acc + 1;
     return acc;
   }, 0);
-  const connectedParticipants = participants.filter(p => p.connected !== false);
+
+  // Sincronización infalible de participantes (Supabase Presence en Sala + Socket.io + Usuario Actual)
+  const allRoomParticipants = useMemo(() => {
+    const map = new Map();
+
+    // 1. Incluir siempre al usuario actual
+    if (user?.id || user?.username) {
+      const myIdStr = String(user?.id || 'me');
+      map.set(myIdStr, {
+        id: myIdStr,
+        userId: user?.id,
+        username: user?.username || 'Yo',
+        role: user?.role || 'user',
+        isHost: Boolean(isHost),
+        connected: true,
+        score: mySessionScore || 0,
+        isFinished: isSelfFinished,
+        completedCount: Object.keys(myAnswers).length,
+        lastSeen: Date.now()
+      });
+    }
+
+    // 2. Fusionar los usuarios detectados en tiempo real por Supabase Presence en esta sala
+    for (const p of roomPresenceUsers) {
+      if (!p) continue;
+      const pId = String(p.id || p.userId || p.username);
+      const existing = map.get(pId);
+      map.set(pId, {
+        ...existing,
+        id: pId,
+        userId: p.userId || existing?.userId,
+        username: p.username || existing?.username || 'Participante',
+        role: p.role || existing?.role || 'user',
+        isHost: p.isHost !== undefined ? p.isHost : existing?.isHost,
+        connected: true,
+        score: existing?.score || 0,
+        isFinished: existing?.isFinished || false,
+        completedCount: existing?.completedCount || 0,
+        lastSeen: Date.now()
+      });
+    }
+
+    // 3. Fusionar datos extendidos desde Socket.io (puntuaciones en vivo, manos levantadas, etc.)
+    for (const s of participants) {
+      if (!s) continue;
+      const sId = String(s.id || s.userId || s.username);
+      const existing = map.get(sId);
+      map.set(sId, {
+        ...existing,
+        id: sId,
+        userId: s.userId || existing?.userId,
+        username: s.username || existing?.username || 'Participante',
+        role: s.role || existing?.role || 'user',
+        isHost: s.isHost !== undefined ? s.isHost : existing?.isHost,
+        score: s.score !== undefined ? s.score : existing?.score || 0,
+        handRaised: s.handRaised,
+        isFinished: s.isFinished !== undefined ? s.isFinished : existing?.isFinished,
+        completedCount: s.completedCount !== undefined ? s.completedCount : existing?.completedCount,
+        // Si Supabase Presence confirma su presencia, se mantiene conectado aunque el socket parpadee
+        connected: existing ? (existing.connected || s.connected !== false) : (s.connected !== false)
+      });
+    }
+
+    return Array.from(map.values());
+  }, [roomPresenceUsers, participants, user?.id, user?.username, isHost, mySessionScore, isSelfFinished, myAnswers]);
+
+  const connectedParticipants = allRoomParticipants.filter(p => p.connected !== false);
   const connectedCount = Math.max(1, connectedParticipants.length);
+  const safeTotalParticipants = Math.max(connectedCount, allRoomParticipants.length, quizProgress.totalParticipants || 0, 1);
 
   useEffect(() => {
     loadMeetDetails();
@@ -598,6 +671,127 @@ const MeetRoomPage = () => {
       supabase.removeChannel(channel);
     };
   }, [id, user, phase, revealedResults, autoAdvanceTimer]);
+
+  // Canal Supabase Realtime de Presencia en Sala: Rastreo ininterrumpido de participantes en vivo
+  useEffect(() => {
+    if (!id) return;
+
+    const currentUserId = user?.id ? String(user.id) : null;
+    const presenceKey = currentUserId 
+      ? `user_${currentUserId}` 
+      : `guest_${Math.random().toString(36).substring(2, 9)}`;
+
+    const roomPresence = supabase.channel(`meet_room_presence_${id}`, {
+      config: {
+        presence: {
+          key: presenceKey,
+        },
+      },
+    });
+
+    roomPresenceChannelRef.current = roomPresence;
+
+    const trackMe = async () => {
+      try {
+        await roomPresence.track({
+          id: currentUserId || `guest_${presenceKey}`,
+          userId: currentUserId,
+          username: user?.username || 'Participante',
+          role: user?.role || 'user',
+          isHost: Boolean(isHost),
+          avatar: user?.avatar || null,
+          joinedAt: Date.now(),
+          onlineAt: new Date().toISOString()
+        });
+      } catch (e) {}
+    };
+
+    const handleRoomPresenceSync = () => {
+      try {
+        const state = roomPresence.presenceState();
+        const list = [];
+        const seen = new Set();
+
+        for (const k of Object.keys(state)) {
+          const presences = state[k] || [];
+          for (const p of presences) {
+            if (!p) continue;
+            const uId = String(p.id || p.userId || p.username || k);
+            if (!seen.has(uId)) {
+              seen.add(uId);
+              list.push({
+                id: uId,
+                userId: p.userId,
+                username: p.username || 'Participante',
+                role: p.role || 'user',
+                isHost: Boolean(p.isHost),
+                connected: true,
+                lastSeen: Date.now()
+              });
+            }
+          }
+        }
+        setRoomPresenceUsers(list);
+      } catch (err) {
+        console.error('Error procesando presencia de sala:', err);
+      }
+    };
+
+    roomPresence
+      .on('presence', { event: 'sync' }, handleRoomPresenceSync)
+      .on('presence', { event: 'join' }, handleRoomPresenceSync)
+      .on('presence', { event: 'leave' }, handleRoomPresenceSync)
+      .subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') {
+          await trackMe();
+        }
+      });
+
+    // Anti-sleep móvil y reconexión inmediata
+    const handleRecheckPresence = () => {
+      trackMe();
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        handleRecheckPresence();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('online', handleRecheckPresence);
+    window.addEventListener('focus', handleRecheckPresence);
+
+    const presenceInterval = setInterval(trackMe, 20000);
+
+    return () => {
+      clearInterval(presenceInterval);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('online', handleRecheckPresence);
+      window.removeEventListener('focus', handleRecheckPresence);
+      try {
+        roomPresence.untrack();
+        supabase.removeChannel(roomPresence);
+      } catch (e) {}
+    };
+  }, [id, user?.id, isHost]);
+
+  // Sincronización continua de usuarios en línea en toda la plataforma
+  useEffect(() => {
+    const handlePlatformOnline = (e) => {
+      if (e?.detail) {
+        if (typeof e.detail.onlineCount === 'number') {
+          setPlatformOnlineCount(Math.max(1, e.detail.onlineCount));
+        }
+        if (Array.isArray(e.detail.users) && e.detail.users.length > 0) {
+          setPlatformOnlineUsers(e.detail.users);
+        }
+      }
+    };
+    window.addEventListener('platform-online-update', handlePlatformOnline);
+    return () => {
+      window.removeEventListener('platform-online-update', handlePlatformOnline);
+    };
+  }, []);
 
   // Heartbeat Polling de sincronización continua (cada 2.5s)
   useEffect(() => {
@@ -1115,7 +1309,12 @@ const MeetRoomPage = () => {
 
         {/* Derecha: Participantes y Controles Maestros */}
         <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-          <div className="bg-white/10 text-gray-200 px-2 sm:px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 border border-white/10 shadow-inner">
+          <button
+            type="button"
+            onClick={() => setIsRoomParticipantsModalOpen(true)}
+            className="bg-white/10 hover:bg-white/20 text-gray-200 px-2 sm:px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 border border-white/10 hover:border-gold/40 shadow-inner cursor-pointer transition-all hover:scale-105"
+            title="Haz clic para ver las personas conectadas en esta sala y en toda la plataforma"
+          >
             <div className="flex items-center gap-1" title={`${connectedCount} personas conectadas en esta sala en vivo`}>
               <Users className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gold shrink-0" />
               <span className="text-[11px] sm:text-xs font-bold text-white">{connectedCount}</span>
@@ -1127,7 +1326,7 @@ const MeetRoomPage = () => {
               <span className="text-[11px] sm:text-xs font-bold text-emerald-300">{platformOnlineCount}</span>
               <span className="hidden sm:inline text-gray-300">en plataforma</span>
             </div>
-          </div>
+          </button>
 
           {/* Botón Maestro del Líder para Gestionar / Importar Preguntas */}
           {isHost && (
@@ -1306,7 +1505,7 @@ const MeetRoomPage = () => {
                         Pregunta {myQuestionIndex + 1} de {activeQuestions.length}
                       </span>
                       <span className="text-[11px] sm:text-xs text-gray-300 font-semibold hidden xs:inline">
-                        • {quizProgress.finishedCount} de {quizProgress.totalParticipants || participants.length} completaron
+                        • {quizProgress.finishedCount} de {safeTotalParticipants} completaron
                       </span>
                     </div>
                     {/* Barra de progreso de preguntas respondidas */}
@@ -1342,7 +1541,7 @@ const MeetRoomPage = () => {
                   <div className="bg-blue-950/40 border border-blue-500/40 p-2.5 rounded-xl flex items-center justify-between text-xs text-blue-200">
                     <div className="flex items-center gap-2">
                       <span className="font-bold text-gold">👑 Panel Líder:</span>
-                      <span>{quizProgress.finishedCount} de {quizProgress.totalParticipants || participants.length} completaron todas las preguntas.</span>
+                      <span>{quizProgress.finishedCount} de {safeTotalParticipants} completaron todas las preguntas.</span>
                     </div>
                     <button
                       onClick={handleRevealQuizResults}
@@ -1457,7 +1656,7 @@ const MeetRoomPage = () => {
                 <div className="bg-slate-900/60 border border-white/10 rounded-xl p-3 text-xs text-gray-300 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Users className="w-3.5 h-3.5 text-gold" />
-                    <span>Progreso de la sala: {quizProgress.finishedCount} de {quizProgress.totalParticipants || participants.length} completaron</span>
+                    <span>Progreso de la sala: {quizProgress.finishedCount} de {safeTotalParticipants} completaron</span>
                   </div>
                   <span className="text-gray-400 font-mono text-[11px]">
                     {quizProgress.allFinished ? '¡Todos listos!' : 'Respondiendo a su ritmo'}
@@ -1517,7 +1716,7 @@ const MeetRoomPage = () => {
                         Progreso de los Hermanos en Vivo
                       </h3>
                       <p className="text-[11px] text-gray-400">
-                        {quizProgress.finishedCount} de {quizProgress.totalParticipants || participants.length} participantes han finalizado
+                        {quizProgress.finishedCount} de {safeTotalParticipants} participantes han finalizado
                       </p>
                     </div>
                   </div>
@@ -1530,7 +1729,7 @@ const MeetRoomPage = () => {
                   ) : (
                     <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-500/20 border border-amber-400 text-amber-300">
                       <Clock className="w-3.5 h-3.5 animate-spin" />
-                      <span>Esperando ({Math.max(0, (quizProgress.totalParticipants || participants.length) - quizProgress.finishedCount)})</span>
+                      <span>Esperando ({Math.max(0, safeTotalParticipants - quizProgress.finishedCount)})</span>
                     </span>
                   )}
                 </div>
@@ -1539,7 +1738,7 @@ const MeetRoomPage = () => {
                 <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden border border-white/10">
                   <div 
                     className="h-full bg-gradient-to-r from-gold to-emerald-400 transition-all duration-500"
-                    style={{ width: `${quizProgress.totalParticipants > 0 ? (quizProgress.finishedCount / quizProgress.totalParticipants) * 100 : 0}%` }}
+                    style={{ width: `${safeTotalParticipants > 0 ? (quizProgress.finishedCount / safeTotalParticipants) * 100 : 0}%` }}
                   />
                 </div>
 
@@ -1600,7 +1799,7 @@ const MeetRoomPage = () => {
                     <span>
                       {quizProgress.allFinished 
                         ? '¡Revelar Resultados y Podio Final Ahora! 🏆' 
-                        : `Mostrar Resultados (${quizProgress.finishedCount}/${quizProgress.totalParticipants || participants.length} Listos) 📊`}
+                        : `Mostrar Resultados (${quizProgress.finishedCount}/${safeTotalParticipants} Listos) 📊`}
                     </span>
                   </button>
                 </div>
@@ -1622,7 +1821,7 @@ const MeetRoomPage = () => {
             ? finalPodium
             : (liveLeaderboard && liveLeaderboard.length > 0)
             ? liveLeaderboard
-            : participants;
+            : allRoomParticipants;
 
           return (
             <div className="flex-1 flex flex-col p-4 sm:p-6 md:p-8 max-w-4xl mx-auto w-full overflow-y-auto space-y-6 text-white animate-fadeIn pb-20">
@@ -1640,14 +1839,22 @@ const MeetRoomPage = () => {
 
               {/* Estadísticas de Asistencia y Conectados */}
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 w-full max-w-xl mx-auto">
-                <div className="bg-slate-900/90 border border-gold/40 rounded-xl p-3 flex flex-col items-center shadow-lg text-center">
+                <div 
+                  onClick={() => { setParticipantsModalTab('room'); setIsRoomParticipantsModalOpen(true); }}
+                  className="bg-slate-900/90 border border-gold/40 rounded-xl p-3 flex flex-col items-center shadow-lg text-center cursor-pointer hover:border-gold hover:scale-105 transition-all"
+                  title="Clic para ver detalles de los participantes en sala"
+                >
                   <Users className="w-4 h-4 text-gold mb-1" />
                   <span className="text-[10px] text-gray-400 uppercase font-bold">Asistencia al Meet</span>
                   <span className="text-base sm:text-lg font-black text-white font-mono">
-                    {totalJoinedCount || participants.length}
+                    {Math.max(totalJoinedCount || 0, connectedCount, allRoomParticipants.length)}
                   </span>
                 </div>
-                <div className="bg-slate-900/90 border border-emerald-500/40 rounded-xl p-3 flex flex-col items-center shadow-lg text-center">
+                <div 
+                  onClick={() => { setParticipantsModalTab('platform'); setIsRoomParticipantsModalOpen(true); }}
+                  className="bg-slate-900/90 border border-emerald-500/40 rounded-xl p-3 flex flex-col items-center shadow-lg text-center cursor-pointer hover:border-emerald-400 hover:scale-105 transition-all"
+                  title="Clic para ver personas en línea en la plataforma"
+                >
                   <Users className="w-4 h-4 text-emerald-400 mb-1" />
                   <span className="text-[10px] text-gray-400 uppercase font-bold">En Plataforma</span>
                   <span className="text-base sm:text-lg font-black text-emerald-400 font-mono">
@@ -2424,6 +2631,189 @@ const MeetRoomPage = () => {
             }
           }}
         />
+      )}
+
+      {/* MODAL DE PARTICIPANTES EN SALA Y EN PLATAFORMA */}
+      {isRoomParticipantsModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 border-2 border-gold/40 rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+            
+            {/* Header */}
+            <div className="p-4 sm:p-5 bg-gradient-to-r from-primary-dark via-primary to-primary-light border-b border-white/10 flex items-center justify-between text-white">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gold/20 border border-gold/40 flex items-center justify-center text-gold">
+                  <Users className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-[Cinzel] font-bold text-base sm:text-lg text-white">
+                    Participantes en Tiempo Real
+                  </h3>
+                  <p className="text-xs text-gold-light">
+                    {connectedCount} en esta sala • {platformOnlineCount} en toda la plataforma
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsRoomParticipantsModalOpen(false)}
+                className="text-gray-300 hover:text-white p-1.5 rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Selector de pestañas */}
+            <div className="flex border-b border-white/10 bg-black/30 p-1 gap-1">
+              <button
+                type="button"
+                onClick={() => setParticipantsModalTab('room')}
+                className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                  participantsModalTab === 'room'
+                    ? 'bg-gold text-slate-950 shadow-md font-black'
+                    : 'text-gray-400 hover:text-white hover:bg-white/5'
+                }`}
+              >
+                <Users className="w-3.5 h-3.5" />
+                <span>En esta Sala ({connectedCount})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setParticipantsModalTab('platform')}
+                className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                  participantsModalTab === 'platform'
+                    ? 'bg-emerald-500 text-slate-950 shadow-md font-black'
+                    : 'text-gray-400 hover:text-white hover:bg-white/5'
+                }`}
+              >
+                <Radio className="w-3.5 h-3.5" />
+                <span>En Plataforma ({platformOnlineCount})</span>
+              </button>
+            </div>
+
+            {/* Contenido de la lista */}
+            <div className="p-4 overflow-y-auto space-y-2.5 flex-1 divide-y divide-white/5">
+              {participantsModalTab === 'room' ? (
+                connectedParticipants && connectedParticipants.length > 0 ? (
+                  connectedParticipants.map((p, idx) => {
+                    const isMe = user?.id && String(p.id || p.userId) === String(user.id);
+                    return (
+                      <div key={p.id || idx} className="pt-2.5 first:pt-0 flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="relative">
+                            <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-primary to-primary-light text-white font-bold flex items-center justify-center text-xs border border-white/20 shadow-sm">
+                              {(p.username || 'P').substring(0, 2).toUpperCase()}
+                            </div>
+                            <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-400 border-2 border-slate-900 ring-1 ring-emerald-300"></span>
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="font-bold text-white text-xs sm:text-sm">{p.username}</span>
+                              {isMe && (
+                                <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold px-1.5 py-0.2 rounded">Tú</span>
+                              )}
+                              {p.isHost && (
+                                <span className="text-[10px] bg-gold/20 text-gold-light border border-gold/40 font-bold px-1.5 py-0.2 rounded flex items-center gap-0.5">
+                                  <Crown className="w-2.5 h-2.5 text-gold" />
+                                  <span>Líder</span>
+                                </span>
+                              )}
+                              {p.handRaised && (
+                                <span className="text-[10px] bg-blue-500/20 text-blue-300 border border-blue-500/40 font-bold px-1.5 py-0.2 rounded">✋ Mano levantada</span>
+                              )}
+                            </div>
+                            <div className="text-[11px] text-gray-400 flex items-center gap-1.5 mt-0.5">
+                              {phase === 'quiz' && (
+                                <span className="text-amber-400 font-mono">
+                                  {p.isFinished ? '✅ Completó el Quiz' : '⏳ Respondiendo...'}
+                                </span>
+                              )}
+                              {phase === 'finished' && (
+                                <span className="text-gold font-mono font-bold">
+                                  {p.score || 0} pts
+                                </span>
+                              )}
+                              {phase === 'reading' && (
+                                <span className="text-emerald-400 font-medium">● En la sala de lectura</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="text-right">
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-950/40 border border-emerald-500/30 px-2 py-0.5 rounded-full">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                            <span>En Sala</span>
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="text-center py-8 text-gray-400 text-xs">
+                    No hay participantes conectados actualmente.
+                  </div>
+                )
+              ) : (
+                /* Tab Plataforma */
+                platformOnlineUsers && platformOnlineUsers.length > 0 ? (
+                  platformOnlineUsers.map((u, idx) => {
+                    const isMe = user?.id && String(u.id) === String(user.id);
+                    return (
+                      <div key={u.id || idx} className="pt-2.5 first:pt-0 flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="relative">
+                            <div className="w-9 h-9 rounded-full bg-slate-800 text-white font-bold flex items-center justify-center text-xs border border-white/10">
+                              {(u.username || 'U').substring(0, 2).toUpperCase()}
+                            </div>
+                            <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-400 border-2 border-slate-900"></span>
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="font-bold text-white text-xs sm:text-sm">{u.username}</span>
+                              {isMe && (
+                                <span className="text-[10px] bg-amber-500/20 text-amber-300 font-bold px-1.5 py-0.2 rounded">Tú</span>
+                              )}
+                              {(u.role === 'admin' || u.role === 'superadmin') && (
+                                <span className="text-[10px] bg-blue-500/20 text-blue-300 font-bold px-1.5 py-0.2 rounded">
+                                  {u.role === 'superadmin' ? 'Superadmin' : 'Líder'}
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-[11px] text-gray-400">
+                              {u.points ? `${u.points} Puntos` : 'Conectado a la plataforma'}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="text-right">
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-300 bg-emerald-950/40 border border-emerald-500/30 px-2 py-0.5 rounded-full">
+                            ● En Línea
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="text-center py-8 text-gray-400 text-xs">
+                    {platformOnlineCount} persona(s) conectadas en la plataforma.
+                  </div>
+                )
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="p-3 bg-black/40 border-t border-white/10 text-center">
+              <button
+                type="button"
+                onClick={() => setIsRoomParticipantsModalOpen(false)}
+                className="w-full sm:w-auto px-6 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition-colors cursor-pointer"
+              >
+                Cerrar
+              </button>
+            </div>
+
+          </div>
+        </div>
       )}
 
     </div>
