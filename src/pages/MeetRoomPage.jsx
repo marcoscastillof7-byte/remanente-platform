@@ -152,6 +152,12 @@ const MeetRoomPage = () => {
   const broadcastChannelRef = useRef(null);
   const roomPresenceChannelRef = useRef(null);
   const lastLaserSentRef = useRef(0);
+  const phaseRef = useRef(phase);
+  phaseRef.current = phase;
+  const myAnswersRef = useRef(myAnswers);
+  myAnswersRef.current = myAnswers;
+  const myQuestionIndexRef = useRef(myQuestionIndex);
+  myQuestionIndexRef.current = myQuestionIndex;
 
   // Lista activa de preguntas con soporte para preguntas completas reveladas
   const activeQuestions = (() => {
@@ -368,9 +374,9 @@ const MeetRoomPage = () => {
         state.myAnswers.forEach(ans => {
           answersMap[ans.questionIndex] = ans;
         });
-        setMyAnswers(answersMap);
-        const answeredCount = Object.keys(answersMap).length;
-        setMyQuestionIndex(answeredCount);
+        setMyAnswers(prev => ({ ...answersMap, ...prev }));
+        const answeredCount = Math.max(Object.keys(answersMap).length, Object.keys(myAnswersRef.current || {}).length);
+        setMyQuestionIndex(prev => Math.max(prev, answeredCount));
         if (state.myIsFinished || (state.questions && answeredCount >= state.questions.length)) {
           setIsSelfFinished(true);
         }
@@ -432,18 +438,22 @@ const MeetRoomPage = () => {
       if (pMeetId && pMeetId !== 'all' && String(pMeetId).trim() !== String(id).trim()) {
         return;
       }
+      const prevPhase = phaseRef.current;
       setPhase(newPhase);
       if (pQuestions && Array.isArray(pQuestions) && pQuestions.length > 0) {
         setQuizQuestions(pQuestions);
       }
       if (newPhase === 'quiz') {
-        setIsSelfFinished(false);
-        setCurrentFeedback(null);
-        setRevealedResults(null);
-        setMyQuestionIndex(0);
-        setMyAnswers({});
-        setResultsViewMode('results');
-        playNotificationSound();
+        const hasExistingAnswers = Object.keys(myAnswersRef.current || {}).length > 0;
+        if (prevPhase !== 'quiz' && !hasExistingAnswers) {
+          setIsSelfFinished(false);
+          setCurrentFeedback(null);
+          setRevealedResults(null);
+          setMyQuestionIndex(0);
+          setMyAnswers({});
+          setResultsViewMode('results');
+          playNotificationSound();
+        }
       }
       if (newPhase === 'reading') {
         setResultsViewMode('reading');
@@ -453,19 +463,23 @@ const MeetRoomPage = () => {
 
     // Evento de inicio del Quiz: cada persona recibe el set completo y empieza a responder a su ritmo
     s.on('meet:quiz-started', ({ questions: qList, totalQuestions, progress }) => {
+      const prevPhase = phaseRef.current;
       setPhase('quiz');
       if (qList && qList.length > 0) setQuizQuestions(qList);
-      setMyQuestionIndex(0);
-      setMyAnswers({});
-      setIsSelfFinished(false);
-      setCurrentFeedback(null);
-      setRevealedResults(null);
-      setTimeLeft(qList?.[0]?.time_limit_seconds || 25);
+      const hasExistingAnswers = Object.keys(myAnswersRef.current || {}).length > 0;
+      if (prevPhase !== 'quiz' && !hasExistingAnswers) {
+        setMyQuestionIndex(0);
+        setMyAnswers({});
+        setIsSelfFinished(false);
+        setCurrentFeedback(null);
+        setRevealedResults(null);
+        setTimeLeft(qList?.[0]?.time_limit_seconds || 25);
+        playNotificationSound();
+      }
       if (progress) {
         setQuizProgress(progress);
         if (progress.leaderboard) setLiveLeaderboard(progress.leaderboard);
       }
-      playNotificationSound();
     });
 
     // Actualización en tiempo real del progreso de todos los participantes
@@ -611,18 +625,21 @@ const MeetRoomPage = () => {
             try {
               const meta = JSON.parse(payload.new.description);
               // Transición automática a quiz si el líder inició
-              if (meta.phase === 'quiz' && phase === 'reading') {
+              if (meta.phase === 'quiz' && phaseRef.current === 'reading') {
+                const hasExistingAnswers = Object.keys(myAnswersRef.current || {}).length > 0;
                 setPhase('quiz');
                 if (meta.questions && Array.isArray(meta.questions) && meta.questions.length > 0) {
                   setQuizQuestions(meta.questions);
                 }
-                setMyQuestionIndex(0);
-                setMyAnswers({});
-                setIsSelfFinished(false);
-                setCurrentFeedback(null);
-                setRevealedResults(null);
-                setTimeLeft(meta.questions?.[0]?.time_limit_seconds || 25);
-                playNotificationSound();
+                if (!hasExistingAnswers) {
+                  setMyQuestionIndex(0);
+                  setMyAnswers({});
+                  setIsSelfFinished(false);
+                  setCurrentFeedback(null);
+                  setRevealedResults(null);
+                  setTimeLeft(meta.questions?.[0]?.time_limit_seconds || 25);
+                  playNotificationSound();
+                }
               }
               // Transición automática a finished si se revelaron resultados
               if (meta.revealedResults && (!revealedResults || phase !== 'finished')) {
@@ -642,17 +659,21 @@ const MeetRoomPage = () => {
         }
       )
       .on('broadcast', { event: 'meet:quiz-started' }, ({ payload }) => {
+        const prevPhase = phaseRef.current;
         setPhase('quiz');
         if (payload?.questions && Array.isArray(payload.questions) && payload.questions.length > 0) {
           setQuizQuestions(payload.questions);
         }
-        setMyQuestionIndex(0);
-        setMyAnswers({});
-        setIsSelfFinished(false);
-        setCurrentFeedback(null);
-        setRevealedResults(null);
-        setTimeLeft(payload?.questions?.[0]?.time_limit_seconds || 25);
-        playNotificationSound();
+        const hasExistingAnswers = Object.keys(myAnswersRef.current || {}).length > 0;
+        if (prevPhase !== 'quiz' && !hasExistingAnswers) {
+          setMyQuestionIndex(0);
+          setMyAnswers({});
+          setIsSelfFinished(false);
+          setCurrentFeedback(null);
+          setRevealedResults(null);
+          setTimeLeft(payload?.questions?.[0]?.time_limit_seconds || 25);
+          playNotificationSound();
+        }
       })
       .on('broadcast', { event: 'meet:quiz-results-revealed' }, ({ payload }) => {
         const results = payload?.results || payload;
@@ -982,7 +1003,7 @@ const MeetRoomPage = () => {
       [myQuestionIndex]: feedbackObj
     }));
 
-    // 1. Envío WebSocket (0ms)
+    // 1. Envío WebSocket primario (0ms)
     if (socket && socket.connected) {
       socket.emit('meet:submit-answer', {
         meetId: id,
@@ -991,14 +1012,14 @@ const MeetRoomPage = () => {
         timeTakenMs: limitSec * 1000,
         user
       });
+    } else {
+      // 2. Respaldo HTTP infalible (solo si socket no está conectado)
+      api.post(`/meetings/${id}/submit-answer`, {
+        questionIndex: myQuestionIndex,
+        selectedAnswer: 'timeout',
+        timeTakenMs: limitSec * 1000
+      }).catch(err => console.warn('[Meet] Respaldo HTTP submit timeout:', err));
     }
-
-    // 2. Respaldo HTTP infalible
-    api.post(`/meetings/${id}/submit-answer`, {
-      questionIndex: myQuestionIndex,
-      selectedAnswer: 'timeout',
-      timeTakenMs: limitSec * 1000
-    }).catch(err => console.warn('[Meet] Respaldo HTTP submit timeout:', err));
 
     // Auto-avance suave después de 1.8 segundos a la siguiente pregunta
     if (autoAdvanceTimer) clearTimeout(autoAdvanceTimer);
@@ -1049,7 +1070,7 @@ const MeetRoomPage = () => {
       [myQuestionIndex]: feedbackObj
     }));
 
-    // 1. Envío WebSocket (0ms)
+    // 1. Envío WebSocket primario (0ms)
     if (socket && socket.connected) {
       socket.emit('meet:submit-answer', {
         meetId: id,
@@ -1058,18 +1079,18 @@ const MeetRoomPage = () => {
         timeTakenMs,
         user
       });
+    } else {
+      // 2. Respaldo HTTP infalible (solo si socket no está conectado)
+      api.post(`/meetings/${id}/submit-answer`, {
+        questionIndex: myQuestionIndex,
+        selectedAnswer: optKey,
+        timeTakenMs
+      }).then(res => {
+        if (res && res.points && res.points > 0) {
+          setMySessionScore(prev => Math.max(prev, res.totalScore || prev));
+        }
+      }).catch(err => console.warn('[Meet] Respaldo HTTP submit-answer:', err));
     }
-
-    // 2. Respaldo HTTP infalible
-    api.post(`/meetings/${id}/submit-answer`, {
-      questionIndex: myQuestionIndex,
-      selectedAnswer: optKey,
-      timeTakenMs
-    }).then(res => {
-      if (res && res.points && res.points > 0) {
-        setMySessionScore(prev => Math.max(prev, res.totalScore || prev));
-      }
-    }).catch(err => console.warn('[Meet] Respaldo HTTP submit-answer:', err));
 
     // Auto-avance suave después de 2.2 segundos si no hace clic manual
     if (autoAdvanceTimer) clearTimeout(autoAdvanceTimer);
@@ -1601,7 +1622,7 @@ const MeetRoomPage = () => {
           !isSelfFinished ? (
             /* SUB-FASE B.1: CUESTIONARIO INDIVIDUAL EN CURSO */
             currentQuestion ? (
-              <div className="flex-1 flex flex-col justify-between p-3.5 sm:p-6 md:p-8 pb-16 sm:pb-8 max-w-4xl mx-auto w-full overflow-y-auto space-y-4">
+              <div className="flex-1 flex flex-col justify-between p-3 sm:p-5 md:p-8 pb-24 sm:pb-8 max-w-4xl mx-auto w-full overflow-y-auto space-y-4 touch-pan-y overscroll-contain">
                 
                 {/* 1. Barra de Progreso Personal, Temporizador y Puntos */}
                 <div className="bg-slate-900/90 border border-gold/30 p-3 sm:p-4 rounded-xl flex flex-wrap items-center justify-between gap-3 text-white">
@@ -1700,7 +1721,7 @@ const MeetRoomPage = () => {
                         key={optKey}
                         disabled={!!currentFeedback}
                         onClick={() => handleAnswerSelect(optKey)}
-                        className={`p-3 sm:p-4 rounded-xl border text-left flex items-center justify-between gap-3 transition-all cursor-pointer disabled:cursor-default ${btnStyle}`}
+                        className={`p-3 sm:p-4 min-h-[52px] rounded-xl border text-left flex items-center justify-between gap-3 transition-all cursor-pointer disabled:cursor-default touch-manipulation select-none active:scale-[0.99] ${btnStyle}`}
                       >
                         <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
                           <span className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center font-bold text-xs sm:text-sm uppercase shrink-0 ${
@@ -2175,7 +2196,7 @@ const MeetRoomPage = () => {
                         <span className="font-mono">{leaderboardList.length} en clasificación</span>
                       </div>
 
-                      <div className="max-h-[55vh] sm:max-h-[480px] overflow-y-auto space-y-2 pr-1.5 scrollbar-thin scrollbar-thumb-gold/30">
+                      <div className="max-h-[55vh] sm:max-h-[480px] overflow-y-auto space-y-2 pr-1.5 scrollbar-thin scrollbar-thumb-gold/30 touch-pan-y overscroll-contain">
                         {leaderboardList.map((p, idx) => {
                           const isMe = String(p.id) === String(user?.id);
                           const isConnected = p.connected !== false;
@@ -2350,7 +2371,7 @@ const MeetRoomPage = () => {
                             No hay preguntas en esta categoría de filtro.
                           </div>
                         ) : (
-                          <div className="max-h-[55vh] sm:max-h-[550px] overflow-y-auto space-y-4 pr-1.5 scrollbar-thin scrollbar-thumb-gold/30">
+                          <div className="max-h-[55vh] sm:max-h-[550px] overflow-y-auto space-y-4 pr-1.5 scrollbar-thin scrollbar-thumb-gold/30 touch-pan-y overscroll-contain">
                             {filteredQuestionsWithIdx.map(({ q, idx: qIdx }) => {
                               const userAns = targetUserAnswers[qIdx];
                               const correctLetter = getQuestionCorrectLetter(q);
@@ -2538,7 +2559,7 @@ const MeetRoomPage = () => {
                         </div>
 
                         {/* Tabla de Rendimiento por Pregunta */}
-                        <div className="max-h-[55vh] sm:max-h-[550px] overflow-y-auto space-y-3 pr-1.5 scrollbar-thin scrollbar-thumb-gold/30">
+                        <div className="max-h-[55vh] sm:max-h-[550px] overflow-y-auto space-y-3 pr-1.5 scrollbar-thin scrollbar-thumb-gold/30 touch-pan-y overscroll-contain">
                           {statsList.map((stat, sIdx) => {
                             const qNumber = (stat.questionIndex !== undefined ? stat.questionIndex : sIdx) + 1;
                             const correctL = stat.correctAnswer || getQuestionCorrectLetter(stat);
@@ -2633,7 +2654,7 @@ const MeetRoomPage = () => {
                           No se encontraron registros en la tabla global.
                         </div>
                       ) : (
-                        <div className="max-h-[55vh] sm:max-h-[480px] overflow-y-auto space-y-2 pr-1.5 scrollbar-thin scrollbar-thumb-gold/30">
+                        <div className="max-h-[55vh] sm:max-h-[480px] overflow-y-auto space-y-2 pr-1.5 scrollbar-thin scrollbar-thumb-gold/30 touch-pan-y overscroll-contain">
                           {globalLeaderboard.map((item, gIdx) => {
                             const isMe = String(item.id) === String(user?.id);
                             return (

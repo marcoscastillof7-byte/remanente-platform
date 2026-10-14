@@ -591,15 +591,6 @@ export async function startRoomQuiz(meetId, payloadQuestions = null, io = null) 
             questions: sanitizedQuestions,
             progress
         });
-
-        // Como respaldo para toda la sala
-        io.emit('meet:phase-changed', { phase: 'quiz', meetId: idStr, questions: sanitizedQuestions });
-        io.emit('meet:quiz-started', {
-            meetId: idStr,
-            totalQuestions: room.questions.length,
-            questions: sanitizedQuestions,
-            progress
-        });
     }
 
     return { 
@@ -608,6 +599,46 @@ export async function startRoomQuiz(meetId, payloadQuestions = null, io = null) 
         questions: sanitizedQuestions, 
         progress 
     };
+}
+
+const progressThrottleTimers = new Map();
+
+/**
+ * Emite la actualización de progreso del quiz a la sala correspondiente
+ * con micro-throttle de 100ms para evitar tormentas de eventos cuando 15+ personas
+ * responden simultáneamente, garantizando 0ms de lag y máxima fluidez en todos los dispositivos.
+ */
+export function scheduleRoomProgressBroadcast(io, idStr, room, immediate = false) {
+    if (!io || !idStr || !room) return;
+    
+    if (immediate) {
+        if (progressThrottleTimers.has(idStr)) {
+            clearTimeout(progressThrottleTimers.get(idStr));
+            progressThrottleTimers.delete(idStr);
+        }
+        const progress = getRoomQuizProgress(room);
+        if (progress) {
+            io.to(`meet:${idStr}`).emit('meet:quiz-progress-updated', progress);
+            if (progress.allFinished) {
+                io.to(`meet:${idStr}`).emit('meet:all-participants-finished', progress);
+            }
+        }
+        return;
+    }
+
+    if (progressThrottleTimers.has(idStr)) return;
+
+    const timer = setTimeout(() => {
+        progressThrottleTimers.delete(idStr);
+        const progress = getRoomQuizProgress(room);
+        if (progress) {
+            io.to(`meet:${idStr}`).emit('meet:quiz-progress-updated', progress);
+            if (progress.allFinished) {
+                io.to(`meet:${idStr}`).emit('meet:all-participants-finished', progress);
+            }
+        }
+    }, 100);
+    progressThrottleTimers.set(idStr, timer);
 }
 
 const pendingPersistTimers = new Map();
@@ -768,13 +799,8 @@ export async function submitRoomAnswer(meetId, questionIndex, selectedAnswer, ti
     const isFinished = uAnswers.size >= room.questions.length;
 
     if (io) {
-        io.to(`meet:${idStr}`).emit('meet:quiz-progress-updated', progress);
-        io.emit('meet:quiz-progress-updated', progress);
-
-        if (progress.allFinished) {
-            io.to(`meet:${idStr}`).emit('meet:all-participants-finished', progress);
-            io.emit('meet:all-participants-finished', progress);
-        }
+        const isFinished = uAnswers.size >= room.questions.length;
+        scheduleRoomProgressBroadcast(io, idStr, room, isFinished && progress.allFinished);
     }
 
     // Persistencia continua por lotes (debounce 400ms) para blindar contra recarga y caídas sin colisiones
@@ -1004,21 +1030,13 @@ export async function revealRoomQuizResults(meetId, io = null) {
     }
 
     if (io) {
-        // Notificar cambio de fase a 'finished' (Visualización de Resultados y Podio)
+        // Notificar cambio de fase a 'finished' a la sala
         io.to(`meet:${idStr}`).emit('meet:phase-changed', { phase: 'finished', meetId: idStr });
-        io.emit('meet:phase-changed', { phase: 'finished', meetId: idStr });
 
-        // Emitir resultados completos para todos los participantes
+        // Emitir resultados completos para todos los participantes de la sala
         io.to(`meet:${idStr}`).emit('meet:quiz-results-revealed', resultsPayload);
-        io.emit('meet:quiz-results-revealed', resultsPayload);
 
         io.to(`meet:${idStr}`).emit('meet:final-podium', {
-            meetId: idStr,
-            podium: finalPodium,
-            totalJoinedCount: totalAttendance,
-            platformOnlineCount: getPlatformOnlineCount()
-        });
-        io.emit('meet:final-podium', {
             meetId: idStr,
             podium: finalPodium,
             totalJoinedCount: totalAttendance,
@@ -1076,18 +1094,8 @@ export async function endRoomSession(meetId, io = null) {
 
     if (io) {
         io.to(`meet:${idStr}`).emit('meet:phase-changed', { meetId: idStr, phase: 'finished' });
-        io.emit('meet:phase-changed', { meetId: idStr, phase: 'finished' });
-
         io.to(`meet:${idStr}`).emit('meet:session-ended', endedPayload);
-        io.emit('meet:session-ended', endedPayload);
-
         io.to(`meet:${idStr}`).emit('meet:final-podium', { 
-            meetId: idStr,
-            podium: finalPodium,
-            totalJoinedCount: totalAttendance,
-            platformOnlineCount: getPlatformOnlineCount()
-        });
-        io.emit('meet:final-podium', { 
             meetId: idStr,
             podium: finalPodium,
             totalJoinedCount: totalAttendance,

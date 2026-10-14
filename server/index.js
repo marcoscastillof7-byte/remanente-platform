@@ -30,7 +30,12 @@ const io = new Server(httpServer, {
     cors: {
         origin: '*',
         methods: ['GET', 'POST', 'PUT', 'DELETE']
-    }
+    },
+    pingInterval: 10000,
+    pingTimeout: 5000,
+    transports: ['websocket', 'polling'],
+    allowUpgrades: true,
+    maxHttpBufferSize: 1e6
 });
 
 app.set('io', io);
