@@ -1,7 +1,7 @@
 import { getDb } from '../db/database.js';
 
 // Almacén en memoria de salas activas para latencia 0ms
-const activeRooms = new Map();
+export const activeRooms = new Map();
 
 // Registro en memoria de sockets y usuarios conectados a la plataforma en tiempo real
 const globalPlatformSockets = new Map(); // socketId -> { userId, username, lastPing }
