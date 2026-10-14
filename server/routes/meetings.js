@@ -3,6 +3,7 @@ import { getDb } from '../db/database.js';
 import { auth } from '../middleware/auth.js';
 import { sendPushToAll } from '../utils/pushNotifier.js';
 import { 
+    activeRooms,
     endActiveRoom, 
     endAllActiveRooms, 
     updateRoomQuestions, 
@@ -394,21 +395,34 @@ router.get('/:id', async (req, res) => {
 
         const isHostOrAdmin = String(req.user.id) === String(data.host_id) || isLeaderOrAdmin(req.user);
 
-        // Si el usuario no es el anfitrión y el quiz aún no termina, ocultar respuestas correctas
-        const questionsList = (meta.questions || []).map((q, idx) => {
-            if (isHostOrAdmin || data.status === 'ended') {
-                return q;
-            }
-            return {
-                id: q.id || `q_${idx}`,
-                question_text: q.question_text,
-                option_a: q.option_a,
-                option_b: q.option_b,
-                option_c: q.option_c,
-                option_d: q.option_d,
-                time_limit_seconds: q.time_limit_seconds || 25
-            };
-        });
+        const room = activeRooms.get(String(data.id));
+        const currentPhase = room?.phase || meta.phase || (data.status === 'ended' ? 'finished' : 'reading');
+        const revealedResults = room?.revealedResults || meta.revealedResults || null;
+
+        // Recuperar lista de preguntas desde la sala activa o la descripción en base de datos
+        const sourceQuestions = (room?.questions && room.questions.length > 0)
+            ? room.questions
+            : (meta.questions || []);
+
+        const questionsList = sourceQuestions.map((q, idx) => ({
+            id: q.id || `q_${idx}`,
+            question_text: q.question_text || q.questionText,
+            questionText: q.question_text || q.questionText,
+            option_a: q.option_a || q.optionA,
+            optionA: q.option_a || q.optionA,
+            option_b: q.option_b || q.optionB,
+            optionB: q.option_b || q.optionB,
+            option_c: q.option_c || q.optionC,
+            optionC: q.option_c || q.optionC,
+            option_d: q.option_d || q.optionD,
+            optionD: q.option_d || q.optionD,
+            correct_answer: q.correct_answer || q.correctAnswer || 'a',
+            correctAnswer: q.correct_answer || q.correctAnswer || 'a',
+            explanation: q.explanation || 'Respuesta bíblica fundamentada en las Sagradas Escrituras.',
+            verse_reference: q.verse_reference || q.verseReference || '',
+            verseReference: q.verse_reference || q.verseReference || '',
+            time_limit_seconds: q.time_limit_seconds || 25
+        }));
 
         res.json({
             id: data.id,
@@ -421,6 +435,9 @@ router.get('/:id', async (req, res) => {
             questions: questionsList,
             scheduled_for: data.scheduled_for,
             status: data.status,
+            phase: currentPhase,
+            revealedResults,
+            quizProgress: room ? getRoomQuizProgress(room) : null,
             host_id: data.host_id,
             host_name: data.users?.username || 'Líder',
             room_name: data.room_name,

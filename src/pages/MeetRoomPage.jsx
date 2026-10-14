@@ -135,6 +135,7 @@ const MeetRoomPage = () => {
 
   const isHost = meet && (String(user?.id) === String(meet.host_id) || ['admin', 'superadmin', 'lider', 'leader'].includes(user?.role?.toLowerCase()));
   const pdfContainerRef = useRef(null);
+  const broadcastChannelRef = useRef(null);
 
   // Lista activa de preguntas con soporte para preguntas completas reveladas
   const activeQuestions = (() => {
@@ -309,12 +310,20 @@ const MeetRoomPage = () => {
       }
     });
 
-    s.on('meet:phase-changed', ({ phase: newPhase, meetId: pMeetId }) => {
+    s.on('meet:phase-changed', ({ phase: newPhase, meetId: pMeetId, questions: pQuestions }) => {
       if (pMeetId && pMeetId !== 'all' && String(pMeetId).trim() !== String(id).trim()) {
         return;
       }
       setPhase(newPhase);
+      if (pQuestions && Array.isArray(pQuestions) && pQuestions.length > 0) {
+        setQuizQuestions(pQuestions);
+      }
       if (newPhase === 'quiz') {
+        setIsSelfFinished(false);
+        setCurrentFeedback(null);
+        setRevealedResults(null);
+        setMyQuestionIndex(0);
+        setMyAnswers({});
         playNotificationSound();
       }
       // Nota: phase === 'finished' muestra resultados, podio y recap. NO cierra la sala.
@@ -328,6 +337,7 @@ const MeetRoomPage = () => {
       setMyAnswers({});
       setIsSelfFinished(false);
       setCurrentFeedback(null);
+      setRevealedResults(null);
       setTimeLeft(qList?.[0]?.time_limit_seconds || 25);
       if (progress) {
         setQuizProgress(progress);
@@ -352,10 +362,14 @@ const MeetRoomPage = () => {
       playNotificationSound();
     });
 
-    // El líder revela los resultados finales y el podio para todos
+    // El líder revela los resultados finales y el podio para todos (incluso si no han terminado)
     s.on('meet:quiz-results-revealed', (results) => {
       if (results?.meetId && results.meetId !== 'all' && String(results.meetId).trim() !== String(id).trim()) {
         return;
+      }
+      if (autoAdvanceTimer) {
+        clearTimeout(autoAdvanceTimer);
+        setAutoAdvanceTimer(null);
       }
       setRevealedResults(results);
       setPhase('finished');
@@ -375,6 +389,26 @@ const MeetRoomPage = () => {
         setMySessionScore(me.score);
       }
       playNotificationSound();
+    });
+
+    // Confirmación autoritativa de respuesta enviada por socket
+    s.on('meet:answer-received', (res) => {
+      if (res && res.questionIndex !== undefined) {
+        setMyAnswers(prev => ({
+          ...prev,
+          [res.questionIndex]: {
+            selectedAnswer: res.selectedAnswer,
+            isCorrect: res.isCorrect,
+            points: res.points,
+            correctAnswer: res.correctAnswer,
+            explanation: res.explanation,
+            verseReference: res.verseReference
+          }
+        }));
+        if (res.totalScore !== undefined) {
+          setMySessionScore(res.totalScore);
+        }
+      }
     });
 
 
@@ -428,12 +462,12 @@ const MeetRoomPage = () => {
     };
   }, [user, meet, id]);
 
-  // Canal Supabase Realtime: Respaldo inmediato garantizado
+  // Canal Supabase Realtime: Respaldo de sincronización inmediata para todos los participantes
   useEffect(() => {
     if (!id) return;
 
     const channel = supabase
-      .channel(`meet-realtime-status-${id}`)
+      .channel(`meet-realtime-room-${id}`)
       .on(
         'postgres_changes',
         {
@@ -448,21 +482,93 @@ const MeetRoomPage = () => {
               message: 'La reunión ha sido finalizada por el líder.',
               countdown: 4
             });
+            return;
+          }
+
+          if (payload.new?.description) {
+            try {
+              const meta = JSON.parse(payload.new.description);
+              // Transición automática a quiz si el líder inició
+              if (meta.phase === 'quiz' && phase === 'reading') {
+                setPhase('quiz');
+                if (meta.questions && Array.isArray(meta.questions) && meta.questions.length > 0) {
+                  setQuizQuestions(meta.questions);
+                }
+                setMyQuestionIndex(0);
+                setMyAnswers({});
+                setIsSelfFinished(false);
+                setCurrentFeedback(null);
+                setRevealedResults(null);
+                setTimeLeft(meta.questions?.[0]?.time_limit_seconds || 25);
+                playNotificationSound();
+              }
+              // Transición automática a finished si se revelaron resultados
+              if (meta.revealedResults && (!revealedResults || phase !== 'finished')) {
+                if (autoAdvanceTimer) {
+                  clearTimeout(autoAdvanceTimer);
+                  setAutoAdvanceTimer(null);
+                }
+                setRevealedResults(meta.revealedResults);
+                setPhase('finished');
+                if (meta.revealedResults.leaderboard) setLiveLeaderboard(meta.revealedResults.leaderboard);
+                if (meta.revealedResults.podium) setFinalPodium(meta.revealedResults.podium);
+                if (meta.revealedResults.fullQuestions) setQuizQuestions(meta.revealedResults.fullQuestions);
+                playNotificationSound();
+              }
+            } catch (e) {}
           }
         }
       )
+      .on('broadcast', { event: 'meet:quiz-started' }, ({ payload }) => {
+        setPhase('quiz');
+        if (payload?.questions && Array.isArray(payload.questions) && payload.questions.length > 0) {
+          setQuizQuestions(payload.questions);
+        }
+        setMyQuestionIndex(0);
+        setMyAnswers({});
+        setIsSelfFinished(false);
+        setCurrentFeedback(null);
+        setRevealedResults(null);
+        setTimeLeft(payload?.questions?.[0]?.time_limit_seconds || 25);
+        playNotificationSound();
+      })
+      .on('broadcast', { event: 'meet:quiz-results-revealed' }, ({ payload }) => {
+        const results = payload?.results || payload;
+        if (results && (results.leaderboard || results.podium)) {
+          if (autoAdvanceTimer) {
+            clearTimeout(autoAdvanceTimer);
+            setAutoAdvanceTimer(null);
+          }
+          setRevealedResults(results);
+          setPhase('finished');
+          if (results.leaderboard) setLiveLeaderboard(results.leaderboard);
+          if (results.podium) setFinalPodium(results.podium);
+          if (results.fullQuestions && Array.isArray(results.fullQuestions) && results.fullQuestions.length > 0) {
+            setQuizQuestions(results.fullQuestions);
+          }
+          if (results.allUserAnswers && user?.id && results.allUserAnswers[String(user.id)]) {
+            setMyAnswers(prev => ({
+              ...results.allUserAnswers[String(user.id)],
+              ...prev
+            }));
+          }
+          playNotificationSound();
+        }
+      })
       .subscribe();
+
+    broadcastChannelRef.current = channel;
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [id]);
+  }, [id, user, phase, revealedResults, autoAdvanceTimer]);
 
-  // Heartbeat Polling de respaldo
+  // Heartbeat Polling de sincronización continua (cada 2.5s)
   useEffect(() => {
     if (!id || sessionClosing) return;
 
-    const checkEnded = async () => {
+    const checkSync = async () => {
       try {
         const res = await api.get(`/meetings/${id}`, false);
         if (res && res.status === 'ended') {
@@ -470,13 +576,61 @@ const MeetRoomPage = () => {
             message: 'La reunión ha sido finalizada por el líder.',
             countdown: 4
           });
+          return;
+        }
+
+        // 1. Sincronización automática de fase Quiz
+        if (res?.phase === 'quiz' && phase === 'reading') {
+          setPhase('quiz');
+          if (res.questions && Array.isArray(res.questions) && res.questions.length > 0) {
+            setQuizQuestions(res.questions);
+          }
+          setMyQuestionIndex(0);
+          setMyAnswers({});
+          setIsSelfFinished(false);
+          setCurrentFeedback(null);
+          setRevealedResults(null);
+          setTimeLeft(res.questions?.[0]?.time_limit_seconds || 25);
+          playNotificationSound();
+        }
+
+        // 2. Sincronización automática si el líder reveló resultados
+        if ((res?.phase === 'finished' || res?.revealedResults) && (!revealedResults || phase !== 'finished')) {
+          const results = res.revealedResults || {
+            leaderboard: res.quizProgress?.leaderboard || [],
+            podium: res.quizProgress?.leaderboard || [],
+            fullQuestions: res.questions || []
+          };
+          if (autoAdvanceTimer) {
+            clearTimeout(autoAdvanceTimer);
+            setAutoAdvanceTimer(null);
+          }
+          setRevealedResults(results);
+          setPhase('finished');
+          if (results.leaderboard) setLiveLeaderboard(results.leaderboard);
+          if (results.podium) setFinalPodium(results.podium);
+          if (results.fullQuestions && Array.isArray(results.fullQuestions) && results.fullQuestions.length > 0) {
+            setQuizQuestions(results.fullQuestions);
+          }
+          playNotificationSound();
         }
       } catch (err) {}
     };
 
-    const interval = setInterval(checkEnded, 3000);
+    const interval = setInterval(checkSync, 2500);
     return () => clearInterval(interval);
-  }, [id, sessionClosing]);
+  }, [id, sessionClosing, phase, revealedResults, autoAdvanceTimer]);
+
+  // Recuperación automática de preguntas si estamos en fase Quiz y no se cargaron
+  useEffect(() => {
+    if (phase === 'quiz' && (!quizQuestions || quizQuestions.length === 0)) {
+      api.get(`/meetings/${id}`).then(data => {
+        if (data?.questions && Array.isArray(data.questions) && data.questions.length > 0) {
+          setQuizQuestions(data.questions);
+        }
+      }).catch(() => {});
+    }
+  }, [phase, quizQuestions?.length, id]);
 
   // Manejo del conteo regresivo y cierre automático de la sala
   useEffect(() => {
@@ -557,15 +711,7 @@ const MeetRoomPage = () => {
     if (!currentQ) return;
 
     const limitSec = currentQ.time_limit_seconds || 25;
-    const correctLetter = (() => {
-      const raw = String(currentQ.correct_answer || '').trim().toLowerCase();
-      if (['a', 'b', 'c', 'd'].includes(raw)) return raw;
-      if (String(currentQ.option_a || '').trim().toLowerCase() === raw) return 'a';
-      if (String(currentQ.option_b || '').trim().toLowerCase() === raw) return 'b';
-      if (String(currentQ.option_c || '').trim().toLowerCase() === raw) return 'c';
-      if (String(currentQ.option_d || '').trim().toLowerCase() === raw) return 'd';
-      return raw || 'a';
-    })();
+    const correctLetter = getQuestionCorrectLetter(currentQ);
 
     const feedbackObj = {
       selectedAnswer: 'timeout',
@@ -573,8 +719,8 @@ const MeetRoomPage = () => {
       points: 0,
       isTimeout: true,
       correctAnswer: correctLetter,
-      explanation: currentQ.explanation,
-      verseReference: currentQ.verse_reference
+      explanation: currentQ.explanation || currentQ.explanationText || 'Fundamentado en las Sagradas Escrituras.',
+      verseReference: currentQ.verse_reference || currentQ.verseReference || ''
     };
 
     setCurrentFeedback(feedbackObj);
@@ -622,16 +768,7 @@ const MeetRoomPage = () => {
     const timeTakenMs = Math.max(500, (limitSec - timeLeft) * 1000);
 
     // Detección local infalible de respuesta correcta para feedback visual instantáneo (0ms)
-    const correctLetter = (() => {
-      const raw = String(currentQ.correct_answer || '').trim().toLowerCase();
-      if (['a', 'b', 'c', 'd'].includes(raw)) return raw;
-      if (String(currentQ.option_a || '').trim().toLowerCase() === raw) return 'a';
-      if (String(currentQ.option_b || '').trim().toLowerCase() === raw) return 'b';
-      if (String(currentQ.option_c || '').trim().toLowerCase() === raw) return 'c';
-      if (String(currentQ.option_d || '').trim().toLowerCase() === raw) return 'd';
-      return raw || 'a';
-    })();
-
+    const correctLetter = getQuestionCorrectLetter(currentQ);
     const isCorrect = optKey === correctLetter;
     let points = 0;
     if (isCorrect) {
@@ -645,8 +782,8 @@ const MeetRoomPage = () => {
       isCorrect,
       points,
       correctAnswer: correctLetter,
-      explanation: currentQ.explanation,
-      verseReference: currentQ.verse_reference
+      explanation: currentQ.explanation || currentQ.explanationText || 'Fundamentado en las Sagradas Escrituras.',
+      verseReference: currentQ.verse_reference || currentQ.verseReference || ''
     };
 
     setCurrentFeedback(feedbackObj);
@@ -760,44 +897,99 @@ const MeetRoomPage = () => {
     }
   };
 
-  // 3. LÍDER INICIA EL QUIZ
+  // 3. LÍDER INICIA EL QUIZ PARA TODOS LOS PARTICIPANTES
   const handleStartQuiz = async () => {
+    const qToSend = (activeQuestions && activeQuestions.length > 0) ? activeQuestions : (meet?.questions || []);
+    
+    // Configuración inmediata local del líder
     setPhase('quiz');
     setMyQuestionIndex(0);
     setMyAnswers({});
     setIsSelfFinished(false);
     setCurrentFeedback(null);
+    setRevealedResults(null);
+    setTimeLeft(qToSend?.[0]?.time_limit_seconds || 25);
+    playNotificationSound();
 
+    // 1. Envío WebSocket (0ms)
     if (socket && socket.connected) {
-      socket.emit('meet:start-quiz', { meetId: id, questions: meet?.questions });
+      socket.emit('meet:start-quiz', { meetId: id, questions: qToSend });
     }
+
+    // 2. Transmisión Supabase Realtime Broadcast (dispositivos móviles y redes alternativas)
+    if (broadcastChannelRef.current) {
+      broadcastChannelRef.current.send({
+        type: 'broadcast',
+        event: 'meet:quiz-started',
+        payload: { meetId: id, questions: qToSend }
+      }).catch(() => {});
+    }
+
+    // 3. Respaldo HTTP que actualiza la base de datos
     try {
-      await api.post(`/meetings/${id}/start-quiz`, { questions: meet?.questions });
+      const res = await api.post(`/meetings/${id}/start-quiz`, { questions: qToSend });
+      if (res?.questions && Array.isArray(res.questions) && res.questions.length > 0) {
+        setQuizQuestions(res.questions);
+        if (broadcastChannelRef.current) {
+          broadcastChannelRef.current.send({
+            type: 'broadcast',
+            event: 'meet:quiz-started',
+            payload: { meetId: id, questions: res.questions }
+          }).catch(() => {});
+        }
+      }
     } catch (err) {
       console.warn('[Meet] Respaldo HTTP start-quiz:', err);
     }
   };
 
-  // 4. LÍDER REVELA RESULTADOS Y PODIO FINAL PARA TODOS
+  // 4. LÍDER REVELA RESULTADOS Y PODIO FINAL PARA TODOS (AUN SI NO HAN TERMINADO)
   const handleRevealQuizResults = async () => {
+    if (autoAdvanceTimer) {
+      clearTimeout(autoAdvanceTimer);
+      setAutoAdvanceTimer(null);
+    }
+
+    // 1. Envío WebSocket (0ms)
     if (socket && socket.connected) {
       socket.emit('meet:reveal-quiz-results', { meetId: id });
     }
+
+    // 2. Transmisión Supabase Realtime Broadcast inmediata
+    if (broadcastChannelRef.current) {
+      broadcastChannelRef.current.send({
+        type: 'broadcast',
+        event: 'meet:quiz-results-revealed',
+        payload: { meetId: id }
+      }).catch(() => {});
+    }
+
+    // 3. Respaldo HTTP infalible que procesa puntuaciones y persiste en base de datos
     try {
       const res = await api.post(`/meetings/${id}/reveal-results`, {});
-      if (res?.results) {
-        setRevealedResults(res.results);
+      const resultsData = res?.results || (res?.podium ? res : null);
+      if (resultsData) {
+        setRevealedResults(resultsData);
         setPhase('finished');
-        if (res.results.leaderboard) setLiveLeaderboard(res.results.leaderboard);
-        if (res.results.podium) setFinalPodium(res.results.podium);
-        if (res.results.fullQuestions && Array.isArray(res.results.fullQuestions) && res.results.fullQuestions.length > 0) {
-          setQuizQuestions(res.results.fullQuestions);
+        if (resultsData.leaderboard) setLiveLeaderboard(resultsData.leaderboard);
+        if (resultsData.podium) setFinalPodium(resultsData.podium);
+        if (resultsData.fullQuestions && Array.isArray(resultsData.fullQuestions) && resultsData.fullQuestions.length > 0) {
+          setQuizQuestions(resultsData.fullQuestions);
         }
-        if (res.results.allUserAnswers && user?.id && res.results.allUserAnswers[String(user.id)]) {
+        if (resultsData.allUserAnswers && user?.id && resultsData.allUserAnswers[String(user.id)]) {
           setMyAnswers(prev => ({
-            ...res.results.allUserAnswers[String(user.id)],
+            ...resultsData.allUserAnswers[String(user.id)],
             ...prev
           }));
+        }
+
+        // Re-transmitir datos completos por Supabase Realtime broadcast para todos los participantes
+        if (broadcastChannelRef.current) {
+          broadcastChannelRef.current.send({
+            type: 'broadcast',
+            event: 'meet:quiz-results-revealed',
+            payload: resultsData
+          }).catch(() => {});
         }
       }
     } catch (err) {
@@ -1130,7 +1322,7 @@ const MeetRoomPage = () => {
                 <div className="bg-slate-900 border-2 border-gold/50 p-4 sm:p-6 rounded-2xl shadow-xl text-center relative overflow-hidden">
                   <div className="absolute top-0 right-0 w-32 h-32 bg-gold/10 rounded-full blur-2xl pointer-events-none" />
                   <h2 className="font-[Cinzel] text-lg sm:text-2xl font-bold text-white leading-relaxed">
-                    {currentQuestion.question_text}
+                    {currentQuestion.question_text || currentQuestion.questionText}
                   </h2>
                 </div>
 
@@ -1149,7 +1341,7 @@ const MeetRoomPage = () => {
                 {/* 3. Las 4 Opciones Interactivas (A, B, C, D) */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3.5">
                   {['a', 'b', 'c', 'd'].map(optKey => {
-                    const optText = currentQuestion[`option_${optKey}`];
+                    const optText = currentQuestion[`option_${optKey}`] || currentQuestion[`option${optKey.toUpperCase()}`];
                     if (!optText) return null;
 
                     const isSelected = currentFeedback?.selectedAnswer === optKey;

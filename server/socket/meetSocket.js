@@ -395,18 +395,41 @@ export async function startRoomQuiz(meetId, payloadQuestions = null, io = null) 
 
     const sanitizedQuestions = room.questions.map((q, idx) => ({
         id: q.id || `q_${idx}`,
-        question_text: q.question_text,
-        option_a: q.option_a,
-        option_b: q.option_b,
-        option_c: q.option_c,
-        option_d: q.option_d,
+        question_text: q.question_text || q.questionText,
+        questionText: q.question_text || q.questionText,
+        option_a: q.option_a || q.optionA,
+        optionA: q.option_a || q.optionA,
+        option_b: q.option_b || q.optionB,
+        optionB: q.option_b || q.optionB,
+        option_c: q.option_c || q.optionC,
+        optionC: q.option_c || q.optionC,
+        option_d: q.option_d || q.optionD,
+        optionD: q.option_d || q.optionD,
+        correct_answer: getCorrectOptionLetter(q),
+        correctAnswer: getCorrectOptionLetter(q),
+        explanation: q.explanation || 'Respuesta bíblica fundamentada en las Sagradas Escrituras.',
+        verse_reference: q.verse_reference || q.verseReference || '',
+        verseReference: q.verse_reference || q.verseReference || '',
         time_limit_seconds: q.time_limit_seconds || 25
     }));
+
+    // Persistir fase quiz en Supabase meetings
+    try {
+        const { data: currentMeet } = await supabase.from('meetings').select('description').eq('id', idStr).single();
+        let currentMeta = {};
+        try { currentMeta = JSON.parse(currentMeet?.description || '{}'); } catch {}
+        currentMeta.phase = 'quiz';
+        currentMeta.questions = sanitizedQuestions;
+        currentMeta.revealedResults = null;
+        await supabase.from('meetings').update({ description: JSON.stringify(currentMeta) }).eq('id', idStr);
+    } catch (persErr) {
+        console.error('[meetSocket] Error persistiendo phase quiz:', persErr);
+    }
 
     const progress = getRoomQuizProgress(room);
 
     if (io) {
-        io.to(`meet:${idStr}`).emit('meet:phase-changed', { phase: 'quiz', meetId: idStr });
+        io.to(`meet:${idStr}`).emit('meet:phase-changed', { phase: 'quiz', meetId: idStr, questions: sanitizedQuestions });
         io.to(`meet:${idStr}`).emit('meet:quiz-started', {
             meetId: idStr,
             totalQuestions: room.questions.length,
@@ -415,7 +438,7 @@ export async function startRoomQuiz(meetId, payloadQuestions = null, io = null) 
         });
 
         // Como respaldo para toda la sala
-        io.emit('meet:phase-changed', { phase: 'quiz', meetId: idStr });
+        io.emit('meet:phase-changed', { phase: 'quiz', meetId: idStr, questions: sanitizedQuestions });
         io.emit('meet:quiz-started', {
             meetId: idStr,
             totalQuestions: room.questions.length,
@@ -670,22 +693,38 @@ export async function revealRoomQuizResults(meetId, io = null) {
         };
     });
 
-    // 3. Serializar todas las respuestas de los usuarios para el Recap infalible
+    // 3. Serializar todas las respuestas de todos los participantes (incluso los que no terminaron)
     const allUserAnswers = {};
-    if (room.userAnswers) {
-        room.userAnswers.forEach((ansMap, uId) => {
-            allUserAnswers[uId] = {};
-            ansMap.forEach((ans, qIdx) => {
-                const targetQ = fullQuestions[qIdx];
-                allUserAnswers[uId][qIdx] = {
+    room.participants.forEach((p, uId) => {
+        const uIdStr = String(uId);
+        allUserAnswers[uIdStr] = {};
+        const ansMap = room.userAnswers?.get(uIdStr) || new Map();
+
+        fullQuestions.forEach((targetQ, qIdx) => {
+            if (ansMap.has(qIdx)) {
+                const ans = ansMap.get(qIdx);
+                allUserAnswers[uIdStr][qIdx] = {
                     ...ans,
-                    correctAnswer: targetQ ? targetQ.correct_answer : 'a',
-                    explanation: targetQ ? targetQ.explanation : '',
-                    verseReference: targetQ ? targetQ.verse_reference : ''
+                    correctAnswer: targetQ.correct_answer,
+                    explanation: targetQ.explanation || '',
+                    verseReference: targetQ.verse_reference || ''
                 };
-            });
+            } else {
+                allUserAnswers[uIdStr][qIdx] = {
+                    userId: uIdStr,
+                    username: p.username || 'Participante',
+                    questionIndex: qIdx,
+                    selectedAnswer: null,
+                    isCorrect: false,
+                    points: 0,
+                    isUnanswered: true,
+                    correctAnswer: targetQ.correct_answer,
+                    explanation: targetQ.explanation || '',
+                    verseReference: targetQ.verse_reference || ''
+                };
+            }
         });
-    }
+    });
 
     const quizProg = getRoomQuizProgress(room);
     const finalPodium = (quizProg?.leaderboard && quizProg.leaderboard.length > 0)
@@ -731,6 +770,19 @@ export async function revealRoomQuizResults(meetId, io = null) {
     };
 
     room.revealedResults = resultsPayload;
+
+    // Persistir fase finished y resultados en Supabase meetings
+    try {
+        const supabase = getDb();
+        const { data: dbMeet } = await supabase.from('meetings').select('description').eq('id', idStr).single();
+        let meta = {};
+        try { meta = JSON.parse(dbMeet?.description || '{}'); } catch {}
+        meta.phase = 'finished';
+        meta.revealedResults = resultsPayload;
+        await supabase.from('meetings').update({ description: JSON.stringify(meta) }).eq('id', idStr);
+    } catch (dbErr) {
+        console.error('[meetSocket] Error guardando revealedResults en BD:', dbErr);
+    }
 
     if (io) {
         // Notificar cambio de fase a 'finished' (Visualización de Resultados y Podio)
