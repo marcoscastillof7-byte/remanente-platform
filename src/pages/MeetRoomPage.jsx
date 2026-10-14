@@ -18,9 +18,8 @@ import {
   ExternalLink,
   Flame,
   Volume2,
-  VolumeX,
   Swords,
-  Hand,
+  Loader2,
   Check,
   BarChart3
 } from 'lucide-react';
@@ -29,16 +28,6 @@ import { api } from '../utils/api';
 import { supabase } from '../utils/supabase';
 import { playNotificationSound } from '../utils/notificationSound';
 import ManageQuestionsModal from '../components/meet/ManageQuestionsModal';
-
-const REACTION_EMOJIS = [
-  { id: 'amen', label: 'Amén 🙏', icon: '🙏' },
-  { id: 'fuego', label: 'Fuego 🔥', icon: '🔥' },
-  { id: 'gloria', label: 'Gloria a Dios 🕊️', icon: '🕊️' },
-  { id: 'bendicion', label: 'Bendición ❤️', icon: '❤️' },
-  { id: 'sabiduria', label: 'Sabiduría 💡', icon: '💡' },
-  { id: 'aplausos', label: 'Aplausos 👏', icon: '👏' },
-  { id: 'victoria', label: 'Victoria 🎉', icon: '🎉' }
-];
 
 export function getUniversalPdfViewerUrl(url, page = 1) {
   if (!url) return '';
@@ -80,12 +69,9 @@ const MeetRoomPage = () => {
   const [participants, setParticipants] = useState([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [syncWithHost, setSyncWithHost] = useState(true);
-  const [isHandRaised, setIsHandRaised] = useState(false);
   const [currentReader, setCurrentReader] = useState(null);
   const [laserPointer, setLaserPointer] = useState({ x: 0, y: 0, active: false });
   const [laserModeActive, setLaserModeActive] = useState(false);
-  const [floatingReactions, setFloatingReactions] = useState([]);
-  const [showHandsModal, setShowHandsModal] = useState(false);
 
   // Estados de Preguntas (Quiz)
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
@@ -206,10 +192,16 @@ const MeetRoomPage = () => {
         setPlatformOnlineCount(state.platformOnlineCount);
       }
 
-      if (state.phase === 'quiz' && state.questions && state.questions.length > 0) {
-        const qIdx = state.currentQuestionIndex >= 0 ? state.currentQuestionIndex : 0;
-        setCurrentQuestionIndex(qIdx);
-        setCurrentQuestion(state.questions[qIdx]);
+      if (state.phase === 'quiz') {
+        setPhase('quiz');
+        if (state.currentQuestion) {
+          setCurrentQuestion(state.currentQuestion);
+          setCurrentQuestionIndex(state.currentQuestionIndex >= 0 ? state.currentQuestionIndex : 0);
+        } else if (state.questions && state.questions.length > 0) {
+          const qIdx = state.currentQuestionIndex >= 0 ? state.currentQuestionIndex : 0;
+          setCurrentQuestionIndex(qIdx);
+          setCurrentQuestion(state.questions[qIdx]);
+        }
       }
     });
 
@@ -237,11 +229,6 @@ const MeetRoomPage = () => {
       setLaserPointer(laser);
     });
 
-    s.on('meet:hands-updated', ({ handsRaised, participants: pts }) => {
-      setParticipants(pts || []);
-      setIsHandRaised(handsRaised.includes(user.id));
-    });
-
     s.on('meet:reader-assigned', ({ reader }) => {
       setCurrentReader(reader);
       if (reader && String(reader.id) === String(user.id)) {
@@ -265,13 +252,17 @@ const MeetRoomPage = () => {
       }
     });
 
-    s.on('meet:question-started', ({ questionIndex, totalQuestions, question, leaderboard }) => {
+    s.on('meet:question-started', ({ questionIndex, totalQuestions, question, leaderboard, meetId: qMeetId }) => {
+      if (qMeetId && qMeetId !== 'all' && String(qMeetId).trim() !== String(id).trim()) {
+        return;
+      }
+      setPhase('quiz');
       setCurrentQuestionIndex(questionIndex);
       setCurrentQuestion(question);
       setSelectedAnswer(null);
       setHasAnswered(false);
       setRevealedResults(null);
-      setTimeLeft(question.time_limit_seconds || 25);
+      setTimeLeft(question?.time_limit_seconds || 25);
       setAnsweredCount(0);
       setAnswerStatus({
         answeredCount: 0,
@@ -295,6 +286,9 @@ const MeetRoomPage = () => {
     });
 
     s.on('meet:answer-status-updated', (status) => {
+      if (status?.meetId && status.meetId !== 'all' && String(status.meetId).trim() !== String(id).trim()) {
+        return;
+      }
       setAnswerStatus(status);
       setAnsweredCount(status.answeredCount || 0);
       if (status.leaderboard && Array.isArray(status.leaderboard)) {
@@ -302,11 +296,17 @@ const MeetRoomPage = () => {
       }
     });
 
-    s.on('meet:answer-count-updated', ({ answeredCount: count }) => {
+    s.on('meet:answer-count-updated', ({ answeredCount: count, meetId: cMeetId }) => {
+      if (cMeetId && cMeetId !== 'all' && String(cMeetId).trim() !== String(id).trim()) {
+        return;
+      }
       setAnsweredCount(count);
     });
 
     s.on('meet:question-results', (results) => {
+      if (results?.meetId && results.meetId !== 'all' && String(results.meetId).trim() !== String(id).trim()) {
+        return;
+      }
       setRevealedResults(results);
       if (results.leaderboard && Array.isArray(results.leaderboard)) {
         setLiveLeaderboard(results.leaderboard);
@@ -329,7 +329,10 @@ const MeetRoomPage = () => {
       if (message) alert(message);
     });
 
-    s.on('meet:final-podium', ({ podium, totalJoinedCount: tjc, platformOnlineCount: poc }) => {
+    s.on('meet:final-podium', ({ podium, totalJoinedCount: tjc, platformOnlineCount: poc, meetId: pMeetId }) => {
+      if (pMeetId && pMeetId !== 'all' && String(pMeetId).trim() !== String(id).trim()) {
+        return;
+      }
       setFinalPodium(podium || []);
       if (tjc) setTotalJoinedCount(tjc);
       if (poc) setPlatformOnlineCount(poc);
@@ -352,17 +355,6 @@ const MeetRoomPage = () => {
         message: message || 'La reunión ha sido finalizada por el líder.',
         countdown: 4
       });
-    });
-
-    s.on('meet:reaction-received', ({ reaction, id: reactionId }) => {
-      const emojiObj = REACTION_EMOJIS.find(r => r.id === reaction) || { icon: '✨' };
-      setFloatingReactions(prev => [
-        ...prev, 
-        { id: reactionId, icon: emojiObj.icon, x: Math.random() * 80 + 10 }
-      ]);
-      setTimeout(() => {
-        setFloatingReactions(prev => prev.filter(r => r.id !== reactionId));
-      }, 3000);
     });
 
     return () => {
@@ -535,23 +527,6 @@ const MeetRoomPage = () => {
     }
   };
 
-  // Enviar Reacción Inmediata (Local + Remoto)
-  const sendReaction = (reactionType) => {
-    const emojiObj = REACTION_EMOJIS.find(r => r.id === reactionType) || { icon: '✨' };
-    const localId = `${Date.now()}_${Math.random()}`;
-    setFloatingReactions(prev => [
-      ...prev, 
-      { id: localId, icon: emojiObj.icon, x: Math.random() * 80 + 10 }
-    ]);
-    setTimeout(() => {
-      setFloatingReactions(prev => prev.filter(r => r.id !== localId));
-    }, 2800);
-
-    if (socket) {
-      socket.emit('meet:send-reaction', { meetId: id, reaction: reactionType });
-    }
-  };
-
   // Responder Pregunta
   const handleAnswerSelect = (optKey) => {
     if (hasAnswered || revealedResults) return;
@@ -589,11 +564,16 @@ const MeetRoomPage = () => {
     }
   };
 
-  // Líder inicia Quiz
-  const handleStartQuiz = () => {
-    if (!confirm('¿Deseas iniciar la ronda de preguntas en vivo para todos los miembros?')) return;
+  // Líder inicia Quiz (inmediato, sin bloqueos de confirm())
+  const handleStartQuiz = async () => {
+    setPhase('quiz');
     if (socket) {
-      socket.emit('meet:start-quiz', { meetId: id });
+      socket.emit('meet:start-quiz', { meetId: id, questions: meet?.questions });
+    }
+    try {
+      await api.post(`/meetings/${id}/start-quiz`, { questions: meet?.questions });
+    } catch (err) {
+      console.warn('[Meet] Respaldo HTTP start-quiz:', err);
     }
   };
 
@@ -622,8 +602,6 @@ const MeetRoomPage = () => {
       </div>
     );
   }
-
-  const handsRaisedList = Array.isArray(participants) ? participants.filter(p => p.handRaised) : [];
 
   return (
     <div className="flex flex-col h-[calc(100dvh-4.75rem)] sm:h-[calc(100dvh-5.5rem)] md:h-[calc(100dvh-6.75rem)] min-h-[440px] sm:min-h-[500px] max-w-7xl mx-auto bg-slate-900 rounded-xl sm:rounded-2xl shadow-2xl border border-gold/40 overflow-hidden relative">
@@ -674,23 +652,6 @@ const MeetRoomPage = () => {
 
         {/* Derecha: Participantes y Controles */}
         <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-          <button
-            onClick={() => setShowHandsModal(true)}
-            className={`relative p-1.5 sm:p-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
-              handsRaisedList.length > 0 
-                ? 'bg-amber-500 text-white animate-bounce' 
-                : 'bg-white/10 text-gray-300 hover:bg-white/20'
-            }`}
-            title="Manos levantadas"
-          >
-            <Hand className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-            {handsRaisedList.length > 0 && (
-              <span className="bg-red-600 text-white text-[10px] px-1 py-0.2 rounded-full font-bold">
-                {handsRaisedList.length}
-              </span>
-            )}
-          </button>
-
           <div className="bg-white/10 text-gray-200 px-2 sm:px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 border border-white/10 shadow-inner">
             <div className="flex items-center gap-1" title={`${participants.length} participantes en esta sala en vivo (Total que asistieron: ${totalJoinedCount || participants.length})`}>
               <Users className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gold shrink-0" />
@@ -745,19 +706,6 @@ const MeetRoomPage = () => {
 
       {/* 2. CONTENIDO PRINCIPAL SEGÚN LA FASE */}
       <div className="flex-1 relative flex flex-col overflow-hidden bg-slate-950">
-        
-        {/* REACCIONES FLOTANTES (PARTÍCULAS) */}
-        <div className="absolute inset-0 pointer-events-none z-40 overflow-hidden">
-          {floatingReactions.map(r => (
-            <div
-              key={r.id}
-              style={{ left: `${r.x}%` }}
-              className="absolute bottom-16 text-3xl animate-float-up pointer-events-none filter drop-shadow-lg"
-            >
-              {r.icon}
-            </div>
-          ))}
-        </div>
 
         {/* ---------------- FASE A: LECTURA DE PDF ---------------- */}
         {phase === 'reading' && (
@@ -885,35 +833,11 @@ const MeetRoomPage = () => {
                 )}
               </div>
 
-              {/* Centro / Derecha: Pedir la palabra & Reacciones */}
+              {/* Centro / Derecha: Indicador de Sala */}
               <div className="flex items-center gap-1.5 sm:gap-2">
-                {!isHost && (
-                  <button
-                    onClick={() => socket?.emit('meet:toggle-hand', { meetId: id })}
-                    className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-[11px] sm:text-xs font-bold transition-all flex items-center gap-1 sm:gap-1.5 whitespace-nowrap ${
-                      isHandRaised 
-                        ? 'bg-amber-500 text-white shadow-md animate-pulse' 
-                        : 'bg-white/10 text-gray-300 hover:bg-white/20'
-                    }`}
-                  >
-                    <Hand className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                    <span>{isHandRaised ? 'Mano ✋' : 'Hablar ✋'}</span>
-                  </button>
-                )}
-
-                {/* Botones de Reacción Rápida */}
-                <div className="flex items-center gap-0.5 sm:gap-1 bg-white/10 p-0.5 sm:p-1 rounded-xl">
-                  {REACTION_EMOJIS.map(r => (
-                    <button
-                      key={r.id}
-                      onClick={() => sendReaction(r.id)}
-                      className="p-1 sm:p-1.5 hover:bg-white/20 rounded-lg text-sm sm:text-lg transition-transform hover:scale-125 active:scale-95"
-                      title={r.label}
-                    >
-                      {r.icon}
-                    </button>
-                  ))}
-                </div>
+                <span className="text-[11px] text-gray-400 font-medium hidden xs:inline">
+                  Remanente Meet • Lectura Guiada
+                </span>
               </div>
             </div>
 
@@ -1450,7 +1374,7 @@ const MeetRoomPage = () => {
           </div>
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center p-6 text-center text-white space-y-4 max-w-md mx-auto">
-              <Loader className="w-10 h-10 animate-spin text-gold" />
+              <Loader2 className="w-10 h-10 animate-spin text-gold" />
               <h3 className="font-[Cinzel] text-xl font-bold text-gold">Sincronizando Preguntas del Meet...</h3>
               <p className="text-xs sm:text-sm text-gray-300">
                 La sala se está conectando a la ronda de preguntas bíblicas en vivo.
@@ -1459,7 +1383,7 @@ const MeetRoomPage = () => {
                 <div className="flex flex-col sm:flex-row items-center gap-2 pt-2">
                   <button
                     type="button"
-                    onClick={() => socket?.emit('meet:start-quiz', { meetId: id })}
+                    onClick={handleStartQuiz}
                     className="w-full sm:w-auto px-4 py-2 bg-gradient-to-r from-gold to-gold-dark hover:from-gold-dark hover:to-gold text-slate-900 font-bold rounded-xl text-xs cursor-pointer shadow-md"
                   >
                     Iniciar Ronda ⚔️
@@ -1577,53 +1501,6 @@ const MeetRoomPage = () => {
 
       </div>
 
-      {/* MODAL DE MANOS LEVANTADAS (LÍDER Y PARTICIPANTES) */}
-      {showHandsModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-slate-900 text-white border border-gold/40 rounded-2xl w-full max-w-md p-5 space-y-4">
-            <div className="flex justify-between items-center border-b border-gold/20 pb-3">
-              <h3 className="font-[Cinzel] text-base font-bold text-gold flex items-center gap-2">
-                <Hand className="w-5 h-5 text-amber-400" />
-                <span>Turnos de Lectura (Manos Levantadas)</span>
-              </h3>
-              <button onClick={() => setShowHandsModal(false)} className="text-gray-400 hover:text-white">
-                ✕
-              </button>
-            </div>
-
-            <div className="max-h-60 overflow-y-auto space-y-2">
-              {handsRaisedList.length === 0 ? (
-                <p className="text-xs text-gray-400 text-center py-4">Nadie tiene la mano levantada en este momento.</p>
-              ) : (
-                handsRaisedList.map((p, idx) => (
-                  <div key={p.id} className="flex justify-between items-center p-2.5 rounded-lg bg-white/5 border border-white/10 text-xs">
-                    <span className="font-medium">{idx + 1}. {p.username}</span>
-                    {isHost && (
-                      <button
-                        onClick={() => {
-                          socket?.emit('meet:assign-reader', { meetId: id, readerId: p.id, readerName: p.username });
-                          setShowHandsModal(false);
-                        }}
-                        className="bg-gold hover:bg-gold-dark text-slate-900 font-bold px-2.5 py-1 rounded text-[11px] transition-colors"
-                      >
-                        Asignar Lector
-                      </button>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
-
-            <button
-              onClick={() => setShowHandsModal(false)}
-              className="w-full py-2 bg-white/10 hover:bg-white/20 rounded-lg text-xs font-semibold text-gray-300 transition-colors"
-            >
-              Cerrar
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* MODAL OVERLAY DE CIERRE AUTOMÁTICO DE REUNIÓN (EN VIVO SIN REFRESCAR) */}
       {sessionClosing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fade-in">
@@ -1678,20 +1555,6 @@ const MeetRoomPage = () => {
           </div>
         </div>
       )}
-
-      {/* BARRA FLOTANTE UNIVERSAL DE REACCIONES (DISPONIBLE EN TODAS LAS FASES) */}
-      <div className="absolute bottom-3 right-3 sm:bottom-4 sm:right-4 z-30 flex items-center gap-1 sm:gap-1.5 bg-slate-900/90 backdrop-blur-md border border-gold/40 p-1 sm:p-1.5 rounded-2xl shadow-2xl shadow-black/60">
-        {REACTION_EMOJIS.map(r => (
-          <button
-            key={r.id}
-            onClick={() => sendReaction(r.id)}
-            className="p-1.5 sm:p-2 hover:bg-white/20 active:scale-90 hover:scale-125 rounded-xl text-base sm:text-xl transition-all cursor-pointer"
-            title={r.label}
-          >
-            {r.icon}
-          </button>
-        ))}
-      </div>
 
       {/* Modal para Gestionar e Importar Preguntas en Vivo */}
       {isManageQuestionsOpen && meet && (

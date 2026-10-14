@@ -2,7 +2,7 @@ import express from 'express';
 import { getDb } from '../db/database.js';
 import { auth } from '../middleware/auth.js';
 import { sendPushToAll } from '../utils/pushNotifier.js';
-import { endActiveRoom, endAllActiveRooms, updateRoomQuestions } from '../socket/meetSocket.js';
+import { endActiveRoom, endAllActiveRooms, updateRoomQuestions, startRoomQuiz } from '../socket/meetSocket.js';
 
 const router = express.Router();
 router.use(auth);
@@ -504,6 +504,28 @@ router.post('/close-all', async (req, res) => {
     } catch (error) {
         console.error('[Meetings] Error cerrando todas las reuniones:', error);
         res.status(500).json({ error: 'Error interno al cerrar las reuniones' });
+    }
+});
+
+/**
+ * POST /api/meetings/:id/start-quiz
+ * Iniciar la fase de Quiz en vivo para el Meet (Solo Líder / Admin)
+ */
+router.post('/:id/start-quiz', async (req, res) => {
+    try {
+        if (!isLeaderOrAdmin(req.user)) {
+            return res.status(403).json({ error: 'Solo administradores o líderes pueden iniciar el Quiz.' });
+        }
+        const io = req.app.get('io');
+        const questions = req.body?.questions;
+        const result = await startRoomQuiz(req.params.id, questions, io);
+        if (result?.error) {
+            return res.status(400).json({ error: result.error });
+        }
+        res.json({ success: true, ...result });
+    } catch (err) {
+        console.error('[Meetings] Error iniciando quiz HTTP:', err);
+        res.status(500).json({ error: 'Error al iniciar el quiz' });
     }
 });
 
