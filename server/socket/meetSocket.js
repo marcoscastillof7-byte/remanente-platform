@@ -7,9 +7,42 @@ const activeRooms = new Map();
 const globalPlatformSockets = new Map(); // socketId -> { userId, username, lastPing }
 
 /**
+ * Limpia sockets inactivos sin ping reciente para evitar conteos fantasmas
+ */
+export function cleanupStaleSockets() {
+    const now = Date.now();
+    for (const [socketId, info] of globalPlatformSockets.entries()) {
+        if (now - (info.lastPing || 0) > 45000) {
+            globalPlatformSockets.delete(socketId);
+        }
+    }
+}
+
+/**
+ * Devuelve la lista detallada de usuarios actualmente conectados en vivo
+ */
+export function getPlatformOnlineUsers() {
+    cleanupStaleSockets();
+    const usersMap = new Map();
+    for (const info of globalPlatformSockets.values()) {
+        if (info.userId) {
+            usersMap.set(String(info.userId), {
+                id: info.userId,
+                username: info.username,
+                role: info.role || 'user',
+                points: info.points || 0,
+                lastPing: info.lastPing
+            });
+        }
+    }
+    return Array.from(usersMap.values());
+}
+
+/**
  * Devuelve la cantidad de usuarios únicos actualmente conectados a la plataforma
  */
 export function getPlatformOnlineCount() {
+    cleanupStaleSockets();
     const uniqueUsers = new Set();
     let anonymousCount = 0;
     for (const info of globalPlatformSockets.values()) {
@@ -27,9 +60,12 @@ export function getPlatformOnlineCount() {
  */
 export function broadcastPlatformOnlineStats(io) {
     if (!io) return;
+    cleanupStaleSockets();
     const onlineCount = getPlatformOnlineCount();
+    const users = getPlatformOnlineUsers();
     io.emit('platform:online-stats', {
         onlineCount,
+        users,
         timestamp: Date.now()
     });
 }
@@ -830,6 +866,8 @@ export function setupMeetSocket(io) {
                 globalPlatformSockets.set(socket.id, {
                     userId: String(userData.id),
                     username: userData.username,
+                    role: userData.role || 'user',
+                    points: userData.points || 0,
                     lastPing: Date.now()
                 });
                 broadcastPlatformOnlineStats(io);
@@ -845,10 +883,15 @@ export function setupMeetSocket(io) {
                 globalPlatformSockets.set(socket.id, {
                     userId: currentUser ? String(currentUser.id) : null,
                     username: currentUser ? currentUser.username : null,
+                    role: currentUser ? currentUser.role : 'user',
+                    points: currentUser ? currentUser.points : 0,
                     lastPing: Date.now()
                 });
             }
-            socket.emit('platform:pong', { onlineCount: getPlatformOnlineCount() });
+            socket.emit('platform:pong', { 
+                onlineCount: getPlatformOnlineCount(),
+                users: getPlatformOnlineUsers()
+            });
         });
 
         // 1. UNIRSE A LA SALA MEET

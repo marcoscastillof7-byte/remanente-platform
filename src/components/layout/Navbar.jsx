@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { Menu, User, LogOut, Shield, Bell, CheckCircle, Swords, Flame, MessageSquare, Users } from 'lucide-react';
+import { Menu, User, LogOut, Shield, Bell, CheckCircle, Swords, Flame, MessageSquare, Users, X } from 'lucide-react';
 import { io } from 'socket.io-client';
 import { useAuth } from '../../hooks/useAuth';
 import { api } from '../../utils/api';
@@ -14,6 +14,8 @@ const Navbar = () => {
   const [notifOpen, setNotifOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [onlineCount, setOnlineCount] = useState(1);
+  const [onlineUsers, setOnlineUsers] = useState([]);
+  const [onlineUsersModalOpen, setOnlineUsersModalOpen] = useState(false);
   
   const [showSuggestion, setShowSuggestion] = useState(false);
   const [suggestionType, setSuggestionType] = useState('Sugerencia de Mejora');
@@ -109,54 +111,36 @@ const Navbar = () => {
     const fetchOnlineCount = async () => {
       try {
         const res = await api.get('/stats/online');
-        if (res && typeof res.onlineCount === 'number') {
-          const count = Math.max(1, res.onlineCount);
-          setOnlineCount(count);
-          window.dispatchEvent(new CustomEvent('platform-online-update', {
-            detail: { onlineCount: count }
-          }));
+        if (res) {
+          if (typeof res.onlineCount === 'number') {
+            setOnlineCount(Math.max(1, res.onlineCount));
+          }
+          if (Array.isArray(res.users) && res.users.length > 0) {
+            setOnlineUsers(res.users);
+          }
         }
-      } catch (err) {
-        // Silencioso
-      }
+      } catch (err) {}
     };
 
     fetchOnlineCount();
 
-    const socketUrl = window.location.port === '5173' 
-      ? `${window.location.protocol}//${window.location.hostname}:3001` 
-      : window.location.origin;
-    const socket = io(socketUrl, {
-      transports: ['websocket', 'polling']
-    });
-
-    const handleStats = (data) => {
-      if (data && typeof data.onlineCount === 'number') {
-        const count = Math.max(1, data.onlineCount);
-        setOnlineCount(count);
-        window.dispatchEvent(new CustomEvent('platform-online-update', {
-          detail: { onlineCount: count }
-        }));
+    const handleOnlineUpdate = (e) => {
+      if (e?.detail) {
+        if (typeof e.detail.onlineCount === 'number') {
+          setOnlineCount(Math.max(1, e.detail.onlineCount));
+        }
+        if (Array.isArray(e.detail.users) && e.detail.users.length > 0) {
+          setOnlineUsers(e.detail.users);
+        }
       }
     };
 
-    const identifyUser = () => {
-      socket.emit('platform:identify', {
-        id: user.id,
-        username: user.username
-      });
-    };
-
-    socket.on('connect', identifyUser);
-    socket.on('reconnect', identifyUser);
-    socket.on('platform:online-stats', handleStats);
-
-    const interval = setInterval(fetchOnlineCount, 30000);
+    window.addEventListener('platform-online-update', handleOnlineUpdate);
+    const interval = setInterval(fetchOnlineCount, 20000);
 
     return () => {
       clearInterval(interval);
-      socket.off('platform:online-stats', handleStats);
-      socket.disconnect();
+      window.removeEventListener('platform-online-update', handleOnlineUpdate);
     };
   }, [user]);
 
@@ -232,17 +216,19 @@ const Navbar = () => {
           <div className="flex items-center space-x-2 sm:space-x-3 relative">
             
             {/* Contador de Personas Conectadas en Tiempo Real */}
-            <div 
-              className="flex items-center gap-1.5 px-2 sm:px-2.5 py-1 bg-white/10 hover:bg-white/15 transition-colors rounded-full text-xs text-gray-200 border border-white/15 shadow-sm shrink-0"
-              title={`${onlineCount} ${onlineCount === 1 ? 'persona conectada' : 'personas conectadas'} en tiempo real`}
+            <button 
+              type="button"
+              onClick={() => setOnlineUsersModalOpen(true)}
+              className="flex items-center gap-1.5 px-2.5 py-1 bg-white/10 hover:bg-white/20 transition-all rounded-full text-xs text-gray-200 border border-emerald-500/30 hover:border-emerald-400 shadow-sm shrink-0 cursor-pointer group"
+              title={`${onlineCount} ${onlineCount === 1 ? 'persona conectada' : 'personas conectadas'} en tiempo real. Clic para ver quiénes están en línea.`}
             >
               <span className="relative flex h-2 w-2">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
               </span>
-              <span className="font-bold text-emerald-300">{onlineCount}</span>
-              <span className="hidden sm:inline text-gray-300 font-medium">en línea</span>
-            </div>
+              <span className="font-extrabold text-emerald-300">{onlineCount}</span>
+              <span className="hidden sm:inline text-gray-300 font-medium group-hover:text-white">en línea</span>
+            </button>
 
             {/* Notificaciones */}
             <div className="relative">
@@ -353,6 +339,17 @@ const Navbar = () => {
           {isSuperAdmin && (
             <Link to="/superadmin" className="block px-3 py-2 rounded-md text-base font-bold text-red-400 bg-white/5 hover:bg-white/10">Súper Panel Admin</Link>
           )}
+
+          <div className="px-3 py-2 flex items-center justify-between border-t border-white/10 mt-1 pt-2">
+            <span className="text-xs text-gray-300">Conectados en vivo:</span>
+            <button
+              onClick={() => { setOnlineUsersModalOpen(true); setMenuOpen(false); }}
+              className="flex items-center gap-1.5 px-2.5 py-1 bg-white/10 hover:bg-white/20 transition-colors rounded-full text-xs text-emerald-300 font-bold"
+            >
+              <span className="h-2 w-2 rounded-full bg-emerald-400 animate-ping"></span>
+              <span>{onlineCount} en línea</span>
+            </button>
+          </div>
         </div>
       )}
 
@@ -406,6 +403,109 @@ const Navbar = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Hermanos Conectados en Vivo */}
+      {onlineUsersModalOpen && (
+        <div className="fixed inset-0 bg-black/60 z-[120] flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden border border-gray-100 flex flex-col max-h-[85vh]">
+            
+            {/* Header Modal */}
+            <div className="bg-gradient-to-r from-[var(--color-primary-dark)] to-[var(--color-primary)] p-5 text-white flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-white/15 flex items-center justify-center text-emerald-400 border border-white/15">
+                  <Users className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-[Cinzel] font-bold text-lg text-white">
+                    Conectados en Tiempo Real
+                  </h3>
+                  <div className="flex items-center gap-1.5 text-xs text-emerald-300 mt-0.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+                    <span className="font-bold">{onlineCount} {onlineCount === 1 ? 'hermano conectado' : 'hermanos conectados'} ahora</span>
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setOnlineUsersModalOpen(false)}
+                className="text-gray-300 hover:text-white p-1.5 rounded-lg hover:bg-white/10 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Lista de Usuarios Conectados */}
+            <div className="p-4 overflow-y-auto space-y-3 flex-1 divide-y divide-gray-100">
+              {onlineUsers && onlineUsers.length > 0 ? (
+                onlineUsers.map((u, i) => {
+                  const rank = getRankInfo(u.points);
+                  const isMe = String(u.id) === String(user.id);
+                  return (
+                    <div key={u.id || i} className="pt-3 first:pt-0 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="relative">
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-[var(--color-primary)] to-[var(--color-primary-light)] text-white font-bold flex items-center justify-center text-xs shadow-sm">
+                            {(u.username || 'U').substring(0, 2).toUpperCase()}
+                          </div>
+                          <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-white ring-1 ring-emerald-300" title="En línea"></span>
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-bold text-gray-800 text-sm">{u.username}</span>
+                            {isMe && (
+                              <span className="text-[10px] bg-amber-100 text-amber-800 font-bold px-1.5 py-0.5 rounded">Tú</span>
+                            )}
+                            {(u.role === 'admin' || u.role === 'superadmin') && (
+                              <span className="text-[10px] bg-blue-100 text-blue-800 font-bold px-1.5 py-0.5 rounded">
+                                {u.role === 'superadmin' ? 'Superadmin' : 'Líder'}
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-xs text-gray-400 flex items-center gap-1 mt-0.5">
+                            <span>{rank.icon}</span>
+                            <span className={`font-medium ${rank.color}`}>{rank.name}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="text-right">
+                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                          En línea
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="py-8 text-center text-gray-400 text-sm flex flex-col items-center gap-2">
+                  <div className="w-12 h-12 rounded-full bg-emerald-50 text-emerald-500 flex items-center justify-center">
+                    <Users className="w-6 h-6" />
+                  </div>
+                  <p className="font-medium text-gray-600">Estás conectado a la plataforma</p>
+                  <p className="text-xs text-gray-400">Cuando otros hermanos abran la aplicación, los verás aparecer aquí en vivo.</p>
+                </div>
+              )}
+            </div>
+
+            {/* Footer Modal */}
+            <div className="p-3.5 bg-gray-50 border-t border-gray-100 flex items-center justify-between text-xs text-gray-500">
+              <span className="flex items-center gap-1.5 text-emerald-700 font-medium">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                Sincronización en vivo activa
+              </span>
+              <button
+                type="button"
+                onClick={() => setOnlineUsersModalOpen(false)}
+                className="px-4 py-1.5 bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold rounded-lg transition-colors"
+              >
+                Cerrar
+              </button>
+            </div>
+
           </div>
         </div>
       )}

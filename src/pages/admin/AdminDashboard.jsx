@@ -21,6 +21,8 @@ const AdminDashboard = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterTab, setFilterTab] = useState('all');
   const [sortBy, setSortBy] = useState('points_desc');
+  const [onlineUserIds, setOnlineUserIds] = useState(new Set());
+  const [onlineCount, setOnlineCount] = useState(1);
 
   const isGroupAdmin = user?.role === 'admin';
 
@@ -43,6 +45,30 @@ const AdminDashboard = () => {
 
   useEffect(() => {
     fetchData();
+
+    // Sincronización en tiempo real de presencia de usuarios
+    const handleOnlineUpdate = (e) => {
+      if (e?.detail) {
+        if (typeof e.detail.onlineCount === 'number') {
+          setOnlineCount(Math.max(1, e.detail.onlineCount));
+        }
+        if (Array.isArray(e.detail.users)) {
+          setOnlineUserIds(new Set(e.detail.users.map(u => String(u.id))));
+        }
+      }
+    };
+
+    window.addEventListener('platform-online-update', handleOnlineUpdate);
+
+    // Consulta inicial rápida a /stats/online
+    api.get('/stats/online').then(res => {
+      if (res) {
+        if (typeof res.onlineCount === 'number') setOnlineCount(Math.max(1, res.onlineCount));
+        if (Array.isArray(res.users)) setOnlineUserIds(new Set(res.users.map(u => String(u.id))));
+      }
+    }).catch(() => {});
+
+    return () => window.removeEventListener('platform-online-update', handleOnlineUpdate);
   }, []);
 
   // Función de cálculo de inactividad
@@ -56,6 +82,7 @@ const AdminDashboard = () => {
   const filterCounts = useMemo(() => {
     return {
       all: usersList.length,
+      onlineNow: usersList.filter(u => onlineUserIds.has(String(u.id))).length,
       excellent: usersList.filter(u => (u.avg_score || 0) >= 80).length,
       progress: usersList.filter(u => (u.avg_score || 0) >= 60 && (u.avg_score || 0) < 80).length,
       support: usersList.filter(u => (u.total_quizzes > 0 && (u.avg_score || 0) < 60) || u.total_quizzes === 0).length,
@@ -64,7 +91,7 @@ const AdminDashboard = () => {
       students: usersList.filter(u => u.role === 'user').length,
       leaders: usersList.filter(u => u.role === 'admin' || u.role === 'superadmin').length
     };
-  }, [usersList]);
+  }, [usersList, onlineUserIds]);
 
   // Filtrado y ordenación
   const filteredUsers = useMemo(() => {
@@ -80,7 +107,9 @@ const AdminDashboard = () => {
     }
 
     // 2. Filtro por estado/pestaña
-    if (filterTab === 'excellent') {
+    if (filterTab === 'onlineNow') {
+      list = list.filter(u => onlineUserIds.has(String(u.id)));
+    } else if (filterTab === 'excellent') {
       list = list.filter(u => (u.avg_score || 0) >= 80);
     } else if (filterTab === 'progress') {
       list = list.filter(u => (u.avg_score || 0) >= 60 && (u.avg_score || 0) < 80);
@@ -355,18 +384,22 @@ const AdminDashboard = () => {
           </div>
         </div>
 
-        {/* Miembros Activos */}
-        <div className="bg-white rounded-xl p-4 sm:p-5 shadow-sm border border-gray-200 flex flex-col justify-between">
+        {/* Usuarios En Línea Ahora Mismo */}
+        <div className="bg-white rounded-xl p-4 sm:p-5 shadow-sm border border-emerald-300 bg-gradient-to-br from-emerald-50/50 via-white to-white flex flex-col justify-between">
           <div className="flex items-center justify-between text-gray-500 mb-2">
-            <span className="text-xs font-semibold uppercase tracking-wider">Activos (7d)</span>
-            <Flame className="w-4 h-4 text-orange-500" />
+            <span className="text-xs font-bold uppercase tracking-wider text-emerald-800">En Línea Ahora</span>
+            <span className="relative flex h-2.5 w-2.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+            </span>
           </div>
           <div>
-            <div className="text-2xl sm:text-3xl font-extrabold text-orange-500">
-              {stats?.active_users || filterCounts.activeStreak || usersList.length}
+            <div className="text-2xl sm:text-3xl font-extrabold text-emerald-600">
+              {Math.max(onlineUserIds.size, onlineCount)}
             </div>
-            <div className="text-[11px] text-gray-400 mt-1">
-              Conectados recientemente
+            <div className="text-[11px] text-emerald-700 font-semibold mt-1 flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+              Conexión en vivo activa
             </div>
           </div>
         </div>
@@ -432,6 +465,22 @@ const AdminDashboard = () => {
             }`}
           >
             👥 Todos <span className="opacity-75">({filterCounts.all})</span>
+          </button>
+
+          <button
+            onClick={() => setFilterTab('onlineNow')}
+            className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 ${
+              filterTab === 'onlineNow'
+                ? 'bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-300'
+                : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-300'
+            }`}
+          >
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
+            <span>En Línea Ahora</span>
+            <span className="opacity-90 font-bold">({filterCounts.onlineNow || onlineUserIds.size})</span>
           </button>
 
           <button
@@ -565,21 +614,32 @@ const AdminDashboard = () => {
                   const rank = getRankInfo(u.points);
                   const activity = formatRelativeActivity(u.last_active);
                   const isLeader = u.role === 'admin' || u.role === 'superadmin';
+                  const isOnline = onlineUserIds.has(String(u.id));
                   const passRate = u.pass_rate !== undefined ? u.pass_rate : (u.total_quizzes > 0 ? Math.round(((u.passed_quizzes || 0) / u.total_quizzes) * 100) : 0);
 
                   return (
                     <tr 
                       key={u.id} 
-                      className="hover:bg-amber-50/30 transition-colors group"
+                      className={`transition-colors group ${
+                        isOnline ? 'bg-emerald-50/20 hover:bg-emerald-50/40' : 'hover:bg-amber-50/30'
+                      }`}
                     >
                       
                       {/* Estudiante & Rango */}
                       <td className="px-5 py-4">
                         <div className="flex items-center gap-3">
                           <div className="relative">
-                            <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-[var(--color-primary)] to-[var(--color-primary-light)] text-white font-bold flex items-center justify-center text-sm shadow-sm">
+                            <div className={`w-10 h-10 rounded-full bg-gradient-to-tr from-[var(--color-primary)] to-[var(--color-primary-light)] text-white font-bold flex items-center justify-center text-sm shadow-sm transition-all ${
+                              isOnline ? 'ring-2 ring-emerald-400 ring-offset-2 ring-offset-white' : ''
+                            }`}>
                               {(u.username || 'U').substring(0, 2).toUpperCase()}
                             </div>
+                            {isOnline && (
+                              <span className="absolute -top-1 -right-1 flex h-3 w-3" title="Conectado en vivo ahora">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500 border-2 border-white"></span>
+                              </span>
+                            )}
                             <span 
                               className="absolute -bottom-1 -right-1 text-xs" 
                               title={`Rango: ${rank.name}`}
@@ -592,6 +652,11 @@ const AdminDashboard = () => {
                               <span className="font-semibold text-gray-900 group-hover:text-[var(--color-primary)] transition-colors">
                                 {u.username}
                               </span>
+                              {isOnline && (
+                                <span className="px-1.5 py-0.2 rounded text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                  En vivo
+                                </span>
+                              )}
                               {isLeader && (
                                 <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
                                   {u.role === 'superadmin' ? 'Superadmin' : 'Líder'}
@@ -684,18 +749,30 @@ const AdminDashboard = () => {
 
                       {/* Última Actividad */}
                       <td className="px-4 py-4 text-center">
-                        <div className="flex items-center justify-center gap-1.5">
-                          <span className={`w-2 h-2 rounded-full ${
-                            activity.status === 'green' 
-                              ? 'bg-emerald-500 ring-4 ring-emerald-100' 
-                              : activity.status === 'yellow' 
-                              ? 'bg-amber-500' 
-                              : 'bg-gray-300'
-                          }`} />
-                          <span className="text-xs font-medium text-gray-600">
-                            {activity.text}
-                          </span>
-                        </div>
+                        {isOnline ? (
+                          <div className="flex items-center justify-center gap-1.5" title="Conectado en tiempo real">
+                            <span className="relative flex h-2 w-2">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                            </span>
+                            <span className="text-xs font-extrabold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full border border-emerald-300 shadow-xs">
+                              En línea
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-center gap-1.5">
+                            <span className={`w-2 h-2 rounded-full ${
+                              activity.status === 'green' 
+                                ? 'bg-emerald-500 ring-4 ring-emerald-100' 
+                                : activity.status === 'yellow' 
+                                ? 'bg-amber-500' 
+                                : 'bg-gray-300'
+                            }`} />
+                            <span className="text-xs font-medium text-gray-600">
+                              {activity.text}
+                            </span>
+                          </div>
+                        )}
                       </td>
 
                       {/* Acción */}

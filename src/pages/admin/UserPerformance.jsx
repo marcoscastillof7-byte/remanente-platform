@@ -15,6 +15,24 @@ const UserPerformance = () => {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('books'); // 'books' | 'history' | 'achievements' | 'games'
   const [expandedBooks, setExpandedBooks] = useState({});
+  const [onlineUsers, setOnlineUsers] = useState([]);
+
+  useEffect(() => {
+    // Escuchar presencia en tiempo real
+    const handleOnlineUpdate = (e) => {
+      if (e.detail?.users) {
+        setOnlineUsers(e.detail.users);
+      }
+    };
+    window.addEventListener('platform-online-update', handleOnlineUpdate);
+
+    // Consulta inicial rápida de conectados
+    api.get('/stats/online').then((res) => {
+      if (res?.users) setOnlineUsers(res.users);
+    }).catch(() => {});
+
+    return () => window.removeEventListener('platform-online-update', handleOnlineUpdate);
+  }, []);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -81,6 +99,11 @@ const UserPerformance = () => {
 
   const rank = getRankInfo(data.points);
   const isLeader = data.role === 'admin' || data.role === 'superadmin';
+  const isOnline = onlineUsers.some(
+    u => String(u.id) === String(userId) || 
+         String(u.id) === String(data?.id) ||
+         String(u.username)?.toLowerCase() === String(data?.username)?.toLowerCase()
+  );
 
   // Cálculos de progreso global de libros
   const totalChaptersAllBooks = data.books?.reduce((sum, b) => sum + (b.chapters_count || 0), 0) || 102;
@@ -113,9 +136,15 @@ const UserPerformance = () => {
           {/* Identidad del Estudiante */}
           <div className="flex items-center gap-4">
             <div className="relative">
-              <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-white/15 backdrop-blur-sm border-2 border-[var(--color-gold)] flex items-center justify-center font-[Cinzel] text-2xl sm:text-3xl font-bold text-[var(--color-gold)] shadow-md">
+              <div className={`w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-white/15 backdrop-blur-sm border-2 ${isOnline ? 'border-emerald-400 ring-4 ring-emerald-500/30 shadow-emerald-500/30' : 'border-[var(--color-gold)]'} flex items-center justify-center font-[Cinzel] text-2xl sm:text-3xl font-bold ${isOnline ? 'text-emerald-300' : 'text-[var(--color-gold)]'} shadow-md transition-all`}>
                 {(data.username || 'U').substring(0, 2).toUpperCase()}
               </div>
+              {isOnline && (
+                <span className="absolute -top-1 -right-1 flex h-4 w-4">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-4 w-4 bg-emerald-500 border-2 border-[#172e4d]"></span>
+                </span>
+              )}
               <span className="absolute -bottom-1 -right-1 text-2xl" title={`Rango: ${rank.name}`}>
                 {rank.icon}
               </span>
@@ -126,6 +155,17 @@ const UserPerformance = () => {
                 <h1 className="font-[Cinzel] text-2xl sm:text-3xl font-bold text-white tracking-wide">
                   {data.username}
                 </h1>
+                {isOnline ? (
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-400/50 flex items-center gap-1.5 shadow-sm shadow-emerald-500/30 animate-pulse">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                    En línea ahora
+                  </span>
+                ) : (
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-white/10 text-gray-300 border border-white/15 flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-gray-400"></span>
+                    Desconectado
+                  </span>
+                )}
                 {isLeader && (
                   <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-[var(--color-gold)]/20 text-[var(--color-gold-light)] border border-[var(--color-gold)]/40 flex items-center gap-1">
                     <ShieldCheck className="w-3.5 h-3.5" />
@@ -152,7 +192,14 @@ const UserPerformance = () => {
                 <span>•</span>
                 <span className="flex items-center gap-1">
                   <Clock className="w-3.5 h-3.5 text-gray-400" />
-                  Última actividad: {data.last_active ? new Date(data.last_active).toLocaleString('es', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'Nunca'}
+                  {isOnline ? (
+                    <span className="text-emerald-300 font-semibold flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+                      Activo en la plataforma ahora mismo
+                    </span>
+                  ) : (
+                    <>Última actividad: {data.last_active ? new Date(data.last_active).toLocaleString('es', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'Nunca'}</>
+                  )}
                 </span>
               </div>
             </div>
