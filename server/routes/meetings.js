@@ -8,9 +8,11 @@ import {
     updateRoomQuestions, 
     startRoomQuiz,
     submitRoomAnswer,
+    revealRoomQuizResults,
     revealRoomQuestionResults,
     advanceRoomNextQuestion,
-    endRoomSession
+    endRoomSession,
+    getRoomQuizProgress
 } from '../socket/meetSocket.js';
 
 const router = express.Router();
@@ -558,12 +560,11 @@ router.post('/:id/submit-answer', async (req, res) => {
 });
 
 /**
- * POST /api/meetings/:id/reveal-results
- * Respaldo HTTP infalible para mostrar los resultados de la pregunta bíblica actual
+ * POST /api/meetings/:id/reveal-results & /reveal-quiz-results
+ * Respaldo HTTP infalible para mostrar los resultados de la ronda y podio para todos los participantes
  */
-router.post('/:id/reveal-results', async (req, res) => {
+router.post(['/:id/reveal-results', '/:id/reveal-quiz-results'], async (req, res) => {
     try {
-        const { questionIndex } = req.body;
         const supabase = getDb();
         const { data: meeting } = await supabase.from('meetings').select('host_id').eq('id', req.params.id).single();
         const isAuthorized = isLeaderOrAdmin(req.user) || (meeting && String(meeting.host_id) === String(req.user.id));
@@ -572,7 +573,7 @@ router.post('/:id/reveal-results', async (req, res) => {
         }
 
         const io = req.app.get('io');
-        const result = await revealRoomQuestionResults(req.params.id, questionIndex, io);
+        const result = await revealRoomQuizResults(req.params.id, io);
         if (result?.error) {
             return res.status(400).json(result);
         }

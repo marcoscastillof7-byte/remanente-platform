@@ -21,7 +21,10 @@ import {
   Swords,
   Loader2,
   Check,
-  BarChart3
+  BarChart3,
+  Hourglass,
+  CheckCheck,
+  HelpCircle
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { api } from '../utils/api';
@@ -48,7 +51,6 @@ export function getUniversalPdfViewerUrl(url, page = 1) {
 
   // Si es un archivo PDF web directo
   if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
-    // Usar Google Docs Viewer para compatibilidad perfecta en iOS Safari y Android Chrome sin forzar descarga
     return `https://docs.google.com/viewer?url=${encodeURIComponent(trimmed)}&embedded=true`;
   }
 
@@ -73,32 +75,42 @@ const MeetRoomPage = () => {
   const [laserPointer, setLaserPointer] = useState({ x: 0, y: 0, active: false });
   const [laserModeActive, setLaserModeActive] = useState(false);
 
-  // Estados de Preguntas (Quiz)
-  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-  const [currentQuestion, setCurrentQuestion] = useState(null);
-  const [selectedAnswer, setSelectedAnswer] = useState(null);
-  const [hasAnswered, setHasAnswered] = useState(false);
-  const [answeredCount, setAnsweredCount] = useState(0);
+  // Estados del Quiz Individual (Self-Paced por cada usuario)
+  const [quizQuestions, setQuizQuestions] = useState([]);
+  const [myQuestionIndex, setMyQuestionIndex] = useState(0);
+  const [myAnswers, setMyAnswers] = useState({}); // { [qIdx]: { selectedAnswer, isCorrect, points, ... } }
+  const [isSelfFinished, setIsSelfFinished] = useState(false);
+  const [currentFeedback, setCurrentFeedback] = useState(null); // Feedback visual inmediato tras responder
   const [timeLeft, setTimeLeft] = useState(25);
+  const [autoAdvanceTimer, setAutoAdvanceTimer] = useState(null);
+
+  // Progreso Global de la Sala
+  const [quizProgress, setQuizProgress] = useState({
+    totalQuestions: 0,
+    totalParticipants: 0,
+    finishedCount: 0,
+    allFinished: false,
+    participantsProgress: [],
+    leaderboard: []
+  });
+
   const [revealedResults, setRevealedResults] = useState(null);
   const [mySessionScore, setMySessionScore] = useState(0);
   const [finalPodium, setFinalPodium] = useState([]);
   const [totalJoinedCount, setTotalJoinedCount] = useState(0);
   const [platformOnlineCount, setPlatformOnlineCount] = useState(1);
   const [sessionClosing, setSessionClosing] = useState(null); // { message, countdown: 4 }
-  const [answerStatus, setAnswerStatus] = useState({
-    answeredCount: 0,
-    totalParticipants: 0,
-    answeredParticipants: [],
-    pendingParticipants: [],
-    allAnswered: false
-  });
   const [liveLeaderboard, setLiveLeaderboard] = useState([]);
-  const [activeResultsTab, setActiveResultsTab] = useState('resumen'); // 'resumen' | 'posiciones'
+  const [activeResultsTab, setActiveResultsTab] = useState('revision'); // 'revision' | 'posiciones' | 'estadisticas'
   const [isManageQuestionsOpen, setIsManageQuestionsOpen] = useState(false);
 
   const isHost = meet && (String(user?.id) === String(meet.host_id) || ['admin', 'superadmin', 'lider', 'leader'].includes(user?.role?.toLowerCase()));
   const pdfContainerRef = useRef(null);
+
+  // Lista activa de preguntas
+  const activeQuestions = quizQuestions.length > 0 ? quizQuestions : (meet?.questions || []);
+  const currentQuestion = activeQuestions[myQuestionIndex] || null;
+  const myCorrectCount = Object.values(myAnswers).filter(a => a.isCorrect).length;
 
   useEffect(() => {
     loadMeetDetails();
@@ -116,6 +128,9 @@ const MeetRoomPage = () => {
         return;
       }
       setMeet(data);
+      if (data?.questions && Array.isArray(data.questions) && data.questions.length > 0) {
+        setQuizQuestions(data.questions);
+      }
     } catch (err) {
       console.error('Error cargando meet:', err);
       alert('Error cargando la sala Meet.');
@@ -125,11 +140,10 @@ const MeetRoomPage = () => {
     }
   };
 
-  // Inicializar Socket.io
+  // Inicializar Socket.io con reconexión robusta
   useEffect(() => {
     if (!user || !meet) return;
 
-    // Detectar endpoint socket correcto (usar host dinámico o puerto 3001 si estamos en vite 5173 local)
     const socketUrl = window.location.port === '5173' 
       ? `${window.location.protocol}//${window.location.hostname}:3001` 
       : window.location.origin;
@@ -155,10 +169,8 @@ const MeetRoomPage = () => {
     if (s.io) {
       s.io.on('reconnect', joinRoom);
     }
-    // Si ya está conectado o al inicializar, unirse de inmediato
     joinRoom();
 
-    // Reconexión automática cuando la app vuelve a primer plano o recupera conexión (Móviles / Tablets)
     const handleWindowOnline = () => joinRoom();
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
@@ -168,68 +180,55 @@ const MeetRoomPage = () => {
     window.addEventListener('online', handleWindowOnline);
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
+    // Estado inicial de la sala (al entrar o reconectar)
     s.on('meet:initial-state', (state) => {
       setPhase(state.phase || 'reading');
       setCurrentPage(state.currentPage || 1);
       setCurrentReader(state.currentReader || null);
       setParticipants(state.participants || []);
-      
-      const me = (state.participants || []).find(p => String(p.id) === String(user.id));
-      if (me) setMySessionScore(me.score || 0);
 
-      if (state.leaderboard && Array.isArray(state.leaderboard)) {
-        setLiveLeaderboard(state.leaderboard);
+      if (state.questions && state.questions.length > 0) {
+        setQuizQuestions(state.questions);
+      }
+
+      if (state.quizProgress) {
+        setQuizProgress(state.quizProgress);
+        if (state.quizProgress.leaderboard) {
+          setLiveLeaderboard(state.quizProgress.leaderboard);
+        }
+      }
+
+      if (state.myAnswers && Array.isArray(state.myAnswers)) {
+        const answersMap = {};
+        state.myAnswers.forEach(ans => {
+          answersMap[ans.questionIndex] = ans;
+        });
+        setMyAnswers(answersMap);
+        const answeredCount = Object.keys(answersMap).length;
+        setMyQuestionIndex(answeredCount);
+        if (state.myIsFinished || (state.questions && answeredCount >= state.questions.length)) {
+          setIsSelfFinished(true);
+        }
+      }
+
+      if (state.myScore !== undefined) {
+        setMySessionScore(state.myScore);
       }
 
       if (state.revealedResults) {
         setRevealedResults(state.revealedResults);
+        setPhase('finished');
+        if (state.revealedResults.podium) setFinalPodium(state.revealedResults.podium);
       }
 
-      if (state.answerStatus) {
-        setAnswerStatus(state.answerStatus);
-        setAnsweredCount(state.answerStatus.answeredCount || 0);
-      }
-
-      if (state.timeLeft !== undefined) {
-        setTimeLeft(state.timeLeft);
-      }
-
-      if (state.hasAnswered !== undefined) {
-        setHasAnswered(state.hasAnswered);
-      }
-
-      if (state.selectedAnswer) {
-        setSelectedAnswer(state.selectedAnswer);
-      }
-
-      if (state.totalJoinedCount) {
-        setTotalJoinedCount(state.totalJoinedCount);
-      }
-      if (state.platformOnlineCount) {
-        setPlatformOnlineCount(state.platformOnlineCount);
-      }
-
-      if (state.phase === 'quiz') {
-        setPhase('quiz');
-        if (state.currentQuestion) {
-          setCurrentQuestion(state.currentQuestion);
-          setCurrentQuestionIndex(state.currentQuestionIndex >= 0 ? state.currentQuestionIndex : 0);
-        } else if (state.questions && state.questions.length > 0) {
-          const qIdx = state.currentQuestionIndex >= 0 ? state.currentQuestionIndex : 0;
-          setCurrentQuestionIndex(qIdx);
-          setCurrentQuestion(state.questions[qIdx]);
-        }
-      }
+      if (state.totalJoinedCount) setTotalJoinedCount(state.totalJoinedCount);
+      if (state.platformOnlineCount) setPlatformOnlineCount(state.platformOnlineCount);
     });
 
     s.on('meet:participants-updated', ({ participants: pts, totalJoinedCount: tjc, platformOnlineCount: poc }) => {
       setParticipants(pts || []);
       if (tjc) setTotalJoinedCount(tjc);
       if (poc) setPlatformOnlineCount(poc);
-      setAnswerStatus(prev => ({
-        ...prev,
-        totalParticipants: (pts || []).length
-      }));
     });
 
     s.on('platform:online-stats', (data) => {
@@ -269,68 +268,50 @@ const MeetRoomPage = () => {
       }
     });
 
-    s.on('meet:question-started', ({ questionIndex, totalQuestions, question, leaderboard, meetId: qMeetId }) => {
-      if (qMeetId && qMeetId !== 'all' && String(qMeetId).trim() !== String(id).trim()) {
-        return;
-      }
+    // Evento de inicio del Quiz: cada persona recibe el set completo y empieza a responder a su ritmo
+    s.on('meet:quiz-started', ({ questions: qList, totalQuestions, progress }) => {
       setPhase('quiz');
-      setCurrentQuestionIndex(questionIndex);
-      setCurrentQuestion(question);
-      setSelectedAnswer(null);
-      setHasAnswered(false);
-      setRevealedResults(null);
-      setTimeLeft(question?.time_limit_seconds || 25);
-      setAnsweredCount(0);
-      setAnswerStatus({
-        answeredCount: 0,
-        totalParticipants: participants.length,
-        answeredParticipants: [],
-        pendingParticipants: participants,
-        allAnswered: false
-      });
-      if (leaderboard && Array.isArray(leaderboard)) {
-        setLiveLeaderboard(leaderboard);
+      if (qList && qList.length > 0) setQuizQuestions(qList);
+      setMyQuestionIndex(0);
+      setMyAnswers({});
+      setIsSelfFinished(false);
+      setCurrentFeedback(null);
+      setTimeLeft(qList?.[0]?.time_limit_seconds || 25);
+      if (progress) {
+        setQuizProgress(progress);
+        if (progress.leaderboard) setLiveLeaderboard(progress.leaderboard);
       }
       playNotificationSound();
     });
 
-    s.on('meet:answer-received', ({ isCorrect, points }) => {
-      setHasAnswered(true);
-      if (points > 0) {
-        setMySessionScore(prev => prev + points);
+    // Actualización en tiempo real del progreso de todos los participantes
+    s.on('meet:quiz-progress-updated', (progress) => {
+      if (progress) {
+        setQuizProgress(progress);
+        if (progress.leaderboard) setLiveLeaderboard(progress.leaderboard);
+      }
+    });
+
+    s.on('meet:all-participants-finished', (progress) => {
+      if (progress) {
+        setQuizProgress(progress);
+        if (progress.leaderboard) setLiveLeaderboard(progress.leaderboard);
       }
       playNotificationSound();
     });
 
-    s.on('meet:answer-status-updated', (status) => {
-      if (status?.meetId && status.meetId !== 'all' && String(status.meetId).trim() !== String(id).trim()) {
-        return;
-      }
-      setAnswerStatus(status);
-      setAnsweredCount(status.answeredCount || 0);
-      if (status.leaderboard && Array.isArray(status.leaderboard)) {
-        setLiveLeaderboard(status.leaderboard);
-      }
-    });
-
-    s.on('meet:answer-count-updated', ({ answeredCount: count, meetId: cMeetId }) => {
-      if (cMeetId && cMeetId !== 'all' && String(cMeetId).trim() !== String(id).trim()) {
-        return;
-      }
-      setAnsweredCount(count);
-    });
-
-    s.on('meet:question-results', (results) => {
+    // El líder revela los resultados finales y el podio para todos
+    s.on('meet:quiz-results-revealed', (results) => {
       if (results?.meetId && results.meetId !== 'all' && String(results.meetId).trim() !== String(id).trim()) {
         return;
       }
       setRevealedResults(results);
-      if (results.leaderboard && Array.isArray(results.leaderboard)) {
-        setLiveLeaderboard(results.leaderboard);
-        const me = results.leaderboard.find(p => String(p.id) === String(user?.id));
-        if (me && me.score !== undefined) {
-          setMySessionScore(me.score);
-        }
+      setPhase('finished');
+      if (results.leaderboard) setLiveLeaderboard(results.leaderboard);
+      if (results.podium) setFinalPodium(results.podium);
+      const me = (results.leaderboard || []).find(p => String(p.id) === String(user?.id));
+      if (me && me.score !== undefined) {
+        setMySessionScore(me.score);
       }
       playNotificationSound();
     });
@@ -342,7 +323,7 @@ const MeetRoomPage = () => {
         questionsCount: count
       } : prev);
       if (updatedQs && updatedQs.length > 0) {
-        setCurrentQuestion(prev => prev || updatedQs[currentQuestionIndex || 0]);
+        setQuizQuestions(updatedQs);
       }
     });
 
@@ -385,7 +366,7 @@ const MeetRoomPage = () => {
     };
   }, [user, meet, id]);
 
-  // Canal Supabase Realtime: Respaldo inmediato garantizado para todos los dispositivos móviles y navegadores
+  // Canal Supabase Realtime: Respaldo inmediato garantizado
   useEffect(() => {
     if (!id) return;
 
@@ -415,41 +396,24 @@ const MeetRoomPage = () => {
     };
   }, [id]);
 
-  // Heartbeat Polling de alta frecuencia (cada 2.5s) y sincronización al desbloquear pantalla o enfocar pestaña
+  // Heartbeat Polling de respaldo
   useEffect(() => {
     if (!id || sessionClosing) return;
 
     const checkEnded = async () => {
       try {
-        const res = await api.get(`/meetings/${id}`, {}, false);
+        const res = await api.get(`/meetings/${id}`, false);
         if (res && res.status === 'ended') {
           setSessionClosing(prev => prev || {
             message: 'La reunión ha sido finalizada por el líder.',
             countdown: 4
           });
         }
-      } catch (err) {
-        // Silencioso
-      }
+      } catch (err) {}
     };
 
-    const interval = setInterval(checkEnded, 2500);
-
-    const handleFocus = () => checkEnded();
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible') {
-        checkEnded();
-      }
-    };
-
-    window.addEventListener('focus', handleFocus);
-    document.addEventListener('visibilitychange', handleVisibility);
-
-    return () => {
-      clearInterval(interval);
-      window.removeEventListener('focus', handleFocus);
-      document.removeEventListener('visibilitychange', handleVisibility);
-    };
+    const interval = setInterval(checkEnded, 3000);
+    return () => clearInterval(interval);
   }, [id, sessionClosing]);
 
   // Manejo del conteo regresivo y cierre automático de la sala
@@ -474,142 +438,20 @@ const MeetRoomPage = () => {
     return () => clearTimeout(timer);
   }, [sessionClosing, navigate, socket]);
 
-  // Respaldo de carga inmediata de pregunta para evitar pantallas en blanco
+  // Temporizador para cada pregunta individual
   useEffect(() => {
-    if (phase === 'quiz' && !currentQuestion && meet?.questions && meet.questions.length > 0) {
-      const idx = currentQuestionIndex >= 0 ? currentQuestionIndex : 0;
-      setCurrentQuestion(meet.questions[idx] || meet.questions[0]);
-    }
-  }, [phase, currentQuestion, meet?.questions, currentQuestionIndex]);
-
-  // Responder Pregunta
-  const handleAnswerSelect = (optKey) => {
-    if (hasAnswered || revealedResults) return;
-    setSelectedAnswer(optKey);
-    setHasAnswered(true);
-
-    const limitSec = currentQuestion?.time_limit_seconds || 25;
-    const timeTakenMs = Math.max(500, (limitSec - timeLeft) * 1000);
-
-    // 1. Envío por WebSocket en tiempo real (0ms)
-    if (socket && socket.connected) {
-      socket.emit('meet:submit-answer', {
-        meetId: id,
-        questionIndex: currentQuestionIndex,
-        selectedAnswer: optKey,
-        timeTakenMs,
-        user
-      });
-    }
-
-    // 2. Respaldo HTTP infalible contra microcortes o caídas de WebSocket
-    api.post(`/meetings/${id}/submit-answer`, {
-      questionIndex: currentQuestionIndex,
-      selectedAnswer: optKey,
-      timeTakenMs
-    }).then(res => {
-      if (res && res.isCorrect !== undefined) {
-        if (res.points > 0) {
-          setMySessionScore(prev => prev > 0 ? prev : res.points);
-        }
-      }
-    }).catch(err => {
-      console.warn('[Meet] Respaldo HTTP submit-answer:', err);
-    });
-  };
-
-  // Líder revela / muestra resultados
-  const handleRevealResults = () => {
-    // 1. WebSocket
-    if (socket && socket.connected) {
-      socket.emit('meet:reveal-question-results', {
-        meetId: id,
-        questionIndex: currentQuestionIndex
-      });
-    }
-
-    // 2. Respaldo HTTP
-    api.post(`/meetings/${id}/reveal-results`, {
-      questionIndex: currentQuestionIndex
-    }).then(res => {
-      if (res?.results) {
-        setRevealedResults(res.results);
-      }
-    }).catch(err => {
-      console.warn('[Meet] Respaldo HTTP reveal-results:', err);
-    });
-  };
-
-  // Líder avanza de pregunta
-  const handleNextQuestion = () => {
-    // 1. WebSocket
-    if (socket && socket.connected) {
-      socket.emit('meet:next-question', { meetId: id });
-    }
-
-    // 2. Respaldo HTTP
-    api.post(`/meetings/${id}/next-question`, {}).catch(err => {
-      console.warn('[Meet] Respaldo HTTP next-question:', err);
-    });
-  };
-
-  // Líder inicia Quiz (inmediato, sin bloqueos de confirm())
-  const handleStartQuiz = async () => {
-    setPhase('quiz');
-    if (socket && socket.connected) {
-      socket.emit('meet:start-quiz', { meetId: id, questions: meet?.questions });
-    }
-    try {
-      await api.post(`/meetings/${id}/start-quiz`, { questions: meet?.questions });
-    } catch (err) {
-      console.warn('[Meet] Respaldo HTTP start-quiz:', err);
-    }
-  };
-
-  // Líder finaliza / cierra la reunión en vivo
-  const handleEndMeeting = async () => {
-    if (!confirm('¿Deseas finalizar y cerrar esta reunión en vivo para todos los miembros? Se registrarán las puntuaciones acumuladas y se cerrará la sala automáticamente.')) return;
-    
-    // 1. WebSocket
-    if (socket && socket.connected) {
-      socket.emit('meet:end-session', { meetId: id });
-    }
-
-    // 2. Respaldo HTTP doble (end-session y status ended)
-    try {
-      await api.post(`/meetings/${id}/end-session`, {});
-    } catch (e) {
-      console.warn('[Meet] Respaldo HTTP end-session:', e);
-    }
-    try {
-      await api.put(`/meetings/${id}/status`, { status: 'ended' });
-    } catch (e) {
-      console.error('Error cerrando meet:', e);
-    }
-
-    setSessionClosing({
-      message: 'Has finalizado la reunión. La sala se está cerrando para todos los participantes.',
-      countdown: 3
-    });
-  };
-
-  // Temporizador de preguntas en vivo
-  useEffect(() => {
-    if (phase !== 'quiz' || revealedResults) return;
+    if (phase !== 'quiz' || isSelfFinished || currentFeedback || revealedResults) return;
 
     if (timeLeft <= 0) {
-      if (isHost) {
-        handleRevealResults();
-      }
       return;
     }
 
     const timer = setInterval(() => {
-      setTimeLeft(prev => prev - 1);
+      setTimeLeft(prev => Math.max(0, prev - 1));
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [phase, timeLeft, revealedResults, isHost, currentQuestionIndex, id]);
+  }, [phase, timeLeft, isSelfFinished, currentFeedback, revealedResults, myQuestionIndex]);
 
   // Controles de Página del Líder
   const handlePageChange = (newPage) => {
@@ -620,7 +462,7 @@ const MeetRoomPage = () => {
     }
   };
 
-  // Movimiento del Puntero Láser (Soporte Universal: Mouse + Pantalla Táctil / Mobile)
+  // Movimiento del Puntero Láser
   const handlePointerCoords = (clientX, clientY) => {
     if (!isHost || !laserModeActive || !pdfContainerRef.current) return;
     const rect = pdfContainerRef.current.getBoundingClientRect();
@@ -658,6 +500,165 @@ const MeetRoomPage = () => {
     }
   };
 
+  // 1. RESPONDER UNA PREGUNTA EN EL SET INDIVIDUAL
+  const handleAnswerSelect = async (optKey) => {
+    if (currentFeedback || isSelfFinished || revealedResults) return;
+
+    const currentQ = activeQuestions[myQuestionIndex];
+    if (!currentQ) return;
+
+    const limitSec = currentQ.time_limit_seconds || 25;
+    const timeTakenMs = Math.max(500, (limitSec - timeLeft) * 1000);
+
+    // Detección local infalible de respuesta correcta para feedback visual instantáneo (0ms)
+    const correctLetter = (() => {
+      const raw = String(currentQ.correct_answer || '').trim().toLowerCase();
+      if (['a', 'b', 'c', 'd'].includes(raw)) return raw;
+      if (String(currentQ.option_a || '').trim().toLowerCase() === raw) return 'a';
+      if (String(currentQ.option_b || '').trim().toLowerCase() === raw) return 'b';
+      if (String(currentQ.option_c || '').trim().toLowerCase() === raw) return 'c';
+      if (String(currentQ.option_d || '').trim().toLowerCase() === raw) return 'd';
+      return raw || 'a';
+    })();
+
+    const isCorrect = optKey === correctLetter;
+    let points = 0;
+    if (isCorrect) {
+      const limitMs = limitSec * 1000;
+      const timeLeftRatio = Math.max(0, Math.min(1, 1 - (timeTakenMs / limitMs)));
+      points = 50 + Math.round(timeLeftRatio * 50);
+    }
+
+    const feedbackObj = {
+      selectedAnswer: optKey,
+      isCorrect,
+      points,
+      correctAnswer: correctLetter,
+      explanation: currentQ.explanation,
+      verseReference: currentQ.verse_reference
+    };
+
+    setCurrentFeedback(feedbackObj);
+    playNotificationSound();
+
+    if (points > 0) {
+      setMySessionScore(prev => prev + points);
+    }
+
+    setMyAnswers(prev => ({
+      ...prev,
+      [myQuestionIndex]: feedbackObj
+    }));
+
+    // 1. Envío WebSocket (0ms)
+    if (socket && socket.connected) {
+      socket.emit('meet:submit-answer', {
+        meetId: id,
+        questionIndex: myQuestionIndex,
+        selectedAnswer: optKey,
+        timeTakenMs,
+        user
+      });
+    }
+
+    // 2. Respaldo HTTP infalible
+    api.post(`/meetings/${id}/submit-answer`, {
+      questionIndex: myQuestionIndex,
+      selectedAnswer: optKey,
+      timeTakenMs
+    }).then(res => {
+      if (res && res.points && res.points > 0) {
+        setMySessionScore(prev => Math.max(prev, res.totalScore || prev));
+      }
+    }).catch(err => console.warn('[Meet] Respaldo HTTP submit-answer:', err));
+
+    // Auto-avance suave después de 2.2 segundos si no hace clic manual
+    if (autoAdvanceTimer) clearTimeout(autoAdvanceTimer);
+    const advanceTimeout = setTimeout(() => {
+      handleGoToNextQuestion();
+    }, 2200);
+    setAutoAdvanceTimer(advanceTimeout);
+  };
+
+  // 2. AVANZAR A LA SIGUIENTE PREGUNTA DEL SET O FINALIZAR
+  const handleGoToNextQuestion = () => {
+    if (autoAdvanceTimer) {
+      clearTimeout(autoAdvanceTimer);
+      setAutoAdvanceTimer(null);
+    }
+
+    const nextIdx = myQuestionIndex + 1;
+    setCurrentFeedback(null);
+
+    if (nextIdx < activeQuestions.length) {
+      setMyQuestionIndex(nextIdx);
+      setTimeLeft(activeQuestions[nextIdx]?.time_limit_seconds || 25);
+    } else {
+      // Completó todas las preguntas del set -> Pasa a Pantalla de Espera
+      setIsSelfFinished(true);
+      playNotificationSound();
+    }
+  };
+
+  // 3. LÍDER INICIA EL QUIZ
+  const handleStartQuiz = async () => {
+    setPhase('quiz');
+    setMyQuestionIndex(0);
+    setMyAnswers({});
+    setIsSelfFinished(false);
+    setCurrentFeedback(null);
+
+    if (socket && socket.connected) {
+      socket.emit('meet:start-quiz', { meetId: id, questions: meet?.questions });
+    }
+    try {
+      await api.post(`/meetings/${id}/start-quiz`, { questions: meet?.questions });
+    } catch (err) {
+      console.warn('[Meet] Respaldo HTTP start-quiz:', err);
+    }
+  };
+
+  // 4. LÍDER REVELA RESULTADOS Y PODIO FINAL PARA TODOS
+  const handleRevealQuizResults = async () => {
+    if (socket && socket.connected) {
+      socket.emit('meet:reveal-quiz-results', { meetId: id });
+    }
+    try {
+      const res = await api.post(`/meetings/${id}/reveal-results`, {});
+      if (res?.results) {
+        setRevealedResults(res.results);
+        setPhase('finished');
+      }
+    } catch (err) {
+      console.warn('[Meet] Respaldo HTTP reveal-results:', err);
+    }
+  };
+
+  // 5. LÍDER CIERRA LA REUNIÓN PARA TODOS
+  const handleEndMeeting = async () => {
+    if (!confirm('¿Deseas finalizar y cerrar esta reunión en vivo para todos los miembros? Se registrarán las puntuaciones acumuladas y se cerrará la sala automáticamente.')) return;
+    
+    if (socket && socket.connected) {
+      socket.emit('meet:end-session', { meetId: id });
+    }
+
+    try {
+      await api.post(`/meetings/${id}/end-session`, {});
+    } catch (e) {
+      console.warn('[Meet] Respaldo HTTP end-session:', e);
+    }
+    try {
+      await api.put(`/meetings/${id}/status`, { status: 'ended' });
+    } catch (e) {
+      console.error('Error cerrando meet:', e);
+    }
+
+    setSessionClosing({
+      message: 'Has finalizado la reunión. La sala se está cerrando para todos los participantes.',
+      countdown: 3
+    });
+  };
+
   if (loading || !meet) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-3">
@@ -688,7 +689,7 @@ const MeetRoomPage = () => {
                 <span className="relative inline-flex rounded-full h-2 w-2 sm:h-2.5 sm:w-2.5 bg-red-500"></span>
               </span>
               <span className="text-[9px] sm:text-[11px] font-bold uppercase tracking-wider text-gold truncate">
-                Meet {phase === 'reading' ? '• Lectura' : phase === 'quiz' ? '• Quiz' : '• Podio'}
+                Meet {phase === 'reading' ? '• Lectura' : phase === 'quiz' ? (isSelfFinished ? '• En Espera' : '• Quiz') : '• Podio'}
               </span>
             </div>
             <h1 className="text-xs sm:text-base font-bold font-[Cinzel] text-white truncate max-w-[120px] xs:max-w-[180px] sm:max-w-xs md:max-w-md">
@@ -707,17 +708,17 @@ const MeetRoomPage = () => {
           )}
 
           {phase === 'quiz' && (
-            <div className="bg-amber-500/20 border border-amber-500/40 px-3 py-1 rounded-full text-amber-300 font-bold flex items-center gap-1.5">
+            <div className="bg-amber-500/20 border border-amber-500/40 px-3 py-1 rounded-full text-amber-300 font-bold flex items-center gap-1.5 shadow-inner">
               <Award className="w-4 h-4 text-gold" />
-              <span>Mis Puntos: {mySessionScore}</span>
+              <span>Mis Puntos: <strong className="text-white font-mono">{mySessionScore}</strong></span>
             </div>
           )}
         </div>
 
-        {/* Derecha: Participantes y Controles */}
+        {/* Derecha: Participantes y Controles Maestros */}
         <div className="flex items-center gap-1 sm:gap-2 shrink-0">
           <div className="bg-white/10 text-gray-200 px-2 sm:px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 border border-white/10 shadow-inner">
-            <div className="flex items-center gap-1" title={`${participants.length} participantes en esta sala en vivo (Total que asistieron: ${totalJoinedCount || participants.length})`}>
+            <div className="flex items-center gap-1" title={`${participants.length} participantes en esta sala en vivo`}>
               <Users className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gold shrink-0" />
               <span className="text-[11px] sm:text-xs font-bold text-white">{participants.length}</span>
               <span className="hidden sm:inline text-gray-300">en sala</span>
@@ -738,11 +739,11 @@ const MeetRoomPage = () => {
               title="Gestionar o importar preguntas bíblicas para esta reunión"
             >
               <FileText className="w-3.5 h-3.5 text-gold" />
-              <span className="hidden sm:inline">Preguntas ({meet?.questionsCount || (meet?.questions || []).length || 0})</span>
+              <span className="hidden sm:inline">Preguntas ({activeQuestions.length})</span>
             </button>
           )}
 
-          {/* Botón Maestro del Líder para pasar a Quiz */}
+          {/* Botón Maestro del Líder para Iniciar Quiz */}
           {isHost && phase === 'reading' && (
             <button
               onClick={handleStartQuiz}
@@ -754,6 +755,25 @@ const MeetRoomPage = () => {
             </button>
           )}
 
+          {/* Botón Maestro del Líder para Mostrar Resultados y Podio */}
+          {isHost && phase === 'quiz' && !revealedResults && (
+            <button
+              onClick={handleRevealQuizResults}
+              className={`inline-flex items-center gap-1 sm:gap-1.5 text-white px-2.5 sm:px-3.5 py-1.5 rounded-lg text-xs font-black shadow-lg transition-all cursor-pointer hover:scale-105 ${
+                quizProgress.allFinished 
+                  ? 'bg-gradient-to-r from-emerald-500 to-green-500 animate-bounce ring-2 ring-emerald-300 text-slate-900' 
+                  : 'bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500'
+              }`}
+              title="Mostrar resultados y podio a todos los participantes"
+            >
+              <BarChart3 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <span className="hidden xs:inline">
+                {quizProgress.allFinished ? '¡Podio Listo!' : 'Mostrar Resultados'}
+              </span>
+              <span>📊</span>
+            </button>
+          )}
+
           {/* Botón Maestro del Líder para Cerrar / Finalizar Reunión en Vivo */}
           {isHost && !sessionClosing && (
             <button
@@ -762,99 +782,66 @@ const MeetRoomPage = () => {
               title="Finalizar y cerrar la sesión en vivo para todos los participantes"
             >
               <XCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
-              <span className="hidden sm:inline">Cerrar Meet</span>
+              <span className="hidden sm:inline">Cerrar</span>
             </button>
           )}
         </div>
       </div>
 
-      {/* 2. CONTENIDO PRINCIPAL SEGÚN LA FASE */}
-      <div className="flex-1 relative flex flex-col overflow-hidden bg-slate-950">
-
-        {/* ---------------- FASE A: LECTURA DE PDF ---------------- */}
+      {/* 2. ÁREA PRINCIPAL SEGÚN LA FASE */}
+      <div className="flex-1 flex flex-col min-h-0 bg-slate-950/80 relative overflow-hidden">
+        
+        {/* ---------------- FASE A: LECTURA GUIADA ---------------- */}
         {phase === 'reading' && (
-          <div className="flex-1 flex flex-col h-full relative">
-            
-            {/* Banner destacado para el Líder si la reunión no tiene preguntas */}
-            {isHost && (meet?.questionsCount || 0) === 0 && (!meet?.questions || meet.questions.length === 0) && (
-              <div className="bg-amber-950/80 border-b border-amber-500/50 px-3 sm:px-4 py-2 text-amber-200 text-xs flex flex-wrap items-center justify-between gap-2 shrink-0 z-30 shadow-md">
-                <div className="flex items-center gap-2">
-                  <span className="text-base">⚠️</span>
-                  <span><strong>Atención Líder:</strong> Esta reunión aún no tiene preguntas bíblicas cargadas para el quiz en vivo.</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setIsManageQuestionsOpen(true)}
-                  className="px-3 py-1 bg-gradient-to-r from-gold to-gold-dark hover:from-gold-dark hover:to-gold text-slate-900 font-bold rounded-lg text-xs cursor-pointer shadow-md transition-all hover:scale-105"
-                >
-                  📥 Importar Preguntas Ahora
-                </button>
-              </div>
-            )}
-            
-            {/* Visor de Documento PDF */}
+          <div className="flex-1 flex flex-col min-h-0 relative">
             <div 
               ref={pdfContainerRef}
               onMouseMove={handleMouseMove}
-              onMouseLeave={handlePointerLeave}
-              onTouchStart={handleTouchStart}
               onTouchMove={handleTouchMove}
-              onTouchEnd={handlePointerLeave}
-              onTouchCancel={handlePointerLeave}
-              className={`flex-1 relative bg-slate-900 overflow-hidden flex items-center justify-center ${
-                laserModeActive ? 'touch-none select-none cursor-crosshair' : ''
-              }`}
+              onTouchStart={handleTouchStart}
+              onMouseLeave={handlePointerLeave}
+              className="flex-1 w-full bg-slate-900 relative overflow-hidden select-none"
             >
               {meet.pdfUrl ? (
-                <>
-                  <iframe
-                    src={getUniversalPdfViewerUrl(meet.pdfUrl, currentPage)}
-                    title="Documento PDF"
-                    allow="fullscreen"
-                    className="w-full h-full border-0 bg-white"
-                  />
-
-                  {/* Acceso directo a Pantalla Completa para dispositivos móviles y tablets */}
-                  <div className="absolute top-2.5 right-2.5 z-30 flex items-center gap-1.5 bg-slate-900/85 backdrop-blur-md border border-gold/30 p-1 rounded-xl shadow-lg">
-                    <a
-                      href={meet.pdfUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-[11px] font-bold text-gold hover:text-white bg-white/10 hover:bg-white/20 px-2.5 py-1 rounded-lg transition-colors"
-                      title="Abrir PDF en pantalla completa nativa o descargarlo"
-                    >
-                      <ExternalLink className="w-3.5 h-3.5" />
-                      <span className="hidden sm:inline">Pantalla Completa</span>
-                    </a>
-                  </div>
-                </>
+                <iframe
+                  src={getUniversalPdfViewerUrl(meet.pdfUrl, currentPage)}
+                  className="w-full h-full border-0 pointer-events-auto"
+                  title="Visor Bíblico"
+                  allow="fullscreen"
+                />
               ) : (
-                <div className="text-center p-6 sm:p-8 space-y-4 max-w-lg text-white">
-                  <FileText className="w-14 h-14 sm:w-16 sm:h-16 text-gold/60 mx-auto" />
-                  <h3 className="font-[Cinzel] text-lg sm:text-xl font-bold text-gold">
-                    Estudio Bíblico: {meet.bookName || 'Palabra de Dios'}
-                  </h3>
-                  <p className="text-xs sm:text-sm text-gray-300">
-                    El líder guiará la lectura en vivo de los capítulos seleccionados. Sigue las instrucciones del anfitrión y prepárate para la ronda interactiva de preguntas.
-                  </p>
+                <div className="w-full h-full flex flex-col items-center justify-center p-6 text-center text-gray-400 space-y-4">
+                  <BookOpen className="w-16 h-16 text-gold/50" />
+                  <div>
+                    <h3 className="font-[Cinzel] text-lg text-white font-bold">
+                      {meet.bookName || 'Estudio Bíblico'}
+                    </h3>
+                    <p className="text-xs sm:text-sm text-gray-300 max-w-md mt-1">
+                      {meet.descriptionText || 'Reunión en vivo para escudriñar las Sagradas Escrituras.'}
+                    </p>
+                  </div>
+                  {isHost && (
+                    <button
+                      onClick={handleStartQuiz}
+                      className="px-5 py-2.5 bg-gradient-to-r from-gold to-gold-dark text-white rounded-xl font-bold text-xs shadow-lg hover:scale-105 transition-all animate-pulse"
+                    >
+                      Comenzar Ronda de Quiz ⚔️
+                    </button>
+                  )}
                 </div>
               )}
 
-              {/* PUNTERO LÁSER VIRTUAL EN VIVO */}
+              {/* Puntero Láser Virtual */}
               {laserPointer.active && (
-                <div
+                <div 
+                  className="absolute pointer-events-none w-4 h-4 rounded-full bg-red-500 shadow-[0_0_15px_#ef4444] transform -translate-x-1/2 -translate-y-1/2 z-30 transition-all duration-75 ease-out animate-pulse ring-2 ring-white/80"
                   style={{ left: `${laserPointer.x}%`, top: `${laserPointer.y}%` }}
-                  className="absolute w-5 h-5 -ml-2.5 -mt-2.5 rounded-full bg-red-500 shadow-[0_0_15px_5px_rgba(239,68,68,0.8)] pointer-events-none z-30 transition-all duration-75"
-                >
-                  <div className="w-full h-full rounded-full bg-white animate-ping opacity-60" />
-                </div>
+                />
               )}
             </div>
 
-            {/* BARRA INFERIOR DE ACCIONES Y REACCIONES */}
-            <div className="bg-primary-dark/95 border-t border-gold/20 p-2 sm:p-2.5 px-2.5 sm:px-4 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 text-white shrink-0 z-20">
-              
-              {/* Lado Izquierdo: Paginación & Puntero (Líder) o Sincronización (Miembro) */}
+            {/* Barra de Controles de Lectura */}
+            <div className="bg-slate-900 border-t border-gold/30 px-3 py-2 flex items-center justify-between text-white shrink-0 z-20">
               <div className="flex items-center gap-1.5 sm:gap-2">
                 {isHost ? (
                   <>
@@ -897,669 +884,523 @@ const MeetRoomPage = () => {
                 )}
               </div>
 
-              {/* Centro / Derecha: Indicador de Sala */}
               <div className="flex items-center gap-1.5 sm:gap-2">
                 <span className="text-[11px] text-gray-400 font-medium hidden xs:inline">
-                  Remanente Meet • Lectura Guiada
+                  Remanente Meet • Lectura Bíblica
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ---------------- FASE B: QUIZ EN VIVO (CADA PERSONA A SU RITMO) ---------------- */}
+        {phase === 'quiz' && !revealedResults && (
+          !isSelfFinished ? (
+            /* SUB-FASE B.1: CUESTIONARIO INDIVIDUAL EN CURSO */
+            currentQuestion ? (
+              <div className="flex-1 flex flex-col justify-between p-3.5 sm:p-6 md:p-8 pb-16 sm:pb-8 max-w-4xl mx-auto w-full overflow-y-auto space-y-4">
+                
+                {/* 1. Barra de Progreso Personal, Temporizador y Puntos */}
+                <div className="bg-slate-900/90 border border-gold/30 p-3 sm:p-4 rounded-xl flex flex-wrap items-center justify-between gap-3 text-white">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] sm:text-xs font-black text-gold uppercase tracking-wider bg-gold/15 px-2.5 py-0.5 rounded-full border border-gold/30">
+                        Pregunta {myQuestionIndex + 1} de {activeQuestions.length}
+                      </span>
+                      <span className="text-[11px] sm:text-xs text-gray-300 font-semibold hidden xs:inline">
+                        • {quizProgress.finishedCount} de {quizProgress.totalParticipants || participants.length} completaron
+                      </span>
+                    </div>
+                    {/* Barra de progreso de preguntas respondidas */}
+                    <div className="w-36 sm:w-56 bg-white/10 rounded-full h-1.5 mt-2 overflow-hidden">
+                      <div 
+                        className="bg-gold h-full transition-all duration-300"
+                        style={{ width: `${activeQuestions.length > 0 ? ((myQuestionIndex) / activeQuestions.length) * 100 : 0}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 sm:gap-3">
+                    <div className="bg-white/10 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg border border-white/15 text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                      <Award className="w-3.5 h-3.5 text-gold" />
+                      <span>Mis Puntos: <strong className="text-white font-mono">{mySessionScore}</strong></span>
+                    </div>
+
+                    {!currentFeedback && (
+                      <div className={`flex items-center gap-1.5 px-3 sm:px-4 py-1.5 rounded-xl font-mono text-sm sm:text-base font-black ${
+                        timeLeft <= 5 
+                          ? 'bg-red-600 text-white animate-pulse ring-2 ring-red-400' 
+                          : 'bg-gold/20 text-gold-light border border-gold/40'
+                      }`}>
+                        <Clock className="w-4 h-4" />
+                        <span>{timeLeft}s</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Banner de Supervisión para el Líder si está respondiendo */}
+                {isHost && (
+                  <div className="bg-blue-950/40 border border-blue-500/40 p-2.5 rounded-xl flex items-center justify-between text-xs text-blue-200">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-gold">👑 Panel Líder:</span>
+                      <span>{quizProgress.finishedCount} de {quizProgress.totalParticipants || participants.length} completaron todas las preguntas.</span>
+                    </div>
+                    <button
+                      onClick={handleRevealQuizResults}
+                      className="px-3 py-1 bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold rounded-lg text-[11px] transition-all cursor-pointer shadow"
+                    >
+                      Mostrar Resultados 📊
+                    </button>
+                  </div>
+                )}
+
+                {/* 2. Tarjeta Principal de la Pregunta */}
+                <div className="bg-slate-900 border-2 border-gold/50 p-4 sm:p-6 rounded-2xl shadow-xl text-center relative overflow-hidden">
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-gold/10 rounded-full blur-2xl pointer-events-none" />
+                  <h2 className="font-[Cinzel] text-lg sm:text-2xl font-bold text-white leading-relaxed">
+                    {currentQuestion.question_text}
+                  </h2>
+                </div>
+
+                {/* Barra Visual del Cronómetro */}
+                {!currentFeedback && (
+                  <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden border border-white/10">
+                    <div 
+                      className={`h-full transition-all duration-1000 ease-linear ${
+                        timeLeft <= 5 ? 'bg-red-500 animate-pulse' : 'bg-gradient-to-r from-gold to-amber-500'
+                      }`}
+                      style={{ width: `${Math.max(0, Math.min(100, (timeLeft / (currentQuestion.time_limit_seconds || 25)) * 100))}%` }}
+                    />
+                  </div>
+                )}
+
+                {/* 3. Las 4 Opciones Interactivas (A, B, C, D) */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3.5">
+                  {['a', 'b', 'c', 'd'].map(optKey => {
+                    const optText = currentQuestion[`option_${optKey}`];
+                    if (!optText) return null;
+
+                    const isSelected = currentFeedback?.selectedAnswer === optKey;
+                    const isCorrect = currentFeedback && currentFeedback.correctAnswer === optKey;
+                    const isWrongSelected = currentFeedback && isSelected && !isCorrect;
+
+                    let btnStyle = 'bg-slate-900 hover:bg-slate-800 border-gray-700 text-gray-200';
+                    if (isCorrect) {
+                      btnStyle = 'bg-green-600/30 border-green-500 text-green-200 ring-2 ring-green-500 font-bold';
+                    } else if (isWrongSelected) {
+                      btnStyle = 'bg-red-600/30 border-red-500 text-red-200 ring-2 ring-red-500';
+                    }
+
+                    return (
+                      <button
+                        key={optKey}
+                        disabled={!!currentFeedback}
+                        onClick={() => handleAnswerSelect(optKey)}
+                        className={`p-3 sm:p-4 rounded-xl border text-left flex items-center justify-between gap-3 transition-all cursor-pointer disabled:cursor-default ${btnStyle}`}
+                      >
+                        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+                          <span className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center font-bold text-xs sm:text-sm uppercase shrink-0 ${
+                            isCorrect ? 'bg-green-500 text-slate-900' : isWrongSelected ? 'bg-red-500 text-white' : isSelected ? 'bg-gold text-slate-900' : 'bg-white/10 text-white'
+                          }`}>
+                            {optKey}
+                          </span>
+                          <span className="text-xs sm:text-sm font-medium">{optText}</span>
+                        </div>
+
+                        <div className="shrink-0 flex items-center gap-1.5">
+                          {isCorrect && <CheckCircle className="w-5 h-5 text-green-400" />}
+                          {isWrongSelected && <XCircle className="w-5 h-5 text-red-400" />}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* 4. Feedback Inmediato y Botón de Avance */}
+                {currentFeedback && (
+                  <div className="bg-slate-900 border border-gold/40 p-3 sm:p-4 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-3 animate-fadeIn">
+                    <div className="flex items-center gap-2.5 text-xs sm:text-sm">
+                      {currentFeedback.isCorrect ? (
+                        <div className="flex items-center gap-1.5 text-green-400 font-bold">
+                          <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5" />
+                          <span>¡Correcto! +{currentFeedback.points} pts</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1.5 text-red-400 font-bold">
+                          <XCircle className="w-4 h-4 sm:w-5 sm:h-5" />
+                          <span>Respuesta incorrecta. La correcta era la ({currentFeedback.correctAnswer?.toUpperCase()})</span>
+                        </div>
+                      )}
+                      {currentFeedback.verseReference && (
+                        <span className="text-gold font-semibold italic text-xs hidden md:inline">
+                          📖 {currentFeedback.verseReference}
+                        </span>
+                      )}
+                    </div>
+
+                    <button
+                      onClick={handleGoToNextQuestion}
+                      className="w-full sm:w-auto px-5 py-2.5 bg-gradient-to-r from-gold to-gold-dark hover:from-gold-dark hover:to-gold text-white font-bold rounded-xl text-xs sm:text-sm shadow-lg transition-all cursor-pointer hover:scale-105 shrink-0 flex items-center justify-center gap-1.5"
+                    >
+                      <span>
+                        {myQuestionIndex + 1 < activeQuestions.length ? 'Siguiente Pregunta ➡️' : 'Finalizar Cuestionario ✅'}
+                      </span>
+                    </button>
+                  </div>
+                )}
+
+                {/* Mini estado de la sala en vivo */}
+                <div className="bg-slate-900/60 border border-white/10 rounded-xl p-3 text-xs text-gray-300 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Users className="w-3.5 h-3.5 text-gold" />
+                    <span>Progreso de la sala: {quizProgress.finishedCount} de {quizProgress.totalParticipants || participants.length} completaron</span>
+                  </div>
+                  <span className="text-gray-400 font-mono text-[11px]">
+                    {quizProgress.allFinished ? '¡Todos listos!' : 'Respondiendo a su ritmo'}
+                  </span>
+                </div>
+
+              </div>
+            ) : (
+              <div className="flex-1 flex flex-col items-center justify-center p-6 text-center text-white space-y-4 max-w-md mx-auto">
+                <Loader2 className="w-10 h-10 animate-spin text-gold" />
+                <h3 className="font-[Cinzel] text-xl font-bold text-gold">Cargando Preguntas del Meet...</h3>
+                <p className="text-xs sm:text-sm text-gray-300">
+                  Preparando el cuestionario bíblico interactivo.
+                </p>
+              </div>
+            )
+          ) : (
+            /* SUB-FASE B.2: PANTALLA DE ESPERA (TRAS COMPLETAR TODAS LAS PREGUNTAS) */
+            <div className="flex-1 flex flex-col justify-center items-center p-4 sm:p-6 md:p-8 max-w-3xl mx-auto w-full overflow-y-auto space-y-5 animate-fadeIn">
+              
+              {/* Encabezado Celebratorio */}
+              <div className="text-center space-y-2">
+                <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto rounded-full bg-gold/20 border-2 border-gold flex items-center justify-center text-gold shadow-lg shadow-gold/20 animate-pulse">
+                  <Hourglass className="w-8 h-8 sm:w-10 sm:h-10 text-gold" />
+                </div>
+                <h2 className="font-[Cinzel] text-xl sm:text-3xl font-bold text-gold">
+                  ¡Has completado todas las preguntas bíblicas!
+                </h2>
+                <p className="text-xs sm:text-sm text-gray-300 max-w-md mx-auto">
+                  Excelente trabajo escudriñando las Escrituras. Ahora estamos esperando a que los demás hermanos terminen para revelar los resultados finales y el podio.
+                </p>
+              </div>
+
+              {/* Tarjeta de Resumen Personal */}
+              <div className="grid grid-cols-3 gap-2.5 sm:gap-3 w-full max-w-lg">
+                <div className="bg-slate-900 border border-gold/40 p-3 rounded-xl text-center">
+                  <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider block">Mis Puntos</span>
+                  <span className="text-lg sm:text-2xl font-black text-amber-300 font-mono">{mySessionScore}</span>
+                </div>
+                <div className="bg-slate-900 border border-green-500/40 p-3 rounded-xl text-center">
+                  <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider block">Acertadas</span>
+                  <span className="text-lg sm:text-2xl font-black text-green-400 font-mono">{myCorrectCount}/{activeQuestions.length}</span>
+                </div>
+                <div className="bg-slate-900 border border-blue-500/40 p-3 rounded-xl text-center">
+                  <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider block">Estatus</span>
+                  <span className="text-xs sm:text-sm font-bold text-blue-300 mt-1 block">Listo ✅</span>
+                </div>
+              </div>
+
+              {/* Progreso de la Sala en Vivo */}
+              <div className="w-full bg-slate-900/90 border border-gold/40 rounded-2xl p-4 sm:p-5 space-y-4 shadow-xl">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-3">
+                  <div className="flex items-center gap-2">
+                    <Users className="w-5 h-5 text-gold" />
+                    <div>
+                      <h3 className="text-xs sm:text-sm font-bold text-white font-[Cinzel] tracking-wide">
+                        Progreso de los Hermanos en Vivo
+                      </h3>
+                      <p className="text-[11px] text-gray-400">
+                        {quizProgress.finishedCount} de {quizProgress.totalParticipants || participants.length} participantes han finalizado
+                      </p>
+                    </div>
+                  </div>
+
+                  {quizProgress.allFinished ? (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/20 border border-emerald-400 text-emerald-300 animate-pulse">
+                      <CheckCheck className="w-4 h-4" />
+                      <span>¡Todos Terminaron!</span>
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-500/20 border border-amber-400 text-amber-300">
+                      <Clock className="w-3.5 h-3.5 animate-spin" />
+                      <span>Esperando ({Math.max(0, (quizProgress.totalParticipants || participants.length) - quizProgress.finishedCount)})</span>
+                    </span>
+                  )}
+                </div>
+
+                {/* Barra visual de progreso grupal */}
+                <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden border border-white/10">
+                  <div 
+                    className="h-full bg-gradient-to-r from-gold to-emerald-400 transition-all duration-500"
+                    style={{ width: `${quizProgress.totalParticipants > 0 ? (quizProgress.finishedCount / quizProgress.totalParticipants) * 100 : 0}%` }}
+                  />
+                </div>
+
+                {/* Lista de Participantes: Listos vs En Progreso */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-48 overflow-y-auto">
+                  {/* Listos */}
+                  <div className="space-y-1.5">
+                    <p className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1">
+                      <CheckCircle className="w-3.5 h-3.5" />
+                      <span>Listos ({quizProgress.finishedCount})</span>
+                    </p>
+                    {(quizProgress.participantsProgress || []).filter(p => p.isFinished).map(p => (
+                      <div key={p.id} className="flex items-center justify-between p-2 rounded-lg bg-emerald-950/30 border border-emerald-500/30 text-xs text-emerald-200">
+                        <span className="font-semibold truncate">{p.username}</span>
+                        <span className="font-mono text-emerald-400 font-bold">{p.score} pts</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* En progreso */}
+                  <div className="space-y-1.5">
+                    <p className="text-[11px] font-bold text-amber-300 uppercase tracking-wider flex items-center gap-1">
+                      <Clock className="w-3.5 h-3.5" />
+                      <span>En Progreso ({(quizProgress.participantsProgress || []).filter(p => !p.isFinished).length})</span>
+                    </p>
+                    {(quizProgress.participantsProgress || []).filter(p => !p.isFinished).map(p => (
+                      <div key={p.id} className="flex items-center justify-between p-2 rounded-lg bg-amber-950/25 border border-amber-500/30 text-xs text-amber-200">
+                        <span className="truncate">{p.username}</span>
+                        <span className="text-[10px] text-amber-400 font-mono">Pregunta {p.completedCount + 1}/{activeQuestions.length} ⏳</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Panel del Líder para Mostrar Resultados */}
+              {isHost ? (
+                <div className="w-full bg-primary-dark/80 border-2 border-gold/50 rounded-2xl p-4 sm:p-5 text-center space-y-3 shadow-xl">
+                  <h4 className="font-[Cinzel] text-sm sm:text-base font-bold text-gold">
+                    👑 Control de Moderación del Líder
+                  </h4>
+                  <p className="text-xs text-gray-300 max-w-md mx-auto">
+                    {quizProgress.allFinished 
+                      ? '¡Gloria a Dios! Todos los participantes han contestado las preguntas. Ya puedes revelar el podio oficial y los resultados.'
+                      : 'Puedes esperar a que todos concluyan o pulsar el botón para mostrar los resultados en este instante.'}
+                  </p>
+                  
+                  <button
+                    onClick={handleRevealQuizResults}
+                    className={`w-full sm:w-auto px-6 py-3 rounded-xl font-black text-sm shadow-xl transition-all cursor-pointer hover:scale-105 inline-flex items-center justify-center gap-2 ${
+                      quizProgress.allFinished
+                        ? 'bg-gradient-to-r from-emerald-500 to-green-500 hover:from-emerald-400 hover:to-green-400 text-slate-900 ring-4 ring-emerald-400/50 animate-bounce'
+                        : 'bg-gradient-to-r from-gold to-gold-dark hover:from-gold-dark hover:to-gold text-white'
+                    }`}
+                  >
+                    <BarChart3 className="w-5 h-5" />
+                    <span>
+                      {quizProgress.allFinished 
+                        ? '¡Revelar Resultados y Podio Final Ahora! 🏆' 
+                        : `Mostrar Resultados (${quizProgress.finishedCount}/${quizProgress.totalParticipants || participants.length} Listos) 📊`}
+                    </span>
+                  </button>
+                </div>
+              ) : (
+                <div className="text-xs text-gray-400 italic text-center p-2 bg-white/5 rounded-xl border border-white/10 w-full max-w-md">
+                  📖 El líder/administrador revelará los resultados finales y el podio para todos en cuanto concluyan los participantes.
+                </div>
+              )}
+
+            </div>
+          )
+        )}
+
+        {/* ---------------- FASE C: PODIO FINAL & RESULTADOS COMPLETOS ---------------- */}
+        {(phase === 'finished' || revealedResults) && (
+          <div className="flex-1 flex flex-col p-4 sm:p-6 md:p-8 max-w-4xl mx-auto w-full overflow-y-auto space-y-6 text-white animate-fadeIn pb-16">
+            
+            {/* Encabezado Celebratorio */}
+            <div className="text-center space-y-2">
+              <Trophy className="w-16 h-16 sm:w-20 sm:h-20 text-gold animate-bounce mx-auto" />
+              <h2 className="font-[Cinzel] text-2xl sm:text-3xl font-bold text-gold">
+                ¡Gran Estudio y Quiz Finalizado!
+              </h2>
+              <p className="text-xs sm:text-sm text-gray-300 max-w-md mx-auto">
+                La gloria sea a Dios por su Palabra. Los Puntos de Sabiduría han sido acreditados a tu cuenta.
+              </p>
+            </div>
+
+            {/* Asistencia y Conectados */}
+            <div className="grid grid-cols-2 gap-3 w-full max-w-md mx-auto">
+              <div className="bg-slate-900 border border-gold/40 rounded-xl p-3 flex flex-col items-center shadow-lg text-center">
+                <Users className="w-4 h-4 text-gold mb-1" />
+                <span className="text-[10px] text-gray-400 uppercase font-bold">Asistencia al Meet</span>
+                <span className="text-lg sm:text-xl font-black text-white font-mono">
+                  {totalJoinedCount || participants.length}
+                </span>
+              </div>
+              <div className="bg-slate-900 border border-emerald-500/40 rounded-xl p-3 flex flex-col items-center shadow-lg text-center">
+                <Users className="w-4 h-4 text-emerald-400 mb-1" />
+                <span className="text-[10px] text-gray-400 uppercase font-bold">En Plataforma</span>
+                <span className="text-lg sm:text-xl font-black text-emerald-400 font-mono">
+                  {platformOnlineCount}
                 </span>
               </div>
             </div>
 
-          </div>
-        )}
-
-        {/* ---------------- FASE B: QUIZ EN VIVO ---------------- */}
-        {phase === 'quiz' && (
-          currentQuestion ? (
-            <div className="flex-1 flex flex-col justify-between p-3.5 sm:p-6 md:p-8 pb-20 sm:pb-8 max-w-4xl mx-auto w-full overflow-y-auto space-y-4">
-            
-            {/* 1. Barra de Progreso, Temporizador y Puntos */}
-            <div className="bg-slate-900/80 border border-gold/30 p-3 sm:p-4 rounded-xl flex flex-wrap items-center justify-between gap-3 text-white">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] sm:text-xs font-black text-gold uppercase tracking-wider bg-gold/15 px-2.5 py-0.5 rounded-full border border-gold/30">
-                    Pregunta {currentQuestionIndex + 1} {revealedResults?.totalQuestions ? `de ${revealedResults.totalQuestions}` : (meet?.questionsCount ? `de ${meet.questionsCount}` : '')}
-                  </span>
-                  <span className="text-[11px] sm:text-xs text-gray-300 font-semibold hidden xs:inline">
-                    • {answeredCount} de {participants.length} respondieron
-                  </span>
-                </div>
-                <div className="w-32 sm:w-48 bg-white/10 rounded-full h-1.5 mt-2 overflow-hidden">
-                  <div 
-                    className="bg-gold h-full transition-all duration-300"
-                    style={{ width: `${participants.length > 0 ? (answeredCount / participants.length) * 100 : 0}%` }}
-                  />
-                </div>
+            {/* Pestañas de Resultados: Revisión de Respuestas vs Tabla de Honor */}
+            <div className="bg-slate-900 border border-gold/40 rounded-2xl overflow-hidden shadow-2xl">
+              <div className="flex border-b border-gold/20 bg-slate-950/70">
+                <button
+                  onClick={() => setActiveResultsTab('revision')}
+                  className={`flex-1 py-3 px-3 text-xs sm:text-sm font-bold transition-colors flex items-center justify-center gap-1.5 cursor-pointer ${
+                    activeResultsTab === 'revision' 
+                      ? 'bg-gold/20 text-gold-light border-b-2 border-gold' 
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  <FileText className="w-4 h-4" />
+                  <span>Revisión de Mis Respuestas ({myCorrectCount}/{activeQuestions.length})</span>
+                </button>
+                <button
+                  onClick={() => setActiveResultsTab('posiciones')}
+                  className={`flex-1 py-3 px-3 text-xs sm:text-sm font-bold transition-colors flex items-center justify-center gap-1.5 cursor-pointer ${
+                    activeResultsTab === 'posiciones' 
+                      ? 'bg-gold/20 text-gold-light border-b-2 border-gold' 
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  <Trophy className="w-4 h-4 text-gold" />
+                  <span>Tabla de Honor Completa ({(revealedResults?.leaderboard || finalPodium || []).length})</span>
+                </button>
               </div>
 
-              <div className="flex items-center gap-2 sm:gap-3">
-                {/* Mis Puntos */}
-                <div className="bg-white/10 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg border border-white/15 text-xs font-bold text-amber-300 flex items-center gap-1.5">
-                  <Award className="w-3.5 h-3.5 text-gold" />
-                  <span>Mis Puntos: <strong className="text-white font-mono">{mySessionScore}</strong></span>
-                </div>
+              <div className="p-4 sm:p-5">
+                {activeResultsTab === 'revision' ? (
+                  /* TAB 1: REVISIÓN PREGUNTA POR PREGUNTA */
+                  <div className="space-y-4">
+                    {activeQuestions.map((q, qIdx) => {
+                      const userAns = myAnswers[qIdx];
+                      const correctLetter = (() => {
+                        const raw = String(q.correct_answer || '').trim().toLowerCase();
+                        if (['a', 'b', 'c', 'd'].includes(raw)) return raw;
+                        if (String(q.option_a || '').trim().toLowerCase() === raw) return 'a';
+                        if (String(q.option_b || '').trim().toLowerCase() === raw) return 'b';
+                        if (String(q.option_c || '').trim().toLowerCase() === raw) return 'c';
+                        if (String(q.option_d || '').trim().toLowerCase() === raw) return 'd';
+                        return raw || 'a';
+                      })();
 
-                {/* Temporizador */}
-                {!revealedResults && (
-                  <div className={`flex items-center gap-1.5 px-3 sm:px-4 py-1.5 rounded-xl font-mono text-sm sm:text-base font-black ${
-                    timeLeft <= 5 
-                      ? 'bg-red-600 text-white animate-pulse ring-2 ring-red-400' 
-                      : 'bg-gold/20 text-gold-light border border-gold/40'
-                  }`}>
-                    <Clock className="w-4 h-4" />
-                    <span>{timeLeft}s</span>
+                      const isRight = userAns && userAns.isCorrect;
+                      const hasAnswered = !!userAns;
+
+                      return (
+                        <div 
+                          key={q.id || qIdx}
+                          className={`p-3.5 sm:p-4 rounded-xl border space-y-2 text-left ${
+                            isRight 
+                              ? 'bg-emerald-950/20 border-emerald-500/40' 
+                              : hasAnswered 
+                              ? 'bg-red-950/20 border-red-500/40' 
+                              : 'bg-slate-950/40 border-gray-700'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <h4 className="text-xs sm:text-sm font-bold text-white leading-snug">
+                              <span className="text-gold font-mono mr-1.5">#{qIdx + 1}</span>
+                              {q.question_text}
+                            </h4>
+                            <span className="shrink-0 text-xs font-bold">
+                              {isRight ? (
+                                <span className="inline-flex items-center gap-1 text-emerald-400">
+                                  <CheckCircle className="w-4 h-4" />
+                                  <span>+{userAns.points} pts</span>
+                                </span>
+                              ) : hasAnswered ? (
+                                <span className="inline-flex items-center gap-1 text-red-400">
+                                  <XCircle className="w-4 h-4" />
+                                  <span>0 pts</span>
+                                </span>
+                              ) : (
+                                <span className="text-gray-500 italic text-[11px]">No respondida</span>
+                              )}
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-xs">
+                            {['a', 'b', 'c', 'd'].map(optKey => {
+                              const text = q[`option_${optKey}`];
+                              if (!text) return null;
+                              const isThisCorrect = optKey === correctLetter;
+                              const isThisUserPick = userAns?.selectedAnswer === optKey;
+
+                              let style = 'bg-white/5 border-white/10 text-gray-300';
+                              if (isThisCorrect) {
+                                style = 'bg-emerald-900/40 border-emerald-500 text-emerald-200 font-bold';
+                              } else if (isThisUserPick && !isThisCorrect) {
+                                style = 'bg-red-900/40 border-red-500 text-red-200 line-through';
+                              }
+
+                              return (
+                                <div key={optKey} className={`p-2 rounded-lg border flex items-center justify-between gap-2 ${style}`}>
+                                  <div className="flex items-center gap-1.5 truncate">
+                                    <span className="font-bold uppercase text-[11px] w-4">{optKey})</span>
+                                    <span className="truncate">{text}</span>
+                                  </div>
+                                  {isThisCorrect && <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />}
+                                  {isThisUserPick && !isThisCorrect && <XCircle className="w-3.5 h-3.5 text-red-400 shrink-0" />}
+                                </div>
+                              );
+                            })}
+                          </div>
+
+                          {q.explanation && (
+                            <p className="text-[11px] text-gray-300 leading-relaxed border-t border-white/10 pt-1.5 mt-1">
+                              💡 <strong>Explicación:</strong> {q.explanation}
+                              {q.verse_reference && (
+                                <span className="text-gold font-semibold ml-1.5">📖 {q.verse_reference}</span>
+                              )}
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  /* TAB 2: TABLA DE HONOR COMPLETA */
+                  <div className="space-y-2">
+                    {(revealedResults?.leaderboard || finalPodium || participants).map((p, idx) => {
+                      const isMe = String(p.id) === String(user?.id);
+                      return (
+                        <div
+                          key={p.id}
+                          className={`flex items-center justify-between p-3 rounded-xl border text-xs sm:text-sm font-semibold transition-all ${
+                            isMe 
+                              ? 'bg-gold/20 border-gold text-gold-light ring-1 ring-gold' 
+                              : idx === 0 
+                              ? 'bg-amber-500/15 border-amber-400 text-amber-200' 
+                              : idx === 1 
+                              ? 'bg-slate-400/15 border-slate-300 text-slate-200' 
+                              : idx === 2 
+                              ? 'bg-amber-800/15 border-amber-700 text-amber-300' 
+                              : 'bg-white/5 border-white/10 text-gray-300'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <span className="font-bold text-sm sm:text-base w-7">
+                              {idx === 0 ? '🥇 1º' : idx === 1 ? '🥈 2º' : idx === 2 ? '🥉 3º' : `${idx + 1}º`}
+                            </span>
+                            <span>{p.username} {isMe && <span className="text-[10px] text-gold font-bold ml-1">(Tú)</span>}</span>
+                          </div>
+                          <span className="font-mono font-bold text-gold text-sm sm:text-base">
+                            {p.score || 0} pts
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
             </div>
 
-            {/* 2. Tarjeta Principal de la Pregunta */}
-            <div className="bg-slate-900 border-2 border-gold/50 p-4 sm:p-6 rounded-2xl shadow-xl text-center relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-gold/10 rounded-full blur-2xl pointer-events-none" />
-              <h2 className="font-[Cinzel] text-lg sm:text-2xl font-bold text-white leading-relaxed">
-                {currentQuestion.question_text}
-              </h2>
-            </div>
-
-            {/* Barra Visual del Cronómetro en Vivo */}
-            {!revealedResults && (
-              <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden border border-white/10 shadow-inner">
-                <div 
-                  className={`h-full transition-all duration-1000 ease-linear ${
-                    timeLeft <= 5 ? 'bg-red-500 animate-pulse' : 'bg-gradient-to-r from-gold to-amber-500'
-                  }`}
-                  style={{ width: `${Math.max(0, Math.min(100, (timeLeft / (currentQuestion.time_limit_seconds || 25)) * 100))}%` }}
-                />
-              </div>
-            )}
-
-            {/* 3. Las 4 Opciones Interactivas (A, B, C, D) */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3.5">
-              {['a', 'b', 'c', 'd'].map(optKey => {
-                const optText = currentQuestion[`option_${optKey}`];
-                if (!optText) return null;
-
-                // Resuelve de forma infalible la opción correcta (letra o texto de la opción)
-                const normalizedCorrectLetter = (() => {
-                  if (!revealedResults) return null;
-                  const raw = String(revealedResults.correctAnswer || '').trim().toLowerCase();
-                  if (['a', 'b', 'c', 'd'].includes(raw)) return raw;
-                  if (currentQuestion) {
-                    if (String(currentQuestion.option_a || '').trim().toLowerCase() === raw) return 'a';
-                    if (String(currentQuestion.option_b || '').trim().toLowerCase() === raw) return 'b';
-                    if (String(currentQuestion.option_c || '').trim().toLowerCase() === raw) return 'c';
-                    if (String(currentQuestion.option_d || '').trim().toLowerCase() === raw) return 'd';
-                  }
-                  return raw;
-                })();
-
-                const isCorrect = revealedResults && normalizedCorrectLetter === optKey;
-                const isWrongSelected = revealedResults && isSelected && !isCorrect;
-
-                let btnStyle = 'bg-slate-900 hover:bg-slate-800 border-gray-700 text-gray-200';
-                if (isSelected && !revealedResults) {
-                  btnStyle = 'bg-gold/30 border-gold text-gold-light ring-2 ring-gold';
-                }
-                if (isCorrect) {
-                  btnStyle = 'bg-green-600/30 border-green-500 text-green-200 ring-2 ring-green-500 font-bold';
-                } else if (isWrongSelected) {
-                  btnStyle = 'bg-red-600/30 border-red-500 text-red-200 ring-2 ring-red-500';
-                }
-
-                const breakdownCount = revealedResults?.breakdown?.[optKey] || 0;
-
-                return (
-                  <button
-                    key={optKey}
-                    disabled={hasAnswered || !!revealedResults}
-                    onClick={() => handleAnswerSelect(optKey)}
-                    className={`p-3 sm:p-4 rounded-xl border text-left flex items-center justify-between gap-3 transition-all cursor-pointer disabled:cursor-default ${btnStyle}`}
-                  >
-                    <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
-                      <span className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center font-bold text-xs sm:text-sm uppercase shrink-0 ${
-                        isCorrect ? 'bg-green-500 text-slate-900' : isWrongSelected ? 'bg-red-500 text-white' : isSelected ? 'bg-gold text-slate-900' : 'bg-white/10 text-white'
-                      }`}>
-                        {optKey}
-                      </span>
-                      <span className="text-xs sm:text-sm font-medium">{optText}</span>
-                    </div>
-
-                    <div className="shrink-0 flex items-center gap-1.5">
-                      {isCorrect && (
-                        <CheckCircle className="w-5 h-5 text-green-400" />
-                      )}
-                      {isWrongSelected && (
-                        <XCircle className="w-5 h-5 text-red-400" />
-                      )}
-                      {revealedResults && (
-                        <span className="text-[11px] sm:text-xs font-bold text-gray-300 bg-white/10 px-2 py-0.5 rounded-full">
-                          {breakdownCount} {breakdownCount === 1 ? 'voto' : 'votos'}
-                        </span>
-                      )}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Aviso de espera para el participante */}
-            {hasAnswered && !revealedResults && (
-              <div className="p-3 bg-blue-900/40 border border-blue-500/40 rounded-xl text-center text-xs sm:text-sm text-blue-200 flex items-center justify-center gap-2">
-                <Check className="w-4 h-4 text-blue-400" />
-                <span>Tu respuesta fue enviada. Esperando a que el líder muestre los resultados...</span>
-              </div>
-            )}
-
-            {/* 4. ESTADO EN VIVO MIENTRAS TODOS CONTESTAN (Antes de Mostrar Resultados) */}
-            {!revealedResults && (() => {
-              const answeredList = answerStatus.answeredParticipants || [];
-              const correctList = answeredList.filter(p => p.isCorrect);
-              const incorrectList = answeredList.filter(p => !p.isCorrect);
-              const pendingList = (answerStatus.pendingParticipants && answerStatus.pendingParticipants.length > 0)
-                ? answerStatus.pendingParticipants
-                : participants.filter(p => !answeredList.some(ap => String(ap.id) === String(p.id)));
-              const pendingCount = pendingList.length;
-              const allCompleted = pendingCount === 0 && participants.length > 0;
-
-              return (
-                <div className="bg-slate-900/95 border border-gold/40 rounded-2xl p-4 sm:p-5 space-y-4 shadow-xl">
-                  {/* Encabezado de Progreso en Vivo */}
-                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-3">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-lg bg-gold/20 flex items-center justify-center text-gold border border-gold/40">
-                        <Users className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <h3 className="text-xs sm:text-sm font-bold text-white font-[Cinzel] tracking-wide">
-                          Progreso en Vivo de la Pregunta
-                        </h3>
-                        <p className="text-[11px] text-gray-400">
-                          {answeredList.length} de {participants.length} participantes han respondido
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      {allCompleted ? (
-                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/20 border border-emerald-400 text-emerald-300 animate-pulse">
-                          <CheckCircle className="w-3.5 h-3.5" />
-                          <span>¡Todos Contestaron!</span>
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-500/20 border border-amber-400 text-amber-300">
-                          <Clock className="w-3.5 h-3.5 animate-spin" />
-                          <span>Faltan {pendingCount}</span>
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Panel de Supervisión para Líder / Admins */}
-                  {isHost && (
-                    <div className={`p-3 rounded-xl border text-xs transition-all ${
-                      allCompleted
-                        ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-200 shadow-md shadow-emerald-950/50'
-                        : 'bg-amber-950/40 border-amber-500/40 text-amber-200'
-                    }`}>
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-                        <div className="flex items-start sm:items-center gap-2 min-w-0">
-                          {allCompleted ? (
-                            <CheckCircle className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5 sm:mt-0" />
-                          ) : (
-                            <Clock className="w-5 h-5 text-amber-400 shrink-0 mt-0.5 sm:mt-0" />
-                          )}
-                          <div className="min-w-0">
-                            {allCompleted ? (
-                              <p className="font-semibold">
-                                <strong className="text-emerald-300">¡Ronda Completa!</strong> Todos los participantes han contestado. Pulsa <strong>"Mostrar Resultados"</strong> para revelar la respuesta bíblica y las puntuaciones.
-                              </p>
-                            ) : (
-                              <p className="font-medium">
-                                <strong className="text-amber-300">Faltan por contestar ({pendingCount}):</strong>{' '}
-                                <span className="text-gray-300">{pendingList.map(p => p.username).join(', ') || 'Nadie pendiente'}</span>
-                              </p>
-                            )}
-                          </div>
-                        </div>
-
-                        {allCompleted && (
-                          <button
-                            onClick={handleRevealResults}
-                            className="px-4 py-2 bg-gradient-to-r from-emerald-500 to-green-500 hover:from-emerald-400 hover:to-green-400 text-slate-900 font-black rounded-xl text-xs shadow-lg transition-all cursor-pointer hover:scale-105 shrink-0 flex items-center justify-center gap-1.5"
-                          >
-                            <span>Mostrar Resultados Ahora</span>
-                            <span>📊</span>
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Las 3 Categorías en Tiempo Real: Correctos, Incorrectos y Faltan */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    {/* 1. Correctos en Vivo */}
-                    <div className="bg-emerald-950/20 border border-emerald-500/30 rounded-xl p-3 space-y-2">
-                      <div className="flex items-center justify-between text-xs font-bold text-emerald-400 border-b border-emerald-500/20 pb-1.5">
-                        <span className="flex items-center gap-1.5">
-                          <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
-                          <span>Acertaron ({correctList.length})</span>
-                        </span>
-                        <span className="text-[10px] text-emerald-500 font-mono">✅ Bien</span>
-                      </div>
-                      <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
-                        {correctList.length === 0 ? (
-                          <p className="text-[11px] text-gray-500 italic py-1">Esperando respuestas...</p>
-                        ) : (
-                          correctList.map(p => (
-                            <div key={p.id} className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-emerald-900/40 border border-emerald-500/40 text-xs font-semibold text-emerald-200">
-                              <span>✅ {p.username}</span>
-                              <span className="text-[10px] text-emerald-400 font-mono font-bold">+{p.points} pts</span>
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    </div>
-
-                    {/* 2. Incorrectos en Vivo */}
-                    <div className="bg-red-950/20 border border-red-500/30 rounded-xl p-3 space-y-2">
-                      <div className="flex items-center justify-between text-xs font-bold text-red-400 border-b border-red-500/20 pb-1.5">
-                        <span className="flex items-center gap-1.5">
-                          <XCircle className="w-3.5 h-3.5 text-red-400" />
-                          <span>Fallaron ({incorrectList.length})</span>
-                        </span>
-                        <span className="text-[10px] text-red-400 font-mono">❌ Mal</span>
-                      </div>
-                      <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
-                        {incorrectList.length === 0 ? (
-                          <p className="text-[11px] text-gray-500 italic py-1">Sin fallos aún...</p>
-                        ) : (
-                          incorrectList.map(p => (
-                            <div key={p.id} className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-red-900/40 border border-red-500/40 text-xs font-semibold text-red-200">
-                              <span>❌ {p.username}</span>
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    </div>
-
-                    {/* 3. Faltan por Responder (Pensando...) */}
-                    <div className="bg-amber-950/20 border border-amber-500/30 rounded-xl p-3 space-y-2">
-                      <div className="flex items-center justify-between text-xs font-bold text-amber-300 border-b border-amber-500/20 pb-1.5">
-                        <span className="flex items-center gap-1.5">
-                          <Clock className="w-3.5 h-3.5 text-amber-400" />
-                          <span>Faltan ({pendingCount})</span>
-                        </span>
-                        <span className="text-[10px] text-amber-400 font-mono">⏳ Pendientes</span>
-                      </div>
-                      <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
-                        {pendingCount === 0 ? (
-                          <p className="text-[11px] text-emerald-400 font-bold py-1">¡Nadie falta!</p>
-                        ) : (
-                          pendingList.map(p => (
-                            <div key={p.id} className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-amber-900/30 border border-amber-500/40 text-xs font-semibold text-amber-200 animate-pulse">
-                              <span>⏳ {p.username}</span>
-                              <span className="text-[10px] text-amber-400/80">(Pensando...)</span>
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Tabla de Posicionamiento en Vivo */}
-                  {liveLeaderboard.length > 0 && (
-                    <div className="pt-3 border-t border-white/10 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <p className="text-xs font-bold text-gold-light flex items-center gap-1.5">
-                          <Trophy className="w-4 h-4 text-gold" />
-                          <span>Tabla de Posicionamiento en Vivo ({liveLeaderboard.length} participantes):</span>
-                        </p>
-                        <span className="text-[11px] text-gray-400">Actualizada con cada respuesta</span>
-                      </div>
-
-                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 max-h-36 overflow-y-auto">
-                        {liveLeaderboard.map((lp, idx) => {
-                          const isMe = String(lp.id) === String(user?.id);
-                          return (
-                            <div 
-                              key={lp.id} 
-                              className={`flex items-center justify-between p-2 rounded-lg border text-xs font-semibold transition-all ${
-                                isMe 
-                                  ? 'bg-gold/20 border-gold text-gold-light ring-1 ring-gold' 
-                                  : idx === 0 
-                                  ? 'bg-amber-500/15 border-amber-400/60 text-amber-200' 
-                                  : idx === 1 
-                                  ? 'bg-slate-400/15 border-slate-300/60 text-slate-200' 
-                                  : idx === 2 
-                                  ? 'bg-amber-800/15 border-amber-700/60 text-amber-300' 
-                                  : 'bg-white/5 border-white/10 text-gray-300'
-                              }`}
-                            >
-                              <div className="flex items-center gap-1.5 truncate">
-                                <span className="font-bold text-[11px] shrink-0">
-                                  {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `${idx + 1}º`}
-                                </span>
-                                <span className="truncate">{lp.username}</span>
-                              </div>
-                              <span className="font-mono font-bold text-gold shrink-0 ml-1">
-                                {lp.score || 0} pts
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })()}
-
-            {/* 5. RESULTADOS REVELADOS DETALLADOS (Después de Mostrar Resultados) */}
-            {revealedResults && (
-              <div className="space-y-4 animate-fadeIn">
-                {/* Explicación Bíblica */}
-                <div className="bg-slate-900 border-2 border-green-500/50 p-4 rounded-xl space-y-2 text-left">
-                  <div className="flex items-center gap-2 text-green-400 font-bold text-xs sm:text-sm uppercase tracking-wide">
-                    <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5" />
-                    <span>
-                      Respuesta Correcta: Opción {String(revealedResults.correctAnswer || '').toUpperCase()}
-                      {currentQuestion && currentQuestion[`option_${String(revealedResults.correctAnswer || '').toLowerCase()}`] && (
-                        <span className="normal-case font-semibold text-green-300 ml-1.5">
-                          — {currentQuestion[`option_${String(revealedResults.correctAnswer || '').toLowerCase()}`]}
-                        </span>
-                      )}
-                    </span>
-                  </div>
-                  <p className="text-xs sm:text-sm text-gray-200 leading-relaxed">
-                    {revealedResults.explanation}
-                  </p>
-                  {revealedResults.verseReference && (
-                    <p className="text-xs text-gold font-semibold italic">
-                      📖 Cita Bíblica: {revealedResults.verseReference}
-                    </p>
-                  )}
-                </div>
-
-                {/* Pestañas de Resultados: Quiénes acertaron/fallaron vs Tabla de Honor */}
-                <div className="bg-slate-900 border border-gold/40 rounded-xl overflow-hidden">
-                  <div className="flex border-b border-gold/20 bg-slate-950/60">
-                    <button
-                      onClick={() => setActiveResultsTab('resumen')}
-                      className={`flex-1 py-2.5 px-3 text-xs sm:text-sm font-bold transition-colors flex items-center justify-center gap-1.5 ${
-                        activeResultsTab === 'resumen' 
-                          ? 'bg-gold/20 text-gold-light border-b-2 border-gold' 
-                          : 'text-gray-400 hover:text-white'
-                      }`}
-                    >
-                      <Users className="w-4 h-4" />
-                      <span>Respuestas de Participantes</span>
-                    </button>
-                    <button
-                      onClick={() => setActiveResultsTab('posiciones')}
-                      className={`flex-1 py-2.5 px-3 text-xs sm:text-sm font-bold transition-colors flex items-center justify-center gap-1.5 ${
-                        activeResultsTab === 'posiciones' 
-                          ? 'bg-gold/20 text-gold-light border-b-2 border-gold' 
-                          : 'text-gray-400 hover:text-white'
-                      }`}
-                    >
-                      <Trophy className="w-4 h-4 text-gold" />
-                      <span>Tabla de Posiciones ({revealedResults.leaderboard?.length || 0})</span>
-                    </button>
-                  </div>
-
-                  <div className="p-3.5 sm:p-4">
-                    {activeResultsTab === 'resumen' ? (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                        {/* Acertaron */}
-                        <div className="space-y-2">
-                          <h4 className="text-xs font-bold text-green-400 uppercase tracking-wider flex items-center gap-1.5">
-                            <CheckCircle className="w-3.5 h-3.5" />
-                            <span>Respondieron Correctamente ({revealedResults.correctParticipants?.length || 0})</span>
-                          </h4>
-                          <div className="space-y-1.5 max-h-48 overflow-y-auto">
-                            {(revealedResults.correctParticipants || []).length === 0 ? (
-                              <p className="text-xs text-gray-500 italic p-2 bg-white/5 rounded">Nadie acertó esta pregunta.</p>
-                            ) : (
-                              revealedResults.correctParticipants.map(p => (
-                                <div key={p.id} className="flex items-center justify-between p-2 rounded-lg bg-green-950/40 border border-green-500/30 text-xs text-green-200">
-                                  <span className="font-semibold">{p.username}</span>
-                                  <div className="flex items-center gap-2">
-                                    <span className="font-mono text-green-300 font-bold">+{p.pointsGained} pts</span>
-                                    {p.timeTakenMs > 0 && (
-                                      <span className="text-[10px] text-gray-400">{(p.timeTakenMs / 1000).toFixed(1)}s</span>
-                                    )}
-                                  </div>
-                                </div>
-                              ))
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Fallaron / Sin responder */}
-                        <div className="space-y-2">
-                          <h4 className="text-xs font-bold text-red-400 uppercase tracking-wider flex items-center gap-1.5">
-                            <XCircle className="w-3.5 h-3.5" />
-                            <span>Respondieron Incorrectamente ({revealedResults.incorrectParticipants?.length || 0})</span>
-                          </h4>
-                          <div className="space-y-1.5 max-h-48 overflow-y-auto">
-                            {(revealedResults.incorrectParticipants || []).length === 0 ? (
-                              <p className="text-xs text-gray-500 italic p-2 bg-white/5 rounded">¡Nadie falló esta pregunta!</p>
-                            ) : (
-                              revealedResults.incorrectParticipants.map(p => (
-                                <div key={p.id} className="flex items-center justify-between p-2 rounded-lg bg-red-950/40 border border-red-500/30 text-xs text-red-200">
-                                  <span className="font-semibold">{p.username}</span>
-                                  <span className="text-[11px] text-red-300">
-                                    Eligió: <strong>{p.selectedAnswer?.toUpperCase()}</strong>
-                                  </span>
-                                </div>
-                              ))
-                            )}
-                          </div>
-
-                          {(revealedResults.unrespondedParticipants || []).length > 0 && (
-                            <div className="pt-2">
-                              <p className="text-[11px] text-gray-400 font-bold">Sin responder:</p>
-                              <div className="flex flex-wrap gap-1 mt-1">
-                                {revealedResults.unrespondedParticipants.map(up => (
-                                  <span key={up.id} className="text-[10px] bg-white/5 text-gray-400 px-2 py-0.5 rounded">
-                                    {up.username} (tiempo)
-                                  </span>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    ) : (
-                      /* Tabla de Posiciones Completa */
-                      <div className="space-y-2 max-h-60 overflow-y-auto">
-                        {(revealedResults.leaderboard || []).map((p, idx) => {
-                          const isMe = String(p.id) === String(user?.id);
-                          return (
-                            <div
-                              key={p.id}
-                              className={`flex items-center justify-between p-2.5 rounded-xl border text-xs sm:text-sm font-semibold transition-all ${
-                                isMe 
-                                  ? 'bg-gold/20 border-gold text-gold-light ring-1 ring-gold' 
-                                  : idx === 0 
-                                  ? 'bg-amber-500/15 border-amber-400 text-amber-200' 
-                                  : idx === 1 
-                                  ? 'bg-slate-400/15 border-slate-300 text-slate-200' 
-                                  : idx === 2 
-                                  ? 'bg-amber-800/15 border-amber-700 text-amber-300' 
-                                  : 'bg-white/5 border-white/10 text-gray-300'
-                              }`}
-                            >
-                              <div className="flex items-center gap-2.5">
-                                <span className="font-bold text-sm w-7">
-                                  {idx === 0 ? '🥇 1º' : idx === 1 ? '🥈 2º' : idx === 2 ? '🥉 3º' : `${idx + 1}º`}
-                                </span>
-                                <span>{p.username} {isMe && <span className="text-[10px] text-gold font-bold">(Tú)</span>}</span>
-                              </div>
-                              <span className="font-mono font-bold text-gold text-sm sm:text-base">
-                                {p.score || 0} pts
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* 6. Barra de Control de la Pregunta (Líder / Admin) */}
-            <div className="bg-slate-900 border border-gold/30 p-3 sm:p-4 rounded-xl flex flex-wrap items-center justify-between gap-3 text-white">
-              <span className="text-xs text-gray-400 font-mono">
-                Pregunta {currentQuestionIndex + 1} • Remanente Meet Quiz
-              </span>
-
-              {isHost ? (
-                <div className="flex items-center gap-2">
-                  {!revealedResults ? (
-                    <button
-                      onClick={handleRevealResults}
-                      className={`px-4 sm:px-6 py-2.5 sm:py-3 text-white rounded-xl text-xs sm:text-sm font-bold shadow-lg transition-all cursor-pointer flex items-center gap-2 ${
-                        answerStatus.allAnswered || (answerStatus.pendingParticipants && answerStatus.pendingParticipants.length === 0 && participants.length > 0)
-                          ? 'bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-500 hover:to-green-500 ring-4 ring-emerald-400 animate-bounce' 
-                          : 'bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600'
-                      }`}
-                    >
-                      <BarChart3 className="w-4 h-4" />
-                      <span>
-                        {answerStatus.allAnswered || (answerStatus.pendingParticipants && answerStatus.pendingParticipants.length === 0 && participants.length > 0)
-                          ? '¡Todos Respondieron! Mostrar Resultados 📊' 
-                          : 'Mostrar Resultados 📊'}
-                      </span>
-                    </button>
-                  ) : (
-                    <button
-                      onClick={handleNextQuestion}
-                      className="inline-flex items-center gap-2 px-5 sm:px-6 py-2.5 sm:py-3 bg-gradient-to-r from-gold to-gold-dark hover:from-gold-dark hover:to-gold text-white rounded-xl text-xs sm:text-sm font-black shadow-xl transition-all cursor-pointer hover:scale-105 active:scale-95"
-                    >
-                      <span>
-                        {revealedResults.hasNextQuestion ? `Siguiente Pregunta (${currentQuestionIndex + 2}) ➡️` : 'Ver Podio Final 🏆'}
-                      </span>
-                    </button>
-                  )}
-                </div>
-              ) : (
-                <div className="text-xs text-gray-400 font-medium flex items-center gap-1.5">
-                  {!revealedResults ? (
-                    <span>⏳ Responde tu opción y espera a que el líder revele los resultados...</span>
-                  ) : (
-                    <span>📖 Revisa la explicación bíblica. El líder avanzará a la siguiente pregunta.</span>
-                  )}
-                </div>
-              )}
-            </div>
-
-          </div>
-          ) : (
-            <div className="flex-1 flex flex-col items-center justify-center p-6 text-center text-white space-y-4 max-w-md mx-auto">
-              <Loader2 className="w-10 h-10 animate-spin text-gold" />
-              <h3 className="font-[Cinzel] text-xl font-bold text-gold">Sincronizando Preguntas del Meet...</h3>
-              <p className="text-xs sm:text-sm text-gray-300">
-                La sala se está conectando a la ronda de preguntas bíblicas en vivo.
-              </p>
-              {isHost && (
-                <div className="flex flex-col sm:flex-row items-center gap-2 pt-2">
-                  <button
-                    type="button"
-                    onClick={handleStartQuiz}
-                    className="w-full sm:w-auto px-4 py-2 bg-gradient-to-r from-gold to-gold-dark hover:from-gold-dark hover:to-gold text-slate-900 font-bold rounded-xl text-xs cursor-pointer shadow-md"
-                  >
-                    Iniciar Ronda ⚔️
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setIsManageQuestionsOpen(true)}
-                    className="w-full sm:w-auto px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs cursor-pointer shadow-md"
-                  >
-                    Importar Preguntas 📥
-                  </button>
-                </div>
-              )}
-            </div>
-          )
-        )}
-
-        {/* ---------------- FASE C: PODIO FINAL & PREMIACIÓN ---------------- */}
-        {phase === 'finished' && (
-          <div className="flex-1 flex flex-col items-center justify-center p-6 text-white text-center max-w-2xl mx-auto space-y-6">
-            <Trophy className="w-20 h-20 text-gold animate-bounce mx-auto" />
-            
-            <div>
-              <h2 className="font-[Cinzel] text-3xl font-bold text-gold">
-                ¡Gran Estudio y Quiz Finalizado!
-              </h2>
-              <p className="text-sm text-gray-300 mt-1">
-                La gloria sea a Dios por su Palabra. Los Puntos de Sabiduría han sido acreditados a tu cuenta.
-              </p>
-            </div>
-
-            {/* Estadísticas de Asistencia del Meet y Conectados en Plataforma */}
-            <div className="grid grid-cols-2 gap-3 w-full max-w-md">
-              <div className="bg-slate-900/90 border border-gold/40 rounded-xl p-3 flex flex-col items-center shadow-lg">
-                <Users className="w-5 h-5 text-gold mb-1" />
-                <span className="text-[11px] text-gray-300 uppercase tracking-wider font-semibold">Asistencia Total al Meet</span>
-                <span className="text-xl font-black text-white">
-                  {totalJoinedCount || participants.length} {((totalJoinedCount || participants.length) === 1) ? 'persona' : 'personas'}
-                </span>
-                <span className="text-[10px] text-gray-400 mt-0.5">conectadas a esta sesión</span>
-              </div>
-              <div className="bg-slate-900/90 border border-emerald-500/40 rounded-xl p-3 flex flex-col items-center shadow-lg">
-                <div className="flex items-center gap-1.5 mb-1">
-                  <span className="relative flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
-                  </span>
-                  <Users className="w-5 h-5 text-emerald-400" />
-                </div>
-                <span className="text-[11px] text-gray-300 uppercase tracking-wider font-semibold">En Toda la Plataforma</span>
-                <span className="text-xl font-black text-emerald-400">
-                  {platformOnlineCount} {platformOnlineCount === 1 ? 'activo' : 'activos'}
-                </span>
-                <span className="text-[10px] text-gray-400 mt-0.5">en tiempo real</span>
-              </div>
-            </div>
-
-            {/* Podio de los 3 Mejores */}
-            {finalPodium.length > 0 && (
-              <div className="w-full bg-slate-900 border border-gold/40 rounded-2xl p-6 space-y-3">
-                <h3 className="font-[Cinzel] text-base font-bold text-gold-light border-b border-gold/20 pb-2">
-                  🏆 Tabla de Honor del Meet
-                </h3>
-
-                <div className="space-y-2">
-                  {finalPodium.slice(0, 5).map((p, idx) => (
-                    <div 
-                      key={p.id}
-                      className={`flex items-center justify-between p-3 rounded-xl border text-sm font-semibold ${
-                        idx === 0 
-                          ? 'bg-amber-500/20 border-amber-400 text-amber-200' 
-                          : idx === 1 
-                          ? 'bg-slate-400/20 border-slate-300 text-slate-200' 
-                          : idx === 2 
-                          ? 'bg-amber-800/20 border-amber-700 text-amber-300' 
-                          : 'bg-white/5 border-transparent text-gray-300'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <span className="font-bold text-base">
-                          {idx === 0 ? '🥇 1º' : idx === 1 ? '🥈 2º' : idx === 2 ? '🥉 3º' : `${idx + 1}º`}
-                        </span>
-                        <span>{p.username}</span>
-                      </div>
-                      <span className="font-mono font-bold text-gold">+{p.score} pts</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-2.5 sm:gap-3 w-full">
+            {/* Botones Finales */}
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3 w-full pt-2">
               {isHost && !sessionClosing && (
                 <button
                   onClick={handleEndMeeting}
@@ -1580,16 +1421,16 @@ const MeetRoomPage = () => {
                 <span>Volver a la Lista de Meets</span>
               </button>
             </div>
+
           </div>
         )}
 
       </div>
 
-      {/* MODAL OVERLAY DE CIERRE AUTOMÁTICO DE REUNIÓN (EN VIVO SIN REFRESCAR) */}
+      {/* MODAL OVERLAY DE CIERRE AUTOMÁTICO DE REUNIÓN (SIN REFRESCAR) */}
       {sessionClosing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fade-in">
           <div className="bg-slate-900 text-white border-2 border-red-500/80 rounded-2xl w-full max-w-lg p-6 sm:p-8 space-y-6 text-center shadow-2xl shadow-red-900/40 relative">
-            
             <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto rounded-full bg-red-500/20 border-2 border-red-500 flex items-center justify-center text-red-400 animate-pulse">
               <XCircle className="w-10 h-10 sm:w-12 sm:h-12 text-red-400" />
             </div>
@@ -1598,33 +1439,20 @@ const MeetRoomPage = () => {
               <div className="inline-flex items-center gap-1.5 bg-red-600/30 text-red-300 border border-red-500/40 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">
                 <span>Sesión Finalizada</span>
               </div>
-              <h2 className="font-[Cinzel] text-2xl sm:text-3xl font-bold text-white">
-                Reunión Cerrada
+              <h2 className="text-xl sm:text-2xl font-bold font-[Cinzel] text-white">
+                Reunión Concluida
               </h2>
-              <p className="text-sm sm:text-base text-gray-300">
-                {sessionClosing.message}
+              <p className="text-xs sm:text-sm text-gray-300 leading-relaxed max-w-sm mx-auto">
+                {sessionClosing.message || 'El líder ha finalizado la sesión en vivo para todos los participantes.'}
               </p>
-              {mySessionScore > 0 && (
-                <p className="text-xs sm:text-sm text-gold font-bold">
-                  ✨ Tus {mySessionScore} Puntos de Sabiduría han sido guardados en tu perfil.
-                </p>
-              )}
             </div>
 
-            {/* Contador regresivo con barra visual animada */}
-            <div className="bg-white/5 border border-white/10 rounded-xl p-4 space-y-2">
-              <p className="text-xs text-gray-400 font-medium">
-                Cerrando la sala y regresando a la lista de Meets en...
-              </p>
-              <div className="text-3xl sm:text-4xl font-mono font-black text-gold">
-                {sessionClosing.countdown}s
-              </div>
-              <div className="w-full bg-white/10 rounded-full h-1.5 overflow-hidden">
-                <div 
-                  className="bg-gold h-full transition-all duration-1000 ease-linear"
-                  style={{ width: `${Math.max(0, Math.min(100, (sessionClosing.countdown / 4) * 100))}%` }}
-                />
-              </div>
+            <div className="bg-black/40 border border-white/10 rounded-xl p-4 flex flex-col items-center justify-center gap-2">
+              <span className="text-xs text-gray-400">Cerrando automáticamente en...</span>
+              <span className="text-4xl font-black font-mono text-gold animate-bounce">
+                {sessionClosing.countdown}
+              </span>
+              <span className="text-[11px] text-gray-500">segundos</span>
             </div>
 
             <button
@@ -1632,31 +1460,26 @@ const MeetRoomPage = () => {
                 if (socket) socket.disconnect();
                 navigate('/meet', { replace: true });
               }}
-              className="w-full py-3 sm:py-3.5 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white rounded-xl font-bold text-sm shadow-lg shadow-red-900/30 hover:scale-102 transition-all cursor-pointer"
+              className="w-full bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white py-2.5 sm:py-3 rounded-xl font-bold text-xs sm:text-sm transition-all cursor-pointer shadow-lg"
             >
-              Cerrar y Salir Ahora
+              Salir Ahora
             </button>
           </div>
         </div>
       )}
 
-      {/* Modal para Gestionar e Importar Preguntas en Vivo */}
-      {isManageQuestionsOpen && meet && (
+      {/* MODAL DE GESTIÓN / IMPORTACIÓN DE PREGUNTAS */}
+      {isManageQuestionsOpen && (
         <ManageQuestionsModal
           isOpen={isManageQuestionsOpen}
-          meet={meet}
           onClose={() => setIsManageQuestionsOpen(false)}
-          onSaved={(updatedQuestions) => {
-            setMeet(prev => prev ? {
-              ...prev,
-              questions: updatedQuestions,
-              questionsCount: updatedQuestions.length
-            } : prev);
-            if (socket) {
-              socket.emit('meet:update-questions', {
-                meetId: id,
-                questions: updatedQuestions
-              });
+          meetId={id}
+          initialQuestions={activeQuestions}
+          onQuestionsSaved={(updatedQs) => {
+            setMeet(prev => prev ? { ...prev, questions: updatedQs, questionsCount: updatedQs.length } : prev);
+            setQuizQuestions(updatedQs);
+            if (socket && socket.connected) {
+              socket.emit('meet:update-questions', { meetId: id, questions: updatedQs });
             }
           }}
         />
