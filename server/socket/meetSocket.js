@@ -583,8 +583,10 @@ export async function revealRoomQuizResults(meetId, io = null) {
         };
     });
 
-    const finalPodium = Array.from(room.participants.values())
-        .sort((a, b) => (b.score || 0) - (a.score || 0));
+    const quizProg = getRoomQuizProgress(room);
+    const finalPodium = (quizProg?.leaderboard && quizProg.leaderboard.length > 0)
+        ? quizProg.leaderboard
+        : Array.from(room.participants.values()).sort((a, b) => (b.score || 0) - (a.score || 0));
 
     const totalAttendance = room.allTimeParticipants ? room.allTimeParticipants.size : room.participants.size;
 
@@ -622,23 +624,28 @@ export async function revealRoomQuizResults(meetId, io = null) {
         });
     }
 
-    // Acreditar Puntos de Sabiduría a los participantes en la base de datos
-    try {
-        const supabase = getDb();
-        for (let p of finalPodium) {
-            if (p.score > 0) {
-                const { data: u } = await supabase.from('users').select('points').eq('id', p.id).single();
-                const currentPts = (u && u.points) ? u.points : 0;
-                await supabase.from('users').update({ points: currentPts + p.score }).eq('id', p.id);
+    // Acreditar Puntos de Sabiduría a los participantes en la base de datos (solo una vez)
+    if (!room.pointsAwarded) {
+        room.pointsAwarded = true;
+        try {
+            const supabase = getDb();
+            for (let p of finalPodium) {
+                if (p.score > 0) {
+                    const { data: u } = await supabase.from('users').select('points').eq('id', p.id).single();
+                    const currentPts = (u && u.points) ? u.points : 0;
+                    await supabase.from('users').update({ points: currentPts + p.score }).eq('id', p.id);
+                }
             }
+            // NOTA: NO cambiar status = 'ended' en meetings aquí.
+            // La reunión se mantiene activa para que todos vean la tabla de posiciones, podio y revisión.
+            // La reunión solo se finaliza cuando el líder presione "Cerrar Reunión para Todos".
+            if (io) {
+                io.emit('leaderboard-update');
+                io.emit('meet:updated');
+            }
+        } catch (dbErr) {
+            console.error('[MeetSocket] Error guardando puntos finales:', dbErr);
         }
-        await supabase.from('meetings').update({ status: 'ended' }).eq('id', idStr);
-        if (io) {
-            io.emit('leaderboard-update');
-            io.emit('meet:updated');
-        }
-    } catch (dbErr) {
-        console.error('[MeetSocket] Error guardando puntos finales:', dbErr);
     }
 
     return { success: true, results: resultsPayload };
@@ -711,7 +718,8 @@ export async function endRoomSession(meetId, io = null) {
     }
 
     try {
-        if (finalPodium.length > 0) {
+        if (!room?.pointsAwarded && finalPodium.length > 0) {
+            if (room) room.pointsAwarded = true;
             for (let p of finalPodium) {
                 if (p.score > 0) {
                     const { data: u } = await supabase.from('users').select('points').eq('id', p.id).single();
