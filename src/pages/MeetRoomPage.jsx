@@ -134,13 +134,20 @@ const MeetRoomPage = () => {
       ? `${window.location.protocol}//${window.location.hostname}:3001` 
       : window.location.origin;
     const s = io(socketUrl, {
-      transports: ['websocket', 'polling']
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 500,
+      reconnectionDelayMax: 2000,
+      timeout: 10000
     });
 
     setSocket(s);
 
     const joinRoom = () => {
-      s.emit('meet:join', { meetId: id, user });
+      if (s) {
+        s.emit('meet:join', { meetId: id, user });
+      }
     };
 
     s.on('connect', joinRoom);
@@ -150,6 +157,16 @@ const MeetRoomPage = () => {
     }
     // Si ya está conectado o al inicializar, unirse de inmediato
     joinRoom();
+
+    // Reconexión automática cuando la app vuelve a primer plano o recupera conexión (Móviles / Tablets)
+    const handleWindowOnline = () => joinRoom();
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        joinRoom();
+      }
+    };
+    window.addEventListener('online', handleWindowOnline);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     s.on('meet:initial-state', (state) => {
       setPhase(state.phase || 'reading');
@@ -310,6 +327,10 @@ const MeetRoomPage = () => {
       setRevealedResults(results);
       if (results.leaderboard && Array.isArray(results.leaderboard)) {
         setLiveLeaderboard(results.leaderboard);
+        const me = results.leaderboard.find(p => String(p.id) === String(user?.id));
+        if (me && me.score !== undefined) {
+          setMySessionScore(me.score);
+        }
       }
       playNotificationSound();
     });
@@ -358,6 +379,8 @@ const MeetRoomPage = () => {
     });
 
     return () => {
+      window.removeEventListener('online', handleWindowOnline);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       s.disconnect();
     };
   }, [user, meet, id]);
@@ -459,16 +482,124 @@ const MeetRoomPage = () => {
     }
   }, [phase, currentQuestion, meet?.questions, currentQuestionIndex]);
 
+  // Responder Pregunta
+  const handleAnswerSelect = (optKey) => {
+    if (hasAnswered || revealedResults) return;
+    setSelectedAnswer(optKey);
+    setHasAnswered(true);
+
+    const limitSec = currentQuestion?.time_limit_seconds || 25;
+    const timeTakenMs = Math.max(500, (limitSec - timeLeft) * 1000);
+
+    // 1. Envío por WebSocket en tiempo real (0ms)
+    if (socket && socket.connected) {
+      socket.emit('meet:submit-answer', {
+        meetId: id,
+        questionIndex: currentQuestionIndex,
+        selectedAnswer: optKey,
+        timeTakenMs,
+        user
+      });
+    }
+
+    // 2. Respaldo HTTP infalible contra microcortes o caídas de WebSocket
+    api.post(`/meetings/${id}/submit-answer`, {
+      questionIndex: currentQuestionIndex,
+      selectedAnswer: optKey,
+      timeTakenMs
+    }).then(res => {
+      if (res && res.isCorrect !== undefined) {
+        if (res.points > 0) {
+          setMySessionScore(prev => prev > 0 ? prev : res.points);
+        }
+      }
+    }).catch(err => {
+      console.warn('[Meet] Respaldo HTTP submit-answer:', err);
+    });
+  };
+
+  // Líder revela / muestra resultados
+  const handleRevealResults = () => {
+    // 1. WebSocket
+    if (socket && socket.connected) {
+      socket.emit('meet:reveal-question-results', {
+        meetId: id,
+        questionIndex: currentQuestionIndex
+      });
+    }
+
+    // 2. Respaldo HTTP
+    api.post(`/meetings/${id}/reveal-results`, {
+      questionIndex: currentQuestionIndex
+    }).then(res => {
+      if (res?.results) {
+        setRevealedResults(res.results);
+      }
+    }).catch(err => {
+      console.warn('[Meet] Respaldo HTTP reveal-results:', err);
+    });
+  };
+
+  // Líder avanza de pregunta
+  const handleNextQuestion = () => {
+    // 1. WebSocket
+    if (socket && socket.connected) {
+      socket.emit('meet:next-question', { meetId: id });
+    }
+
+    // 2. Respaldo HTTP
+    api.post(`/meetings/${id}/next-question`, {}).catch(err => {
+      console.warn('[Meet] Respaldo HTTP next-question:', err);
+    });
+  };
+
+  // Líder inicia Quiz (inmediato, sin bloqueos de confirm())
+  const handleStartQuiz = async () => {
+    setPhase('quiz');
+    if (socket && socket.connected) {
+      socket.emit('meet:start-quiz', { meetId: id, questions: meet?.questions });
+    }
+    try {
+      await api.post(`/meetings/${id}/start-quiz`, { questions: meet?.questions });
+    } catch (err) {
+      console.warn('[Meet] Respaldo HTTP start-quiz:', err);
+    }
+  };
+
+  // Líder finaliza / cierra la reunión en vivo
+  const handleEndMeeting = async () => {
+    if (!confirm('¿Deseas finalizar y cerrar esta reunión en vivo para todos los miembros? Se registrarán las puntuaciones acumuladas y se cerrará la sala automáticamente.')) return;
+    
+    // 1. WebSocket
+    if (socket && socket.connected) {
+      socket.emit('meet:end-session', { meetId: id });
+    }
+
+    // 2. Respaldo HTTP doble (end-session y status ended)
+    try {
+      await api.post(`/meetings/${id}/end-session`, {});
+    } catch (e) {
+      console.warn('[Meet] Respaldo HTTP end-session:', e);
+    }
+    try {
+      await api.put(`/meetings/${id}/status`, { status: 'ended' });
+    } catch (e) {
+      console.error('Error cerrando meet:', e);
+    }
+
+    setSessionClosing({
+      message: 'Has finalizado la reunión. La sala se está cerrando para todos los participantes.',
+      countdown: 3
+    });
+  };
+
   // Temporizador de preguntas en vivo
   useEffect(() => {
     if (phase !== 'quiz' || revealedResults) return;
 
     if (timeLeft <= 0) {
-      if (isHost && socket) {
-        socket.emit('meet:reveal-question-results', { 
-          meetId: id, 
-          questionIndex: currentQuestionIndex 
-        });
+      if (isHost) {
+        handleRevealResults();
       }
       return;
     }
@@ -478,7 +609,7 @@ const MeetRoomPage = () => {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [phase, timeLeft, revealedResults, isHost, socket, id, currentQuestionIndex]);
+  }, [phase, timeLeft, revealedResults, isHost, currentQuestionIndex, id]);
 
   // Controles de Página del Líder
   const handlePageChange = (newPage) => {
@@ -525,73 +656,6 @@ const MeetRoomPage = () => {
     if (socket) {
       socket.emit('meet:laser-move', { meetId: id, x: 0, y: 0, active: false });
     }
-  };
-
-  // Responder Pregunta
-  const handleAnswerSelect = (optKey) => {
-    if (hasAnswered || revealedResults) return;
-    setSelectedAnswer(optKey);
-    setHasAnswered(true);
-
-    const limitSec = currentQuestion?.time_limit_seconds || 25;
-    const timeTakenMs = Math.max(500, (limitSec - timeLeft) * 1000);
-
-    if (socket) {
-      socket.emit('meet:submit-answer', {
-        meetId: id,
-        questionIndex: currentQuestionIndex,
-        selectedAnswer: optKey,
-        timeTakenMs,
-        user
-      });
-    }
-  };
-
-  // Líder revela / muestra resultados
-  const handleRevealResults = () => {
-    if (socket) {
-      socket.emit('meet:reveal-question-results', {
-        meetId: id,
-        questionIndex: currentQuestionIndex
-      });
-    }
-  };
-
-  // Líder avanza de pregunta
-  const handleNextQuestion = () => {
-    if (socket) {
-      socket.emit('meet:next-question', { meetId: id });
-    }
-  };
-
-  // Líder inicia Quiz (inmediato, sin bloqueos de confirm())
-  const handleStartQuiz = async () => {
-    setPhase('quiz');
-    if (socket) {
-      socket.emit('meet:start-quiz', { meetId: id, questions: meet?.questions });
-    }
-    try {
-      await api.post(`/meetings/${id}/start-quiz`, { questions: meet?.questions });
-    } catch (err) {
-      console.warn('[Meet] Respaldo HTTP start-quiz:', err);
-    }
-  };
-
-  // Líder finaliza / cierra la reunión en vivo
-  const handleEndMeeting = async () => {
-    if (!confirm('¿Deseas finalizar y cerrar esta reunión en vivo para todos los miembros? Se registrarán las puntuaciones acumuladas y se cerrará la sala automáticamente.')) return;
-    if (socket) {
-      socket.emit('meet:end-session', { meetId: id });
-    }
-    try {
-      await api.put(`/meetings/${id}/status`, { status: 'ended' });
-    } catch (e) {
-      console.error('Error cerrando meet:', e);
-    }
-    setSessionClosing({
-      message: 'Has finalizado la reunión. La sala se está cerrando para todos los participantes.',
-      countdown: 3
-    });
   };
 
   if (loading || !meet) {
@@ -915,8 +979,21 @@ const MeetRoomPage = () => {
                 const optText = currentQuestion[`option_${optKey}`];
                 if (!optText) return null;
 
-                const isSelected = selectedAnswer === optKey;
-                const isCorrect = revealedResults && String(revealedResults.correctAnswer || '').toLowerCase() === optKey;
+                // Resuelve de forma infalible la opción correcta (letra o texto de la opción)
+                const normalizedCorrectLetter = (() => {
+                  if (!revealedResults) return null;
+                  const raw = String(revealedResults.correctAnswer || '').trim().toLowerCase();
+                  if (['a', 'b', 'c', 'd'].includes(raw)) return raw;
+                  if (currentQuestion) {
+                    if (String(currentQuestion.option_a || '').trim().toLowerCase() === raw) return 'a';
+                    if (String(currentQuestion.option_b || '').trim().toLowerCase() === raw) return 'b';
+                    if (String(currentQuestion.option_c || '').trim().toLowerCase() === raw) return 'c';
+                    if (String(currentQuestion.option_d || '').trim().toLowerCase() === raw) return 'd';
+                  }
+                  return raw;
+                })();
+
+                const isCorrect = revealedResults && normalizedCorrectLetter === optKey;
                 const isWrongSelected = revealedResults && isSelected && !isCorrect;
 
                 let btnStyle = 'bg-slate-900 hover:bg-slate-800 border-gray-700 text-gray-200';
@@ -1184,7 +1261,14 @@ const MeetRoomPage = () => {
                 <div className="bg-slate-900 border-2 border-green-500/50 p-4 rounded-xl space-y-2 text-left">
                   <div className="flex items-center gap-2 text-green-400 font-bold text-xs sm:text-sm uppercase tracking-wide">
                     <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5" />
-                    <span>Respuesta Correcta: Opción {revealedResults.correctAnswer?.toUpperCase()}</span>
+                    <span>
+                      Respuesta Correcta: Opción {String(revealedResults.correctAnswer || '').toUpperCase()}
+                      {currentQuestion && currentQuestion[`option_${String(revealedResults.correctAnswer || '').toLowerCase()}`] && (
+                        <span className="normal-case font-semibold text-green-300 ml-1.5">
+                          — {currentQuestion[`option_${String(revealedResults.correctAnswer || '').toLowerCase()}`]}
+                        </span>
+                      )}
+                    </span>
                   </div>
                   <p className="text-xs sm:text-sm text-gray-200 leading-relaxed">
                     {revealedResults.explanation}

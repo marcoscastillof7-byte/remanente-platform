@@ -2,7 +2,16 @@ import express from 'express';
 import { getDb } from '../db/database.js';
 import { auth } from '../middleware/auth.js';
 import { sendPushToAll } from '../utils/pushNotifier.js';
-import { endActiveRoom, endAllActiveRooms, updateRoomQuestions, startRoomQuiz } from '../socket/meetSocket.js';
+import { 
+    endActiveRoom, 
+    endAllActiveRooms, 
+    updateRoomQuestions, 
+    startRoomQuiz,
+    submitRoomAnswer,
+    revealRoomQuestionResults,
+    advanceRoomNextQuestion,
+    endRoomSession
+} from '../socket/meetSocket.js';
 
 const router = express.Router();
 router.use(auth);
@@ -526,6 +535,98 @@ router.post('/:id/start-quiz', async (req, res) => {
     } catch (err) {
         console.error('[Meetings] Error iniciando quiz HTTP:', err);
         res.status(500).json({ error: 'Error al iniciar el quiz' });
+    }
+});
+
+/**
+ * POST /api/meetings/:id/submit-answer
+ * Respaldo HTTP infalible para enviar respuestas a preguntas del Quiz en vivo
+ */
+router.post('/:id/submit-answer', async (req, res) => {
+    try {
+        const { questionIndex, selectedAnswer, timeTakenMs } = req.body;
+        const io = req.app.get('io');
+        const result = await submitRoomAnswer(req.params.id, questionIndex, selectedAnswer, timeTakenMs, req.user, io);
+        if (result?.error) {
+            return res.status(400).json(result);
+        }
+        res.json(result);
+    } catch (err) {
+        console.error('[Meetings] Error en submit-answer HTTP:', err);
+        res.status(500).json({ error: 'Error procesando respuesta' });
+    }
+});
+
+/**
+ * POST /api/meetings/:id/reveal-results
+ * Respaldo HTTP infalible para mostrar los resultados de la pregunta bíblica actual
+ */
+router.post('/:id/reveal-results', async (req, res) => {
+    try {
+        const { questionIndex } = req.body;
+        const supabase = getDb();
+        const { data: meeting } = await supabase.from('meetings').select('host_id').eq('id', req.params.id).single();
+        const isAuthorized = isLeaderOrAdmin(req.user) || (meeting && String(meeting.host_id) === String(req.user.id));
+        if (!isAuthorized) {
+            return res.status(403).json({ error: 'No autorizado' });
+        }
+
+        const io = req.app.get('io');
+        const result = await revealRoomQuestionResults(req.params.id, questionIndex, io);
+        if (result?.error) {
+            return res.status(400).json(result);
+        }
+        res.json(result);
+    } catch (err) {
+        console.error('[Meetings] Error en reveal-results HTTP:', err);
+        res.status(500).json({ error: 'Error revelando resultados' });
+    }
+});
+
+/**
+ * POST /api/meetings/:id/next-question
+ * Respaldo HTTP infalible para avanzar a la siguiente pregunta del Quiz o mostrar el podio
+ */
+router.post('/:id/next-question', async (req, res) => {
+    try {
+        const supabase = getDb();
+        const { data: meeting } = await supabase.from('meetings').select('host_id').eq('id', req.params.id).single();
+        const isAuthorized = isLeaderOrAdmin(req.user) || (meeting && String(meeting.host_id) === String(req.user.id));
+        if (!isAuthorized) {
+            return res.status(403).json({ error: 'No autorizado' });
+        }
+
+        const io = req.app.get('io');
+        const result = await advanceRoomNextQuestion(req.params.id, io);
+        if (result?.error) {
+            return res.status(400).json(result);
+        }
+        res.json(result);
+    } catch (err) {
+        console.error('[Meetings] Error en next-question HTTP:', err);
+        res.status(500).json({ error: 'Error avanzando pregunta' });
+    }
+});
+
+/**
+ * POST /api/meetings/:id/end-session
+ * Respaldo HTTP infalible para finalizar y cerrar la sesión en vivo para todos los usuarios
+ */
+router.post('/:id/end-session', async (req, res) => {
+    try {
+        const supabase = getDb();
+        const { data: meeting } = await supabase.from('meetings').select('host_id').eq('id', req.params.id).single();
+        const isAuthorized = isLeaderOrAdmin(req.user) || (meeting && String(meeting.host_id) === String(req.user.id));
+        if (!isAuthorized) {
+            return res.status(403).json({ error: 'No autorizado' });
+        }
+
+        const io = req.app.get('io');
+        const result = await endRoomSession(req.params.id, io);
+        res.json(result);
+    } catch (err) {
+        console.error('[Meetings] Error en end-session HTTP:', err);
+        res.status(500).json({ error: 'Error finalizando sesión' });
     }
 });
 
