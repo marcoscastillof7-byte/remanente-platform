@@ -82,16 +82,17 @@ const App = () => {
               <Route path="/profile" element={<Layout><ProfilePage /></Layout>} />
               <Route path="/duels" element={<Layout><DuelsPage /></Layout>} />
               <Route path="/survival" element={<Layout><SurvivalPage /></Layout>} />
-              <Route path="/admin" element={<Layout><AdminDashboard /></Layout>} />
-              <Route path="/admin/users/:userId" element={<Layout><UserPerformance /></Layout>} />
             </Route>
 
             <Route element={<AdminRoute />}>
+              <Route path="/admin" element={<Layout><AdminDashboard /></Layout>} />
+              <Route path="/admin/users/:userId" element={<Layout><UserPerformance /></Layout>} />
               <Route path="/admin/questions/:chapterId" element={<Layout><QuestionManager /></Layout>} />
               <Route path="/admin/reports" element={<Layout><AdminReports /></Layout>} />
               <Route path="/admin/suggestions" element={<Layout><AdminSuggestions /></Layout>} />
               <Route path="/admin/global-bulk" element={<Layout><GlobalBulkImport /></Layout>} />
-              <Route path="/admin/videos" element={<Layout><VideoManager /></Layout>} />            </Route>
+              <Route path="/admin/videos" element={<Layout><VideoManager /></Layout>} />
+            </Route>
             
             <Route element={<SuperAdminRoute />}>
               <Route path="/superadmin" element={<Layout><SuperDashboard /></Layout>} />
