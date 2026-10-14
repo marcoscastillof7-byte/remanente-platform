@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { Menu, User, LogOut, Shield, Bell, CheckCircle, Swords, Flame, MessageSquare, Users, X } from 'lucide-react';
 import { io } from 'socket.io-client';
