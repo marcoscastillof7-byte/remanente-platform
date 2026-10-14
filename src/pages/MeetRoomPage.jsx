@@ -87,7 +87,7 @@ export function getUniversalPdfViewerUrl(url, page = 1) {
 const MeetRoomPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, isAdmin, isSuperAdmin } = useAuth();
   
   const [meet, setMeet] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -141,6 +141,13 @@ const MeetRoomPage = () => {
   const [roomPresenceUsers, setRoomPresenceUsers] = useState([]);
 
   const isHost = meet && (String(user?.id) === String(meet.host_id) || ['admin', 'superadmin', 'lider', 'leader'].includes(user?.role?.toLowerCase()));
+  const isLeaderOrAdmin = Boolean(
+    isHost ||
+    isAdmin ||
+    isSuperAdmin ||
+    ['admin', 'superadmin', 'lider', 'leader'].includes(user?.role?.toLowerCase()) ||
+    user?.username?.toLowerCase() === 'marcos'
+  );
   const pdfContainerRef = useRef(null);
   const broadcastChannelRef = useRef(null);
   const roomPresenceChannelRef = useRef(null);
@@ -1363,9 +1370,14 @@ const MeetRoomPage = () => {
         <div className="flex items-center gap-1 sm:gap-2 shrink-0">
           <button
             type="button"
-            onClick={() => setIsRoomParticipantsModalOpen(true)}
+            onClick={() => {
+              setParticipantsModalTab('room');
+              setIsRoomParticipantsModalOpen(true);
+            }}
             className="bg-white/10 hover:bg-white/20 text-gray-200 px-2 sm:px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 border border-white/10 hover:border-gold/40 shadow-inner cursor-pointer transition-all hover:scale-105"
-            title="Haz clic para ver las personas conectadas en esta sala y en toda la plataforma"
+            title={isLeaderOrAdmin 
+              ? "Haz clic para ver las personas conectadas en esta sala y en toda la plataforma"
+              : "Haz clic para ver los participantes en esta sala"}
           >
             <div className="flex items-center gap-1" title={`${connectedCount} personas conectadas en esta sala en vivo`}>
               <Users className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gold shrink-0" />
@@ -1976,17 +1988,30 @@ const MeetRoomPage = () => {
                     {Math.max(totalJoinedCount || 0, connectedCount, allRoomParticipants.length)}
                   </span>
                 </div>
-                <div 
-                  onClick={() => { setParticipantsModalTab('platform'); setIsRoomParticipantsModalOpen(true); }}
-                  className="bg-slate-900/90 border border-emerald-500/40 rounded-xl p-3 flex flex-col items-center shadow-lg text-center cursor-pointer hover:border-emerald-400 hover:scale-105 transition-all"
-                  title="Clic para ver personas en línea en la plataforma"
-                >
-                  <Users className="w-4 h-4 text-emerald-400 mb-1" />
-                  <span className="text-[10px] text-gray-400 uppercase font-bold">En Plataforma</span>
-                  <span className="text-base sm:text-lg font-black text-emerald-400 font-mono">
-                    {platformOnlineCount}
-                  </span>
-                </div>
+                {isLeaderOrAdmin ? (
+                  <div 
+                    onClick={() => { setParticipantsModalTab('platform'); setIsRoomParticipantsModalOpen(true); }}
+                    className="bg-slate-900/90 border border-emerald-500/40 rounded-xl p-3 flex flex-col items-center shadow-lg text-center cursor-pointer hover:border-emerald-400 hover:scale-105 transition-all"
+                    title="Clic para ver personas en línea en la plataforma (Líderes/Admin)"
+                  >
+                    <Users className="w-4 h-4 text-emerald-400 mb-1" />
+                    <span className="text-[10px] text-gray-400 uppercase font-bold">En Plataforma</span>
+                    <span className="text-base sm:text-lg font-black text-emerald-400 font-mono">
+                      {platformOnlineCount}
+                    </span>
+                  </div>
+                ) : (
+                  <div 
+                    className="bg-slate-900/90 border border-emerald-500/40 rounded-xl p-3 flex flex-col items-center shadow-lg text-center cursor-default select-none"
+                    title={`${platformOnlineCount} personas en línea en la plataforma`}
+                  >
+                    <Users className="w-4 h-4 text-emerald-400 mb-1" />
+                    <span className="text-[10px] text-gray-400 uppercase font-bold">En Plataforma</span>
+                    <span className="text-base sm:text-lg font-black text-emerald-400 font-mono">
+                      {platformOnlineCount}
+                    </span>
+                  </div>
+                )}
                 <div className="col-span-2 sm:col-span-1 bg-slate-900/90 border border-amber-500/40 rounded-xl p-3 flex flex-col items-center shadow-lg text-center">
                   <Award className="w-4 h-4 text-amber-400 mb-1" />
                   <span className="text-[10px] text-gray-400 uppercase font-bold">Tu Puntaje</span>
@@ -2802,37 +2827,50 @@ const MeetRoomPage = () => {
               </button>
             </div>
 
-            {/* Selector de pestañas */}
-            <div className="flex border-b border-white/10 bg-black/30 p-1 gap-1">
-              <button
-                type="button"
-                onClick={() => setParticipantsModalTab('room')}
-                className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                  participantsModalTab === 'room'
-                    ? 'bg-gold text-slate-950 shadow-md font-black'
-                    : 'text-gray-400 hover:text-white hover:bg-white/5'
-                }`}
-              >
-                <Users className="w-3.5 h-3.5" />
-                <span>En esta Sala ({connectedCount})</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setParticipantsModalTab('platform')}
-                className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                  participantsModalTab === 'platform'
-                    ? 'bg-emerald-500 text-slate-950 shadow-md font-black'
-                    : 'text-gray-400 hover:text-white hover:bg-white/5'
-                }`}
-              >
-                <Radio className="w-3.5 h-3.5" />
-                <span>En Plataforma ({platformOnlineCount})</span>
-              </button>
-            </div>
+            {/* Selector de pestañas (Pestaña "En Plataforma" visible exclusivamente para Líderes y Admin) */}
+            {isLeaderOrAdmin ? (
+              <div className="flex border-b border-white/10 bg-black/30 p-1 gap-1">
+                <button
+                  type="button"
+                  onClick={() => setParticipantsModalTab('room')}
+                  className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                    participantsModalTab === 'room'
+                      ? 'bg-gold text-slate-950 shadow-md font-black'
+                      : 'text-gray-400 hover:text-white hover:bg-white/5'
+                  }`}
+                >
+                  <Users className="w-3.5 h-3.5" />
+                  <span>En esta Sala ({connectedCount})</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setParticipantsModalTab('platform')}
+                  className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                    participantsModalTab === 'platform'
+                      ? 'bg-emerald-500 text-slate-950 shadow-md font-black'
+                      : 'text-gray-400 hover:text-white hover:bg-white/5'
+                  }`}
+                >
+                  <Radio className="w-3.5 h-3.5" />
+                  <span>En Plataforma ({platformOnlineCount})</span>
+                </button>
+              </div>
+            ) : (
+              <div className="border-b border-white/10 bg-black/30 px-4 py-2.5 flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2 text-gold font-bold">
+                  <Users className="w-4 h-4" />
+                  <span>Participantes en esta Sala ({connectedCount})</span>
+                </div>
+                <div className="flex items-center gap-1.5 text-emerald-400 font-semibold text-[11px]">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                  <span>{platformOnlineCount} en plataforma</span>
+                </div>
+              </div>
+            )}
 
             {/* Contenido de la lista */}
             <div className="p-4 overflow-y-auto space-y-2.5 flex-1 divide-y divide-white/5">
-              {participantsModalTab === 'room' ? (
+              {(!isLeaderOrAdmin || participantsModalTab === 'room') ? (
                 connectedParticipants && connectedParticipants.length > 0 ? (
                   connectedParticipants.map((p, idx) => {
                     const isMe = user?.id && String(p.id || p.userId) === String(user.id);

@@ -20,6 +20,7 @@ import meetingsRoutes from './routes/meetings.js';
 import superAdminRoutes from './routes/superadmin.js';
 import groupsRoutes from './routes/groups.js';
 import pushRoutes from './routes/push.js';
+import jwt from 'jsonwebtoken';
 import { setupMeetSocket, getPlatformOnlineCount, getPlatformOnlineUsers, getPlatformOnlineStats } from './socket/meetSocket.js';
 
 const app = express();
@@ -66,15 +67,36 @@ router.use('/superadmin', superAdminRoutes);
 router.use('/groups', groupsRoutes);
 router.use('/push', pushRoutes);
 
-// Contador global de usuarios en línea en tiempo real
+// Contador global de usuarios en línea en tiempo real (Lista detallada solo para Admin y Líderes)
 router.get('/stats/online', async (req, res) => {
+    let isLeaderOrAdmin = false;
+    const authHeader = req.headers['authorization'];
+    if (authHeader) {
+        const token = authHeader.split(' ')[1];
+        if (token) {
+            try {
+                const decoded = jwt.verify(token, 'remanente_jwt_secret_2024');
+                const role = (decoded?.role || '').toLowerCase();
+                const username = (decoded?.username || '').toLowerCase();
+                if (['admin', 'superadmin', 'lider', 'leader'].includes(role) || username === 'marcos') {
+                    isLeaderOrAdmin = true;
+                }
+            } catch (e) {
+                // Token inválido o no autenticado, se mantiene en false
+            }
+        }
+    }
+
     try {
         const stats = await getPlatformOnlineStats();
-        res.json(stats);
+        res.json({
+            onlineCount: stats.onlineCount,
+            users: isLeaderOrAdmin ? stats.users : []
+        });
     } catch (err) {
         res.json({ 
             onlineCount: getPlatformOnlineCount(),
-            users: getPlatformOnlineUsers()
+            users: isLeaderOrAdmin ? getPlatformOnlineUsers() : []
         });
     }
 });

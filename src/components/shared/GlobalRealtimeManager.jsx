@@ -4,7 +4,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { supabase } from '../../utils/supabase';
 
 const GlobalRealtimeManager = () => {
-  const { user } = useAuth();
+  const { user, isAdmin, isSuperAdmin } = useAuth();
   const socketRef = useRef(null);
   const presenceChannelRef = useRef(null);
   const knownOnlineUsersRef = useRef(new Map()); // id -> user object
@@ -15,7 +15,16 @@ const GlobalRealtimeManager = () => {
     const currentRole = user?.role || 'user';
     const currentPoints = user?.points || 0;
 
+    const roleLower = (user?.role || '').toLowerCase();
+    const isLeaderOrAdmin = Boolean(
+      isAdmin ||
+      isSuperAdmin ||
+      ['admin', 'superadmin', 'lider', 'leader'].includes(roleLower) ||
+      user?.username?.toLowerCase() === 'marcos'
+    );
+
     // Helper para emitir el conteo unificado sin fluctuaciones
+    // La lista detallada de usuarios solo se distribuye a líderes y administradores
     const emitUnifiedOnlineStats = (source = 'realtime') => {
       const usersList = Array.from(knownOnlineUsersRef.current.values());
       const onlineCount = Math.max(1, usersList.length);
@@ -23,7 +32,7 @@ const GlobalRealtimeManager = () => {
       window.dispatchEvent(new CustomEvent('platform-online-update', {
         detail: {
           onlineCount,
-          users: usersList,
+          users: isLeaderOrAdmin ? usersList : [],
           timestamp: Date.now(),
           source
         }

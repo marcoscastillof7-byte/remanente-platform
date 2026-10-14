@@ -149,8 +149,17 @@ const Navbar = () => {
     };
   }, [user]);
 
-  // Lista autoritativa de usuarios conectados garantizando inclusión del usuario actual
+  const roleLower = (user?.role || '').toLowerCase();
+  const isLeaderOrAdmin = Boolean(
+    isAdmin ||
+    isSuperAdmin ||
+    ['admin', 'superadmin', 'lider', 'leader'].includes(roleLower) ||
+    user?.username?.toLowerCase() === 'marcos'
+  );
+
+  // Lista autoritativa de usuarios conectados (acceso exclusivo para líderes y administradores)
   const effectiveOnlineUsers = useMemo(() => {
+    if (!isLeaderOrAdmin) return [];
     const list = [...(onlineUsers || [])];
     if (user?.id && !list.some(u => String(u.id) === String(user.id))) {
       list.unshift({
@@ -162,7 +171,7 @@ const Navbar = () => {
       });
     }
     return list;
-  }, [onlineUsers, user]);
+  }, [onlineUsers, user, isLeaderOrAdmin]);
 
   if (!user) return null;
 
@@ -235,20 +244,34 @@ const Navbar = () => {
 
           <div className="flex items-center space-x-2 sm:space-x-3 relative">
             
-            {/* Contador de Personas Conectadas en Tiempo Real */}
-            <button 
-              type="button"
-              onClick={() => setOnlineUsersModalOpen(true)}
-              className="flex items-center gap-1.5 px-2.5 py-1 bg-white/10 hover:bg-white/20 transition-all rounded-full text-xs text-gray-200 border border-emerald-500/30 hover:border-emerald-400 shadow-sm shrink-0 cursor-pointer group"
-              title={`${onlineCount} ${onlineCount === 1 ? 'persona conectada' : 'personas conectadas'} en tiempo real. Clic para ver quiénes están en línea.`}
-            >
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
-              </span>
-              <span className="font-extrabold text-emerald-300">{onlineCount}</span>
-              <span className="hidden sm:inline text-gray-300 font-medium group-hover:text-white">en línea</span>
-            </button>
+            {/* Contador de Personas Conectadas en Tiempo Real (Clic habilitado únicamente para Líderes y Admin) */}
+            {isLeaderOrAdmin ? (
+              <button 
+                type="button"
+                onClick={() => setOnlineUsersModalOpen(true)}
+                className="flex items-center gap-1.5 px-2.5 py-1 bg-white/10 hover:bg-white/20 transition-all rounded-full text-xs text-gray-200 border border-emerald-500/30 hover:border-emerald-400 shadow-sm shrink-0 cursor-pointer group"
+                title={`${onlineCount} ${onlineCount === 1 ? 'persona conectada' : 'personas conectadas'} en tiempo real. Clic para ver quiénes están en línea (Solo Líderes/Admin).`}
+              >
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
+                </span>
+                <span className="font-extrabold text-emerald-300">{onlineCount}</span>
+                <span className="hidden sm:inline text-gray-300 font-medium group-hover:text-white">en línea</span>
+              </button>
+            ) : (
+              <div 
+                className="flex items-center gap-1.5 px-2.5 py-1 bg-white/10 rounded-full text-xs text-gray-200 border border-emerald-500/30 shadow-sm shrink-0 cursor-default select-none"
+                title={`${onlineCount} ${onlineCount === 1 ? 'persona conectada' : 'personas conectadas'} en la plataforma`}
+              >
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
+                </span>
+                <span className="font-extrabold text-emerald-300">{onlineCount}</span>
+                <span className="hidden sm:inline text-gray-300 font-medium">en línea</span>
+              </div>
+            )}
 
             {/* Notificaciones */}
             <div className="relative">
@@ -362,13 +385,24 @@ const Navbar = () => {
 
           <div className="px-3 py-2 flex items-center justify-between border-t border-white/10 mt-1 pt-2">
             <span className="text-xs text-gray-300">Conectados en vivo:</span>
-            <button
-              onClick={() => { setOnlineUsersModalOpen(true); setMenuOpen(false); }}
-              className="flex items-center gap-1.5 px-2.5 py-1 bg-white/10 hover:bg-white/20 transition-colors rounded-full text-xs text-emerald-300 font-bold"
-            >
-              <span className="h-2 w-2 rounded-full bg-emerald-400 animate-ping"></span>
-              <span>{onlineCount} en línea</span>
-            </button>
+            {isLeaderOrAdmin ? (
+              <button
+                onClick={() => { setOnlineUsersModalOpen(true); setMenuOpen(false); }}
+                className="flex items-center gap-1.5 px-2.5 py-1 bg-white/10 hover:bg-white/20 transition-colors rounded-full text-xs text-emerald-300 font-bold cursor-pointer"
+                title="Clic para ver quiénes están en línea (Solo Líderes/Admin)"
+              >
+                <span className="h-2 w-2 rounded-full bg-emerald-400 animate-ping"></span>
+                <span>{onlineCount} en línea</span>
+              </button>
+            ) : (
+              <div
+                className="flex items-center gap-1.5 px-2.5 py-1 bg-white/10 rounded-full text-xs text-emerald-300 font-bold select-none"
+                title={`${onlineCount} personas en línea`}
+              >
+                <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>{onlineCount} en línea</span>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -427,8 +461,8 @@ const Navbar = () => {
         </div>
       )}
 
-      {/* Modal Hermanos Conectados en Vivo */}
-      {onlineUsersModalOpen && (
+      {/* Modal Hermanos Conectados en Vivo (Exclusivo Líderes y Admin) */}
+      {onlineUsersModalOpen && isLeaderOrAdmin && (
         <div className="fixed inset-0 bg-black/60 z-[120] flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
           <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden border border-gray-100 flex flex-col max-h-[85vh]">
             

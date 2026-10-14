@@ -134,24 +134,64 @@ export function getPlatformOnlineCount() {
 }
 
 /**
+ * Comprueba si un usuario tiene privilegios de líder o administrador
+ */
+export function isUserLeaderOrAdmin(role, username) {
+    const r = (role || '').toLowerCase();
+    const u = (username || '').toLowerCase();
+    return ['admin', 'superadmin', 'lider', 'leader'].includes(r) || u === 'marcos';
+}
+
+/**
  * Emite las estadísticas de usuarios conectados a toda la plataforma
+ * Solo envía la lista detallada de identidades a líderes y administradores
  */
 export async function broadcastPlatformOnlineStats(io) {
     if (!io) return;
     try {
         const stats = await getPlatformOnlineStats();
-        io.emit('platform:online-stats', {
+        const fullPayload = {
             onlineCount: stats.onlineCount,
             users: stats.users,
             timestamp: Date.now()
-        });
+        };
+        const publicPayload = {
+            onlineCount: stats.onlineCount,
+            users: [],
+            timestamp: Date.now()
+        };
+
+        if (io.sockets?.sockets) {
+            for (const [sockId, socket] of io.sockets.sockets.entries()) {
+                const info = globalPlatformSockets.get(sockId);
+                const role = info?.role || socket.data?.user?.role;
+                const username = info?.username || socket.data?.user?.username;
+                const isPrivileged = isUserLeaderOrAdmin(role, username);
+                socket.emit('platform:online-stats', isPrivileged ? fullPayload : publicPayload);
+            }
+        } else {
+            io.emit('platform:online-stats', publicPayload);
+        }
     } catch (e) {
         cleanupStaleSockets();
-        io.emit('platform:online-stats', {
-            onlineCount: getPlatformOnlineCount(),
-            users: getPlatformOnlineUsers(),
+        const onlineCount = getPlatformOnlineCount();
+        const fullUsers = getPlatformOnlineUsers();
+        const publicPayload = {
+            onlineCount,
+            users: [],
             timestamp: Date.now()
-        });
+        };
+        if (io.sockets?.sockets) {
+            for (const [sockId, socket] of io.sockets.sockets.entries()) {
+                const info = globalPlatformSockets.get(sockId);
+                const role = info?.role || socket.data?.user?.role;
+                const username = info?.username || socket.data?.user?.username;
+                const isPrivileged = isUserLeaderOrAdmin(role, username);
+                socket.emit('platform:online-stats', isPrivileged ? { onlineCount, users: fullUsers, timestamp: Date.now() } : publicPayload);
+            }
+        } else {
+            io.emit('platform:online-stats', publicPayload);
+        }
     }
 }
 
@@ -1101,6 +1141,8 @@ export function setupMeetSocket(io) {
                     points: userData.points || 0,
                     lastPing: Date.now()
                 });
+                socket.data = socket.data || {};
+                socket.data.user = userData;
                 broadcastPlatformOnlineStats(io);
             }
         });
@@ -1119,9 +1161,15 @@ export function setupMeetSocket(io) {
                     lastPing: Date.now()
                 });
             }
+
+            const currentInfo = globalPlatformSockets.get(socket.id);
+            const role = currentInfo?.role || socket.data?.user?.role || currentUser?.role;
+            const username = currentInfo?.username || socket.data?.user?.username || currentUser?.username;
+            const isPrivileged = isUserLeaderOrAdmin(role, username);
+
             socket.emit('platform:pong', { 
                 onlineCount: getPlatformOnlineCount(),
-                users: getPlatformOnlineUsers()
+                users: isPrivileged ? getPlatformOnlineUsers() : []
             });
         });
 
