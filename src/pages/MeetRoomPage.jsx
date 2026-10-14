@@ -1952,38 +1952,6 @@ const MeetRoomPage = () => {
 
           return (
             <div className="flex-1 flex flex-col p-3 sm:p-6 md:p-8 max-w-4xl mx-auto w-full overflow-y-auto space-y-5 sm:space-y-6 text-white animate-fadeIn pb-24">
-              
-              {/* Barra de Acciones Superior: Volver a la Lectura del Documento */}
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-900/90 border border-gold/40 rounded-2xl p-3 sm:p-4 shadow-xl">
-                <div className="flex items-center gap-2">
-                  <Trophy className="w-5 h-5 text-gold shrink-0 animate-bounce" />
-                  <span className="text-xs sm:text-sm font-bold text-gray-200">
-                    Estudio Bíblico y Resultados del Quiz
-                  </span>
-                </div>
-                <div className="flex flex-wrap items-center justify-center gap-2 w-full sm:w-auto">
-                  <button
-                    onClick={() => setResultsViewMode('reading')}
-                    className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 px-4 py-2 sm:px-5 sm:py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs sm:text-sm rounded-xl border border-blue-400/50 shadow-xl hover:scale-105 transition-all cursor-pointer"
-                    title="Volver a la lectura principal del documento bíblico"
-                  >
-                    <BookOpen className="w-4 h-4 text-gold-light" />
-                    <span>📖 Volver a la Lectura del Documento</span>
-                  </button>
-
-                  {isHost && (
-                    <button
-                      onClick={handleResumeReadingForEveryone}
-                      className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-gray-200 font-bold text-xs rounded-xl border border-gold/30 shadow hover:scale-105 transition-all cursor-pointer"
-                      title="Reanudar la lectura para todos los participantes de la sala"
-                    >
-                      <RotateCcw className="w-3.5 h-3.5 text-gold" />
-                      <span className="hidden md:inline">Reanudar Lectura para Todos</span>
-                      <span className="md:hidden">Lectura Todos 🔄</span>
-                    </button>
-                  )}
-                </div>
-              </div>
 
               {/* Encabezado Celebratorio */}
               <div className="text-center space-y-2">
@@ -2741,6 +2709,17 @@ const MeetRoomPage = () => {
                     <BookOpen className="w-4 h-4 text-gold-light" />
                     <span>📖 Volver a la Lectura del Documento</span>
                   </button>
+
+                  {isHost && (
+                    <button
+                      onClick={handleResumeReadingForEveryone}
+                      className="inline-flex items-center justify-center gap-1.5 px-4 sm:px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-gray-200 font-bold text-xs sm:text-sm rounded-xl border border-gold/30 shadow hover:scale-105 transition-all cursor-pointer"
+                      title="Reanudar la lectura para todos los participantes de la sala"
+                    >
+                      <RotateCcw className="w-4 h-4 text-gold" />
+                      <span>Reanudar Lectura para Todos 🔄</span>
+                    </button>
+                  )}
 
                   <button
                     onClick={() => {
