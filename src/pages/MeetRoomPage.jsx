@@ -187,6 +187,41 @@ const MeetRoomPage = () => {
     }
   };
 
+  // Blindaje y recuperación inmediata local anti-recarga (Anti-F5 / Anti-Rejoin)
+  useEffect(() => {
+    if (!id || !user?.id) return;
+    const cacheKey = `meet_quiz_${id}_${user.id}`;
+    try {
+      const cached = sessionStorage.getItem(cacheKey);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed?.answers && Object.keys(parsed.answers).length > 0) {
+          setMyAnswers(prev => ({ ...parsed.answers, ...prev }));
+          if (parsed.questionIndex !== undefined) {
+            setMyQuestionIndex(prev => Math.max(prev, parsed.questionIndex));
+          }
+          if (parsed.isFinished) setIsSelfFinished(true);
+          if (parsed.score) setMySessionScore(prev => Math.max(prev, parsed.score));
+        }
+      }
+    } catch (e) {}
+  }, [id, user?.id]);
+
+  useEffect(() => {
+    if (!id || !user?.id) return;
+    const cacheKey = `meet_quiz_${id}_${user.id}`;
+    if (Object.keys(myAnswers).length > 0) {
+      try {
+        sessionStorage.setItem(cacheKey, JSON.stringify({
+          answers: myAnswers,
+          questionIndex: myQuestionIndex,
+          isFinished: isSelfFinished,
+          score: mySessionScore
+        }));
+      } catch (e) {}
+    }
+  }, [myAnswers, myQuestionIndex, isSelfFinished, mySessionScore, id, user?.id]);
+
   // Inicializar Socket.io con reconexión robusta
   useEffect(() => {
     if (!user || !meet) return;

@@ -200,7 +200,7 @@ export async function getOrCreateRoom(meetId) {
         chaptersSelected: meta.chapters_selected || [],
         questions: meta.questions || [],
         status: meeting.status || 'scheduled',
-        phase: meeting.status === 'live' ? 'reading' : (meeting.status || 'scheduled'),
+        phase: meta.phase || (meeting.status === 'live' ? 'reading' : (meeting.status || 'scheduled')),
         currentPage: 1,
         currentQuestionIndex: -1,
         quizStartedAt: null,
@@ -213,9 +213,39 @@ export async function getOrCreateRoom(meetId) {
         answers: new Map(),
         handsRaised: new Set(),
         currentReader: null,
-        revealedResults: null,
+        revealedResults: meta.revealedResults || null,
         revealTimer: null
     };
+
+    // Restaurar respuestas previas si el servidor se reinició o hubo reconexión
+    if (meta.savedUserAnswers && typeof meta.savedUserAnswers === 'object') {
+        Object.entries(meta.savedUserAnswers).forEach(([uId, ansObj]) => {
+            const ansMap = new Map();
+            let totalScore = 0;
+            Object.entries(ansObj).forEach(([qIdx, ans]) => {
+                const qNum = Number(qIdx);
+                ansMap.set(qNum, ans);
+                totalScore += (ans.points || 0);
+
+                let qAnsMap = roomState.answers.get(qNum);
+                if (!qAnsMap) {
+                    qAnsMap = new Map();
+                    roomState.answers.set(qNum, qAnsMap);
+                }
+                qAnsMap.set(String(uId), ans);
+            });
+            roomState.userAnswers.set(String(uId), ansMap);
+
+            if (!roomState.participants.has(String(uId))) {
+                roomState.participants.set(String(uId), {
+                    id: String(uId),
+                    username: ansMap.values().next().value?.username || 'Participante',
+                    score: totalScore,
+                    connected: false
+                });
+            }
+        });
+    }
 
     activeRooms.set(idStr, roomState);
     return roomState;
@@ -562,6 +592,20 @@ export async function submitRoomAnswer(meetId, questionIndex, selectedAnswer, ti
             io.to(`meet:${idStr}`).emit('meet:all-participants-finished', progress);
             io.emit('meet:all-participants-finished', progress);
         }
+    }
+
+    // Persistencia continua inmediata en Supabase para blindar contra recarga y caídas
+    try {
+        const supabase = getDb();
+        const { data: currentMeet } = await supabase.from('meetings').select('description').eq('id', idStr).single();
+        let currentMeta = {};
+        try { currentMeta = JSON.parse(currentMeet?.description || '{}'); } catch {}
+        if (!currentMeta.savedUserAnswers) currentMeta.savedUserAnswers = {};
+        if (!currentMeta.savedUserAnswers[userIdStr]) currentMeta.savedUserAnswers[userIdStr] = {};
+        currentMeta.savedUserAnswers[userIdStr][qIdxNum] = answerEntry;
+        await supabase.from('meetings').update({ description: JSON.stringify(currentMeta) }).eq('id', idStr);
+    } catch (saveErr) {
+        console.warn('[meetSocket] Error guardando respuesta persistente:', saveErr.message);
     }
 
     return {
@@ -1008,14 +1052,24 @@ export function setupMeetSocket(io) {
             });
             room.peakAttendance = Math.max(room.peakAttendance || 0, room.participants.size);
 
-            // Enviar lista sanitizada de preguntas
+            // Enviar lista completa de preguntas para renderizado y validación exacta
             const sanitizedQuestions = (room.questions || []).map((q, idx) => ({
                 id: q.id || `q_${idx}`,
-                question_text: q.question_text,
-                option_a: q.option_a,
-                option_b: q.option_b,
-                option_c: q.option_c,
-                option_d: q.option_d,
+                question_text: q.question_text || q.questionText,
+                questionText: q.question_text || q.questionText,
+                option_a: q.option_a || q.optionA,
+                optionA: q.option_a || q.optionA,
+                option_b: q.option_b || q.optionB,
+                optionB: q.option_b || q.optionB,
+                option_c: q.option_c || q.optionC,
+                option_c: q.option_c || q.optionC,
+                option_d: q.option_d || q.optionD,
+                optionD: q.option_d || q.optionD,
+                correct_answer: getCorrectOptionLetter(q),
+                correctAnswer: getCorrectOptionLetter(q),
+                explanation: q.explanation || 'Respuesta bíblica fundamentada en las Sagradas Escrituras.',
+                verse_reference: q.verse_reference || q.verseReference || '',
+                verseReference: q.verse_reference || q.verseReference || '',
                 time_limit_seconds: q.time_limit_seconds || 25
             }));
 
