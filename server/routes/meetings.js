@@ -357,6 +357,10 @@ router.post('/', async (req, res) => {
 
         if (error) throw error;
 
+        if (req.app.get('io')) {
+            req.app.get('io').emit('meet:updated');
+        }
+
         res.json(data);
     } catch (error) {
         console.error('[Meetings] Error creando Meet:', error);
@@ -470,6 +474,7 @@ router.post('/:id/start', async (req, res) => {
 
         if (req.app.get('io')) {
             req.app.get('io').emit('meet:started', { meetId: meeting.id, title: meeting.title });
+            req.app.get('io').emit('meet:updated');
         }
 
         res.json({ success: true, meeting });
@@ -734,6 +739,9 @@ router.delete('/:id', async (req, res) => {
             .eq('id', req.params.id);
 
         if (error) throw error;
+        if (req.app.get('io')) {
+            req.app.get('io').emit('meet:updated');
+        }
         res.json({ message: 'Meet eliminado exitosamente' });
     } catch (error) {
         console.error(error);

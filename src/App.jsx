@@ -6,6 +6,7 @@ import { ProtectedRoute, AdminRoute, SuperAdminRoute } from './components/layout
 import Navbar from './components/layout/Navbar';
 import LoadingSpinner from './components/shared/LoadingSpinner';
 import InAppNotificationBanner from './components/shared/InAppNotificationBanner';
+import GlobalRealtimeManager from './components/shared/GlobalRealtimeManager';
 import ErrorBoundary from './components/shared/ErrorBoundary';
 import { unlockAudio } from './utils/notificationSound';
 
@@ -60,6 +61,7 @@ const App = () => {
   return (
     <ToastProvider>
       <AuthProvider>
+        <GlobalRealtimeManager />
         <InAppNotificationBanner />
         <ErrorBoundary>
           <Suspense fallback={<div className="flex items-center justify-center min-h-screen bg-[var(--color-parchment)]"><LoadingSpinner /></div>}>

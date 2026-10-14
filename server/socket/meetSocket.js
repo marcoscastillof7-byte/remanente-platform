@@ -765,6 +765,21 @@ export function setupMeetSocket(io) {
             }
         });
 
+        // Ping de latencia y presencia activa desde el frontend
+        socket.on('platform:ping', () => {
+            const info = globalPlatformSockets.get(socket.id);
+            if (info) {
+                info.lastPing = Date.now();
+            } else {
+                globalPlatformSockets.set(socket.id, {
+                    userId: currentUser ? String(currentUser.id) : null,
+                    username: currentUser ? currentUser.username : null,
+                    lastPing: Date.now()
+                });
+            }
+            socket.emit('platform:pong', { onlineCount: getPlatformOnlineCount() });
+        });
+
         // 1. UNIRSE A LA SALA MEET
         socket.on('meet:join', async ({ meetId, user }) => {
             if (!meetId || !user) return;
@@ -874,14 +889,17 @@ export function setupMeetSocket(io) {
                 revealedResults: room.revealedResults,
                 leaderboard: quizProgress?.leaderboard || [],
                 myScore: score,
+                connectedCount: Array.from(room.participants.values()).filter(p => p.connected !== false).length,
                 totalJoinedCount: room.allTimeParticipants ? room.allTimeParticipants.size : room.participants.size,
                 peakAttendance: room.peakAttendance || room.participants.size,
                 platformOnlineCount: getPlatformOnlineCount()
             });
 
             // Avisar a los demás
+            const activeCount = Array.from(room.participants.values()).filter(p => p.connected !== false).length;
             io.to(`meet:${currentMeetId}`).emit('meet:participants-updated', {
                 participants: Array.from(room.participants.values()),
+                connectedCount: activeCount,
                 totalCount: room.participants.size,
                 totalJoinedCount: room.allTimeParticipants ? room.allTimeParticipants.size : room.participants.size,
                 peakAttendance: room.peakAttendance || room.participants.size,
@@ -1043,7 +1061,34 @@ export function setupMeetSocket(io) {
             });
         });
 
-        // 11. DESCONEXIÓN CON PROTECCIÓN PARA RECONEXIONES MÓVILES
+        // 11. SALIR VOLUNTARIAMENTE DE LA SALA MEET
+        socket.on('meet:leave', ({ meetId, user }) => {
+            const idStr = String(meetId || currentMeetId);
+            const targetUser = user || currentUser;
+            const room = activeRooms.get(idStr);
+            if (room && targetUser) {
+                const userIdStr = String(targetUser.id);
+                const p = room.participants.get(userIdStr);
+                if (p) {
+                    p.connected = false;
+                    p.lastDisconnectedAt = Date.now();
+                }
+                room.handsRaised.delete(userIdStr);
+                socket.leave(`meet:${idStr}`);
+
+                const activeCount = Array.from(room.participants.values()).filter(part => part.connected !== false).length;
+                io.to(`meet:${idStr}`).emit('meet:participants-updated', {
+                    participants: Array.from(room.participants.values()),
+                    connectedCount: activeCount,
+                    totalCount: room.participants.size,
+                    totalJoinedCount: room.allTimeParticipants ? room.allTimeParticipants.size : room.participants.size,
+                    peakAttendance: room.peakAttendance || room.participants.size,
+                    platformOnlineCount: getPlatformOnlineCount()
+                });
+            }
+        });
+
+        // 12. DESCONEXIÓN CON PROTECCIÓN PARA RECONEXIONES MÓVILES
         socket.on('disconnect', () => {
             globalPlatformSockets.delete(socket.id);
             broadcastPlatformOnlineStats(io);
@@ -1059,8 +1104,10 @@ export function setupMeetSocket(io) {
                         p.lastDisconnectedAt = Date.now();
                         room.handsRaised.delete(userIdStr);
 
+                        const activeCount = Array.from(room.participants.values()).filter(part => part.connected !== false).length;
                         io.to(`meet:${currentMeetId}`).emit('meet:participants-updated', {
                             participants: Array.from(room.participants.values()),
+                            connectedCount: activeCount,
                             totalCount: room.participants.size,
                             totalJoinedCount: room.allTimeParticipants ? room.allTimeParticipants.size : room.participants.size,
                             peakAttendance: room.peakAttendance || room.participants.size,

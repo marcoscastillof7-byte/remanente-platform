@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { api } from '../utils/api';
+import { supabase } from '../utils/supabase';
 import { getRankInfo } from '../utils/ranks';
 import { Loader, Trophy, Medal, Flame, Target, Gift } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
@@ -28,7 +29,34 @@ const LeaderboardPage = () => {
       }
     };
     fetchData();
-  }, []);
+
+    const handleUpdate = () => {
+      if (activeTab === 'global') {
+        api.get(`/leaderboard?internal=${isInternal}`).then(data => setLeaderboard(data)).catch(() => {});
+      } else {
+        api.get(`/leaderboard/${activeTab}?internal=${isInternal}`).then(data => setLeaderboard(data)).catch(() => {});
+      }
+    };
+
+    window.addEventListener('remanente-leaderboard-update', handleUpdate);
+
+    // Suscripción en tiempo real a cambios de puntos en usuarios
+    const channel = supabase
+      .channel('leaderboard_realtime_users')
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'users' },
+        () => {
+          handleUpdate();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      window.removeEventListener('remanente-leaderboard-update', handleUpdate);
+      supabase.removeChannel(channel);
+    };
+  }, [activeTab, isInternal]);
 
   const fetchByBook = async (bookId, internal = isInternal) => {
     setActiveTab(bookId);

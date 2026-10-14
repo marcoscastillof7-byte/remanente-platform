@@ -112,6 +112,8 @@ const MeetRoomPage = () => {
   const activeQuestions = quizQuestions.length > 0 ? quizQuestions : (meet?.questions || []);
   const currentQuestion = activeQuestions[myQuestionIndex] || null;
   const myCorrectCount = Object.values(myAnswers).filter(a => a.isCorrect).length;
+  const connectedParticipants = participants.filter(p => p.connected !== false);
+  const connectedCount = Math.max(1, connectedParticipants.length);
 
   useEffect(() => {
     loadMeetDetails();
@@ -439,69 +441,105 @@ const MeetRoomPage = () => {
     return () => clearTimeout(timer);
   }, [sessionClosing, navigate, socket]);
 
-  // Temporizador para cada pregunta individual
+  // Salida limpia y sincronizada al cerrar pestaña o navegador
   useEffect(() => {
-    if (phase !== 'quiz' || isSelfFinished || currentFeedback || revealedResults) return;
+    const handleBeforeUnload = () => {
+      if (socket && socket.connected) {
+        socket.emit('meet:leave', { meetId: id, user });
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      if (socket && socket.connected) {
+        socket.emit('meet:leave', { meetId: id, user });
+      }
+    };
+  }, [id, user, socket]);
 
-    if (timeLeft <= 0) {
-      return;
+  // 1. AVANZAR A LA SIGUIENTE PREGUNTA DEL SET O FINALIZAR
+  const handleGoToNextQuestion = () => {
+    if (autoAdvanceTimer) {
+      clearTimeout(autoAdvanceTimer);
+      setAutoAdvanceTimer(null);
     }
 
-    const timer = setInterval(() => {
-      setTimeLeft(prev => Math.max(0, prev - 1));
-    }, 1000);
+    const nextIdx = myQuestionIndex + 1;
+    setCurrentFeedback(null);
 
-    return () => clearInterval(timer);
-  }, [phase, timeLeft, isSelfFinished, currentFeedback, revealedResults, myQuestionIndex]);
-
-  // Controles de Página del Líder
-  const handlePageChange = (newPage) => {
-    if (newPage < 1) return;
-    setCurrentPage(newPage);
-    if (socket) {
-      socket.emit('meet:change-page', { meetId: id, page: newPage });
-    }
-  };
-
-  // Movimiento del Puntero Láser
-  const handlePointerCoords = (clientX, clientY) => {
-    if (!isHost || !laserModeActive || !pdfContainerRef.current) return;
-    const rect = pdfContainerRef.current.getBoundingClientRect();
-    if (!rect.width || !rect.height) return;
-    const x = Math.max(0, Math.min(100, ((clientX - rect.left) / rect.width) * 100));
-    const y = Math.max(0, Math.min(100, ((clientY - rect.top) / rect.height) * 100));
-
-    if (socket) {
-      socket.emit('meet:laser-move', { meetId: id, x, y, active: true });
-    }
-  };
-
-  const handleMouseMove = (e) => {
-    handlePointerCoords(e.clientX, e.clientY);
-  };
-
-  const handleTouchMove = (e) => {
-    if (!isHost || !laserModeActive) return;
-    if (e.touches && e.touches.length > 0) {
-      handlePointerCoords(e.touches[0].clientX, e.touches[0].clientY);
+    if (nextIdx < activeQuestions.length) {
+      setMyQuestionIndex(nextIdx);
+      setTimeLeft(activeQuestions[nextIdx]?.time_limit_seconds || 25);
+    } else {
+      // Completó todas las preguntas del set -> Pasa a Pantalla de Espera
+      setIsSelfFinished(true);
+      playNotificationSound();
     }
   };
 
-  const handleTouchStart = (e) => {
-    if (!isHost || !laserModeActive) return;
-    if (e.touches && e.touches.length > 0) {
-      handlePointerCoords(e.touches[0].clientX, e.touches[0].clientY);
+  // 2. RESPUESTA AUTOMÁTICA POR TIEMPO AGOTADO (0 PUNTOS, SIN BENEFICIO)
+  const handleAnswerTimeout = () => {
+    if (currentFeedback || isSelfFinished || revealedResults) return;
+
+    const currentQ = activeQuestions[myQuestionIndex];
+    if (!currentQ) return;
+
+    const limitSec = currentQ.time_limit_seconds || 25;
+    const correctLetter = (() => {
+      const raw = String(currentQ.correct_answer || '').trim().toLowerCase();
+      if (['a', 'b', 'c', 'd'].includes(raw)) return raw;
+      if (String(currentQ.option_a || '').trim().toLowerCase() === raw) return 'a';
+      if (String(currentQ.option_b || '').trim().toLowerCase() === raw) return 'b';
+      if (String(currentQ.option_c || '').trim().toLowerCase() === raw) return 'c';
+      if (String(currentQ.option_d || '').trim().toLowerCase() === raw) return 'd';
+      return raw || 'a';
+    })();
+
+    const feedbackObj = {
+      selectedAnswer: 'timeout',
+      isCorrect: false,
+      points: 0,
+      isTimeout: true,
+      correctAnswer: correctLetter,
+      explanation: currentQ.explanation,
+      verseReference: currentQ.verse_reference
+    };
+
+    setCurrentFeedback(feedbackObj);
+    playNotificationSound();
+
+    setMyAnswers(prev => ({
+      ...prev,
+      [myQuestionIndex]: feedbackObj
+    }));
+
+    // 1. Envío WebSocket (0ms)
+    if (socket && socket.connected) {
+      socket.emit('meet:submit-answer', {
+        meetId: id,
+        questionIndex: myQuestionIndex,
+        selectedAnswer: 'timeout',
+        timeTakenMs: limitSec * 1000,
+        user
+      });
     }
+
+    // 2. Respaldo HTTP infalible
+    api.post(`/meetings/${id}/submit-answer`, {
+      questionIndex: myQuestionIndex,
+      selectedAnswer: 'timeout',
+      timeTakenMs: limitSec * 1000
+    }).catch(err => console.warn('[Meet] Respaldo HTTP submit timeout:', err));
+
+    // Auto-avance suave después de 1.8 segundos a la siguiente pregunta
+    if (autoAdvanceTimer) clearTimeout(autoAdvanceTimer);
+    const advanceTimeout = setTimeout(() => {
+      handleGoToNextQuestion();
+    }, 1800);
+    setAutoAdvanceTimer(advanceTimeout);
   };
 
-  const handlePointerLeave = () => {
-    if (!isHost || !laserModeActive) return;
-    if (socket) {
-      socket.emit('meet:laser-move', { meetId: id, x: 0, y: 0, active: false });
-    }
-  };
-
-  // 1. RESPONDER UNA PREGUNTA EN EL SET INDIVIDUAL
+  // 3. RESPONDER UNA PREGUNTA EN EL SET INDIVIDUAL
   const handleAnswerSelect = async (optKey) => {
     if (currentFeedback || isSelfFinished || revealedResults) return;
 
@@ -581,23 +619,72 @@ const MeetRoomPage = () => {
     setAutoAdvanceTimer(advanceTimeout);
   };
 
-  // 2. AVANZAR A LA SIGUIENTE PREGUNTA DEL SET O FINALIZAR
-  const handleGoToNextQuestion = () => {
-    if (autoAdvanceTimer) {
-      clearTimeout(autoAdvanceTimer);
-      setAutoAdvanceTimer(null);
+  // Temporizador para cada pregunta individual con avance automático al llegar a 0
+  useEffect(() => {
+    if (phase !== 'quiz' || isSelfFinished || currentFeedback || revealedResults) return;
+
+    if (timeLeft <= 0) {
+      handleAnswerTimeout();
+      return;
     }
 
-    const nextIdx = myQuestionIndex + 1;
-    setCurrentFeedback(null);
+    const timer = setInterval(() => {
+      setTimeLeft(prev => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
 
-    if (nextIdx < activeQuestions.length) {
-      setMyQuestionIndex(nextIdx);
-      setTimeLeft(activeQuestions[nextIdx]?.time_limit_seconds || 25);
-    } else {
-      // Completó todas las preguntas del set -> Pasa a Pantalla de Espera
-      setIsSelfFinished(true);
-      playNotificationSound();
+    return () => clearInterval(timer);
+  }, [phase, timeLeft, isSelfFinished, currentFeedback, revealedResults, myQuestionIndex]);
+
+  // Controles de Página del Líder
+  const handlePageChange = (newPage) => {
+    if (newPage < 1) return;
+    setCurrentPage(newPage);
+    if (socket) {
+      socket.emit('meet:change-page', { meetId: id, page: newPage });
+    }
+  };
+
+  // Movimiento del Puntero Láser
+  const handlePointerCoords = (clientX, clientY) => {
+    if (!isHost || !laserModeActive || !pdfContainerRef.current) return;
+    const rect = pdfContainerRef.current.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const x = Math.max(0, Math.min(100, ((clientX - rect.left) / rect.width) * 100));
+    const y = Math.max(0, Math.min(100, ((clientY - rect.top) / rect.height) * 100));
+
+    if (socket) {
+      socket.emit('meet:laser-move', { meetId: id, x, y, active: true });
+    }
+  };
+
+  const handleMouseMove = (e) => {
+    handlePointerCoords(e.clientX, e.clientY);
+  };
+
+  const handleTouchMove = (e) => {
+    if (!isHost || !laserModeActive) return;
+    if (e.touches && e.touches.length > 0) {
+      handlePointerCoords(e.touches[0].clientX, e.touches[0].clientY);
+    }
+  };
+
+  const handleTouchStart = (e) => {
+    if (!isHost || !laserModeActive) return;
+    if (e.touches && e.touches.length > 0) {
+      handlePointerCoords(e.touches[0].clientX, e.touches[0].clientY);
+    }
+  };
+
+  const handlePointerLeave = () => {
+    if (!isHost || !laserModeActive) return;
+    if (socket) {
+      socket.emit('meet:laser-move', { meetId: id, x: 0, y: 0, active: false });
     }
   };
 
@@ -719,9 +806,9 @@ const MeetRoomPage = () => {
         {/* Derecha: Participantes y Controles Maestros */}
         <div className="flex items-center gap-1 sm:gap-2 shrink-0">
           <div className="bg-white/10 text-gray-200 px-2 sm:px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 border border-white/10 shadow-inner">
-            <div className="flex items-center gap-1" title={`${participants.length} participantes en esta sala en vivo`}>
+            <div className="flex items-center gap-1" title={`${connectedCount} personas conectadas en esta sala en vivo`}>
               <Users className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gold shrink-0" />
-              <span className="text-[11px] sm:text-xs font-bold text-white">{participants.length}</span>
+              <span className="text-[11px] sm:text-xs font-bold text-white">{connectedCount}</span>
               <span className="hidden sm:inline text-gray-300">en sala</span>
             </div>
             <span className="text-gray-500">•</span>
@@ -1022,7 +1109,12 @@ const MeetRoomPage = () => {
                 {currentFeedback && (
                   <div className="bg-slate-900 border border-gold/40 p-3 sm:p-4 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-3 animate-fadeIn">
                     <div className="flex items-center gap-2.5 text-xs sm:text-sm">
-                      {currentFeedback.isCorrect ? (
+                      {currentFeedback.isTimeout ? (
+                        <div className="flex items-center gap-1.5 text-amber-400 font-bold">
+                          <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-red-400 animate-pulse" />
+                          <span>⏰ ¡Tiempo agotado! (0 pts) • La correcta era la ({currentFeedback.correctAnswer?.toUpperCase()})</span>
+                        </div>
+                      ) : currentFeedback.isCorrect ? (
                         <div className="flex items-center gap-1.5 text-green-400 font-bold">
                           <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5" />
                           <span>¡Correcto! +{currentFeedback.points} pts</span>

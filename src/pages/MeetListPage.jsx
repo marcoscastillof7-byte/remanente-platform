@@ -20,6 +20,7 @@ import {
   XCircle
 } from 'lucide-react';
 import { api } from '../utils/api';
+import { supabase } from '../utils/supabase';
 import { useAuth } from '../hooks/useAuth';
 import CreateMeetModal from '../components/meet/CreateMeetModal';
 import ManageQuestionsModal from '../components/meet/ManageQuestionsModal';
@@ -78,6 +79,19 @@ const MeetListPage = () => {
       }
     };
     window.addEventListener('platform-online-update', handleOnlineWindow);
+    window.addEventListener('remanente-meet-updated', handleRealtimeUpdate);
+
+    // Suscripción infalible en tiempo real con Supabase
+    const supabaseChannel = supabase
+      .channel('meets_list_realtime_channel')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'meetings' },
+        () => {
+          fetchMeets(false);
+        }
+      )
+      .subscribe();
 
     const interval = setInterval(() => {
       fetchMeets(false);
@@ -87,6 +101,8 @@ const MeetListPage = () => {
     return () => {
       clearInterval(interval);
       window.removeEventListener('platform-online-update', handleOnlineWindow);
+      window.removeEventListener('remanente-meet-updated', handleRealtimeUpdate);
+      supabase.removeChannel(supabaseChannel);
       socket.off('meet:updated', handleRealtimeUpdate);
       socket.off('meet:started', handleRealtimeUpdate);
       socket.off('meet:session-ended', handleRealtimeUpdate);
