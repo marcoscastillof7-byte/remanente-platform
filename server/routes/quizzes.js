@@ -167,6 +167,24 @@ router.post('/:chapterId/submit', async (req, res) => {
                         criteriaMet = true;
                     } else if (a.criteria_type === 'streak' && newStreak >= a.criteria_value) {
                         criteriaMet = true;
+                    } else if (a.criteria_type === 'book_completed') {
+                        const { data: userChaps } = await supabase
+                            .from('quiz_attempts')
+                            .select('chapter_id, chapters!inner(book_id)')
+                            .eq('user_id', userId);
+                        if (userChaps) {
+                            const { data: allBooks } = await supabase.from('books').select('id, chapters_count');
+                            let booksCompleted = 0;
+                            for (let b of (allBooks || [])) {
+                                const chapsInBook = new Set(userChaps.filter(c => c.chapters?.book_id === b.id).map(c => c.chapter_id));
+                                if (chapsInBook.size >= b.chapters_count && b.chapters_count > 0) {
+                                    booksCompleted++;
+                                }
+                            }
+                            if (booksCompleted >= a.criteria_value) {
+                                criteriaMet = true;
+                            }
+                        }
                     }
                     
                     if (criteriaMet) {
