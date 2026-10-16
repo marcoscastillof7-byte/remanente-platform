@@ -799,8 +799,7 @@ export async function submitRoomAnswer(meetId, questionIndex, selectedAnswer, ti
     const isFinished = uAnswers.size >= room.questions.length;
 
     if (io) {
-        const isFinished = uAnswers.size >= room.questions.length;
-        scheduleRoomProgressBroadcast(io, idStr, room, isFinished && progress.allFinished);
+        scheduleRoomProgressBroadcast(io, idStr, room, isFinished || progress.allFinished);
     }
 
     // Persistencia continua por lotes (debounce 400ms) para blindar contra recarga y caídas sin colisiones
@@ -1114,8 +1113,31 @@ export async function endRoomSession(meetId, io = null) {
                 }
             }
         }
-        await supabase.from('meetings').update({ status: 'ended' }).eq('id', idStr);
+
+        // Eliminar automáticamente toda la data transitoria del meet (respuestas en vivo, progreso, podio en caché)
+        const { data: currentMeet } = await supabase.from('meetings').select('description').eq('id', idStr).single();
+        let meta = {};
+        try { meta = JSON.parse(currentMeet?.description || '{}'); } catch {}
+        delete meta.savedUserAnswers;
+        delete meta.savedParticipants;
+        delete meta.revealedResults;
+        meta.phase = 'ended';
+
+        await supabase.from('meetings').update({ 
+            status: 'ended',
+            description: JSON.stringify(meta)
+        }).eq('id', idStr);
+
         activeRooms.delete(idStr);
+        if (pendingPersistTimers.has(idStr)) {
+            clearTimeout(pendingPersistTimers.get(idStr));
+            pendingPersistTimers.delete(idStr);
+        }
+        if (progressThrottleTimers.has(idStr)) {
+            clearTimeout(progressThrottleTimers.get(idStr));
+            progressThrottleTimers.delete(idStr);
+        }
+
         if (io) {
             io.emit('leaderboard-update');
             io.emit('meet:updated');

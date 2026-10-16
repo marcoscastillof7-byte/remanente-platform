@@ -424,6 +424,58 @@ router.get('/:id', async (req, res) => {
             time_limit_seconds: q.time_limit_seconds || 25
         }));
 
+        // Recuperar respuestas personales y estado del usuario actual (si ha salido o recargado)
+        const userIdStr = String(req.user?.id || '');
+        let myAnswersList = [];
+        let myScore = 0;
+        let myIsFinished = false;
+
+        if (userIdStr) {
+            if (room?.userAnswers && room.userAnswers.has(userIdStr)) {
+                myAnswersList = Array.from(room.userAnswers.get(userIdStr).values());
+            } else if (meta.savedUserAnswers && meta.savedUserAnswers[userIdStr]) {
+                myAnswersList = Object.values(meta.savedUserAnswers[userIdStr]);
+            }
+
+            if (room?.participants && room.participants.has(userIdStr)) {
+                myScore = room.participants.get(userIdStr).score || 0;
+            } else if (meta.savedParticipants && meta.savedParticipants[userIdStr]) {
+                myScore = meta.savedParticipants[userIdStr].score || 0;
+            } else {
+                myScore = myAnswersList.reduce((acc, ans) => acc + (Number(ans?.points) || 0), 0);
+            }
+
+            myIsFinished = questionsList.length > 0 && myAnswersList.length >= questionsList.length;
+        }
+
+        // Recuperar o reconstruir progreso del quiz
+        let effectiveQuizProgress = room ? getRoomQuizProgress(room) : null;
+        if (!effectiveQuizProgress && meta.savedUserAnswers) {
+            const savedUsers = Object.keys(meta.savedUserAnswers);
+            const participantsProgress = savedUsers.map(uId => {
+                const uAns = Object.values(meta.savedUserAnswers[uId] || {});
+                const sPart = meta.savedParticipants?.[uId] || {};
+                const uScore = sPart.score !== undefined ? sPart.score : uAns.reduce((acc, a) => acc + (Number(a?.points) || 0), 0);
+                return {
+                    id: uId,
+                    username: sPart.username || uAns[0]?.username || 'Participante',
+                    score: uScore,
+                    completedCount: uAns.length,
+                    isFinished: questionsList.length > 0 && uAns.length >= questionsList.length
+                };
+            });
+            const finishedCount = participantsProgress.filter(p => p.isFinished).length;
+            effectiveQuizProgress = {
+                meetId: String(data.id),
+                totalQuestions: questionsList.length,
+                totalParticipants: participantsProgress.length,
+                finishedCount,
+                allFinished: participantsProgress.length > 0 && finishedCount >= participantsProgress.length,
+                participantsProgress,
+                leaderboard: [...participantsProgress].sort((a, b) => b.score - a.score)
+            };
+        }
+
         res.json({
             id: data.id,
             title: data.title,
@@ -437,7 +489,11 @@ router.get('/:id', async (req, res) => {
             status: data.status,
             phase: currentPhase,
             revealedResults,
-            quizProgress: room ? getRoomQuizProgress(room) : null,
+            quizProgress: effectiveQuizProgress,
+            // Datos personales persistentes recuperables al salir y volver a entrar
+            myAnswers: myAnswersList,
+            myScore,
+            myIsFinished,
             host_id: data.host_id,
             host_name: data.users?.username || 'Líder',
             room_name: data.room_name,
@@ -731,20 +787,11 @@ router.put('/:id/status', async (req, res) => {
 
         if (error) throw error;
 
-        if (req.app.get('io')) {
+        if (status === 'ended') {
             const io = req.app.get('io');
-            if (status === 'ended') {
-                endActiveRoom(req.params.id);
-                const sessionEndedPayload = { 
-                    meetId: String(req.params.id), 
-                    message: 'La reunión ha sido finalizada por el líder.',
-                    closed: true
-                };
-                io.to(`meet:${req.params.id}`).emit('meet:phase-changed', { phase: 'finished' });
-                io.emit('meet:phase-changed', { meetId: String(req.params.id), phase: 'finished' });
-                io.to(`meet:${req.params.id}`).emit('meet:session-ended', sessionEndedPayload);
-                io.emit('meet:session-ended', sessionEndedPayload);
-            }
+            await endRoomSession(req.params.id, io);
+        } else if (req.app.get('io')) {
+            const io = req.app.get('io');
             io.emit('meet:updated');
         }
 

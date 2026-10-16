@@ -138,6 +138,7 @@ const MeetRoomPage = () => {
   const [isManageQuestionsOpen, setIsManageQuestionsOpen] = useState(false);
   const [isRoomParticipantsModalOpen, setIsRoomParticipantsModalOpen] = useState(false);
   const [participantsModalTab, setParticipantsModalTab] = useState('room'); // 'room' | 'platform'
+  const [isQuizProgressModalOpen, setIsQuizProgressModalOpen] = useState(false);
   const [roomPresenceUsers, setRoomPresenceUsers] = useState([]);
 
   const isHost = meet && (String(user?.id) === String(meet.host_id) || ['admin', 'superadmin', 'lider', 'leader'].includes(user?.role?.toLowerCase()));
@@ -241,12 +242,121 @@ const MeetRoomPage = () => {
       });
     }
 
+    // 3. Garantizar que el usuario local siempre esté presente con su estado actualizado
+    if (user?.id) {
+      const myId = String(user.id);
+      const existing = map.get(myId);
+      map.set(myId, {
+        ...existing,
+        id: myId,
+        userId: user.id,
+        username: user.username || 'Tú',
+        role: user.role || 'user',
+        isHost: Boolean(isHost),
+        score: mySessionScore || existing?.score || 0,
+        isFinished: isSelfFinished || existing?.isFinished,
+        completedCount: Object.keys(myAnswers).length,
+        connected: true
+      });
+    }
+
     return Array.from(map.values());
-  }, [roomPresenceUsers, participants, user?.id, user?.username, isHost, mySessionScore, isSelfFinished, myAnswers]);
+  }, [roomPresenceUsers, participants, user?.id, user?.username, user?.role, isHost, mySessionScore, isSelfFinished, myAnswers]);
 
   const connectedParticipants = allRoomParticipants.filter(p => p.connected !== false);
   const connectedCount = Math.max(1, connectedParticipants.length);
   const safeTotalParticipants = Math.max(connectedCount, allRoomParticipants.length, quizProgress.totalParticipants || 0, 1);
+
+  // Lista unificada y reactiva de progreso de todos los participantes en el quiz
+  const {
+    unifiedQuizProgressList,
+    readyParticipants,
+    inProgressParticipants,
+    effectiveFinishedCount,
+    effectiveTotalParticipants
+  } = useMemo(() => {
+    const listMap = new Map();
+    const totalQ = (quizQuestions && quizQuestions.length) || (meet?.questions && meet.questions.length) || 1;
+
+    // 1. Agregar todos los participantes conectados/presentes en la sala
+    allRoomParticipants.forEach(p => {
+      if (!p) return;
+      const pId = String(p.id || p.userId || p.username);
+      const isMe = String(user?.id) === pId || p.username === user?.username;
+      const myCompleted = Object.keys(myAnswers).length;
+      const finished = isMe 
+        ? (isSelfFinished || myCompleted >= totalQ)
+        : Boolean(p.isFinished || (p.completedCount !== undefined && p.completedCount >= totalQ));
+
+      listMap.set(pId, {
+        id: pId,
+        username: p.username || (isMe ? (user?.username || 'Tú') : 'Participante'),
+        score: isMe ? Math.max(mySessionScore, p.score || 0) : (p.score || 0),
+        completedCount: isMe ? myCompleted : (p.completedCount || 0),
+        isFinished: finished,
+        isMe,
+        role: p.role,
+        isHost: p.isHost
+      });
+    });
+
+    // 2. Fusionar los datos emitidos por quizProgress.participantsProgress del servidor
+    if (quizProgress?.participantsProgress && Array.isArray(quizProgress.participantsProgress)) {
+      quizProgress.participantsProgress.forEach(sp => {
+        if (!sp) return;
+        const spId = String(sp.id || sp.userId || sp.username);
+        const existing = listMap.get(spId);
+        const isMe = String(user?.id) === spId || sp.username === user?.username;
+        const finished = isMe ? (isSelfFinished || existing?.isFinished || sp.isFinished) : Boolean(sp.isFinished);
+        const score = isMe ? Math.max(mySessionScore, sp.score || 0, existing?.score || 0) : (sp.score !== undefined ? sp.score : (existing?.score || 0));
+        const completedCount = isMe ? Math.max(Object.keys(myAnswers).length, sp.completedCount || 0) : (sp.completedCount !== undefined ? sp.completedCount : (existing?.completedCount || 0));
+
+        listMap.set(spId, {
+          ...existing,
+          id: spId,
+          username: sp.username || existing?.username || 'Participante',
+          score,
+          completedCount,
+          isFinished: finished || completedCount >= totalQ,
+          isMe,
+          role: existing?.role || 'user',
+          isHost: existing?.isHost
+        });
+      });
+    }
+
+    // 3. Asegurar que el usuario actual siempre esté presente con su estado local más fresco
+    if (user?.id) {
+      const myId = String(user.id);
+      const existing = listMap.get(myId);
+      const myCompleted = Object.keys(myAnswers).length;
+      listMap.set(myId, {
+        ...existing,
+        id: myId,
+        username: user.username || 'Tú',
+        score: Math.max(mySessionScore, existing?.score || 0),
+        completedCount: Math.max(myCompleted, existing?.completedCount || 0),
+        isFinished: isSelfFinished || myCompleted >= totalQ || Boolean(existing?.isFinished),
+        isMe: true,
+        role: user.role || 'user',
+        isHost: Boolean(isHost)
+      });
+    }
+
+    const all = Array.from(listMap.values());
+    const ready = all.filter(p => p.isFinished);
+    const inProgress = all.filter(p => !p.isFinished);
+    const totalCount = Math.max(all.length, quizProgress?.totalParticipants || 0, safeTotalParticipants || 1);
+    const finishedCount = Math.max(ready.length, quizProgress?.finishedCount || 0);
+
+    return {
+      unifiedQuizProgressList: all,
+      readyParticipants: ready,
+      inProgressParticipants: inProgress,
+      effectiveFinishedCount: finishedCount,
+      effectiveTotalParticipants: totalCount
+    };
+  }, [allRoomParticipants, quizProgress, quizQuestions, meet?.questions, user?.id, user?.username, user?.role, myAnswers, isSelfFinished, mySessionScore, isHost, safeTotalParticipants]);
 
   useEffect(() => {
     loadMeetDetails();
@@ -256,6 +366,11 @@ const MeetRoomPage = () => {
     try {
       const data = await api.get(`/meetings/${id}`);
       if (data?.status === 'ended') {
+        try {
+          localStorage.removeItem(`meet_quiz_${id}_${user?.id}`);
+          localStorage.removeItem(`remanente_meet_quiz_${id}_${user?.id}`);
+          sessionStorage.removeItem(`meet_quiz_${id}_${user?.id}`);
+        } catch (e) {}
         setSessionClosing({
           message: 'Esta reunión ya ha sido finalizada por el líder.',
           countdown: 3
@@ -267,6 +382,38 @@ const MeetRoomPage = () => {
       if (data?.questions && Array.isArray(data.questions) && data.questions.length > 0) {
         setQuizQuestions(data.questions);
       }
+      if (data?.phase) {
+        setPhase(data.phase);
+      }
+      if (data?.revealedResults) {
+        setRevealedResults(data.revealedResults);
+        if (data.revealedResults.leaderboard) setLiveLeaderboard(data.revealedResults.leaderboard);
+        if (data.revealedResults.podium) setFinalPodium(data.revealedResults.podium);
+      }
+      if (data?.quizProgress) {
+        setQuizProgress(data.quizProgress);
+        if (data.quizProgress.leaderboard) setLiveLeaderboard(data.quizProgress.leaderboard);
+      }
+      // Restauración de respuestas y puntaje si el usuario salió y volvió a entrar
+      if (data?.myAnswers && Array.isArray(data.myAnswers) && data.myAnswers.length > 0) {
+        setMyAnswers(prev => {
+          const map = { ...prev };
+          data.myAnswers.forEach(ans => {
+            if (ans && ans.questionIndex !== undefined) {
+              map[ans.questionIndex] = ans;
+            }
+          });
+          return map;
+        });
+        const highestIdx = Math.max(...data.myAnswers.map(a => Number(a.questionIndex) || 0));
+        setMyQuestionIndex(prev => Math.max(prev, Math.min(highestIdx + 1, (data.questions?.length || 1) - 1)));
+      }
+      if (data?.myScore !== undefined && data.myScore > 0) {
+        setMySessionScore(prev => Math.max(prev, data.myScore));
+      }
+      if (data?.myIsFinished) {
+        setIsSelfFinished(true);
+      }
     } catch (err) {
       console.error('Error cargando meet:', err);
       alert('Error cargando la sala Meet.');
@@ -276,12 +423,13 @@ const MeetRoomPage = () => {
     }
   };
 
-  // Blindaje y recuperación inmediata local anti-recarga (Anti-F5 / Anti-Rejoin)
+  // Blindaje y recuperación inmediata local anti-recarga y anti-salida accidental (Anti-F5 / Anti-Rejoin)
   useEffect(() => {
     if (!id || !user?.id) return;
     const cacheKey = `meet_quiz_${id}_${user.id}`;
+    const altCacheKey = `remanente_meet_quiz_${id}_${user.id}`;
     try {
-      const cached = sessionStorage.getItem(cacheKey);
+      const cached = localStorage.getItem(cacheKey) || localStorage.getItem(altCacheKey) || sessionStorage.getItem(cacheKey);
       if (cached) {
         const parsed = JSON.parse(cached);
         if (parsed?.answers && Object.keys(parsed.answers).length > 0) {
@@ -301,15 +449,30 @@ const MeetRoomPage = () => {
     const cacheKey = `meet_quiz_${id}_${user.id}`;
     if (Object.keys(myAnswers).length > 0) {
       try {
-        sessionStorage.setItem(cacheKey, JSON.stringify({
+        const serialized = JSON.stringify({
           answers: myAnswers,
           questionIndex: myQuestionIndex,
           isFinished: isSelfFinished,
           score: mySessionScore
-        }));
+        });
+        localStorage.setItem(cacheKey, serialized);
+        sessionStorage.setItem(cacheKey, serialized);
       } catch (e) {}
     }
   }, [myAnswers, myQuestionIndex, isSelfFinished, mySessionScore, id, user?.id]);
+
+  // Limpieza automática total de datos locales al finalizar o cerrar la reunión
+  useEffect(() => {
+    if (sessionClosing || meet?.status === 'ended') {
+      try {
+        if (id && user?.id) {
+          localStorage.removeItem(`meet_quiz_${id}_${user.id}`);
+          localStorage.removeItem(`remanente_meet_quiz_${id}_${user.id}`);
+          sessionStorage.removeItem(`meet_quiz_${id}_${user.id}`);
+        }
+      } catch (e) {}
+    }
+  }, [sessionClosing, meet?.status, id, user?.id]);
 
   // Inicializar Socket.io con reconexión robusta
   useEffect(() => {
@@ -585,6 +748,13 @@ const MeetRoomPage = () => {
       if (poc) setPlatformOnlineCount(poc);
       setPhase('finished');
       playNotificationSound();
+      try {
+        if (id && user?.id) {
+          localStorage.removeItem(`meet_quiz_${id}_${user.id}`);
+          localStorage.removeItem(`remanente_meet_quiz_${id}_${user.id}`);
+          sessionStorage.removeItem(`meet_quiz_${id}_${user.id}`);
+        }
+      } catch (e) {}
       setSessionClosing(prev => prev || {
         message: message || 'La reunión ha sido finalizada por el líder.',
         countdown: 4
@@ -836,11 +1006,43 @@ const MeetRoomPage = () => {
       try {
         const res = await api.get(`/meetings/${id}`, false);
         if (res && res.status === 'ended') {
+          try {
+            if (id && user?.id) {
+              localStorage.removeItem(`meet_quiz_${id}_${user.id}`);
+              localStorage.removeItem(`remanente_meet_quiz_${id}_${user.id}`);
+              sessionStorage.removeItem(`meet_quiz_${id}_${user.id}`);
+            }
+          } catch (e) {}
           setSessionClosing(prev => prev || {
             message: 'La reunión ha sido finalizada por el líder.',
             countdown: 4
           });
           return;
+        }
+
+        // Sincronización continua de quizProgress
+        if (res?.quizProgress) {
+          setQuizProgress(res.quizProgress);
+          if (res.quizProgress.leaderboard) setLiveLeaderboard(res.quizProgress.leaderboard);
+        }
+
+        // Restauración de respuestas y puntaje si el usuario no las tenía
+        if (res?.myAnswers && Array.isArray(res.myAnswers) && res.myAnswers.length > 0 && Object.keys(myAnswersRef.current || {}).length === 0) {
+          setMyAnswers(prev => {
+            const map = { ...prev };
+            res.myAnswers.forEach(ans => {
+              if (ans && ans.questionIndex !== undefined) {
+                map[ans.questionIndex] = ans;
+              }
+            });
+            return map;
+          });
+          if (res.myScore !== undefined && res.myScore > 0) {
+            setMySessionScore(prev => Math.max(prev, res.myScore));
+          }
+          if (res.myIsFinished) {
+            setIsSelfFinished(true);
+          }
         }
 
         // 1. Sincronización automática de fase Quiz
@@ -1437,12 +1639,26 @@ const MeetRoomPage = () => {
             </button>
           )}
 
+          {/* Botón de Progreso del Quiz en Vivo */}
+          {phase === 'quiz' && (
+            <button
+              type="button"
+              onClick={() => setIsQuizProgressModalOpen(true)}
+              className="bg-emerald-950/60 hover:bg-emerald-900/60 text-emerald-200 border border-emerald-500/40 px-2 sm:px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all hover:scale-105 shadow-inner"
+              title="Ver participantes listos y en progreso"
+            >
+              <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
+              <span>{effectiveFinishedCount}/{effectiveTotalParticipants}</span>
+              <span className="hidden sm:inline font-normal text-emerald-300">listos</span>
+            </button>
+          )}
+
           {/* Botón Maestro del Líder para Mostrar Resultados y Podio */}
           {isHost && phase === 'quiz' && !revealedResults && (
             <button
               onClick={handleRevealQuizResults}
               className={`inline-flex items-center gap-1 sm:gap-1.5 text-white px-2.5 sm:px-3.5 py-1.5 rounded-lg text-xs font-black shadow-lg transition-all cursor-pointer hover:scale-105 ${
-                quizProgress.allFinished 
+                effectiveFinishedCount >= effectiveTotalParticipants 
                   ? 'bg-gradient-to-r from-emerald-500 to-green-500 animate-bounce ring-2 ring-emerald-300 text-slate-900' 
                   : 'bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500'
               }`}
@@ -1450,7 +1666,7 @@ const MeetRoomPage = () => {
             >
               <BarChart3 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               <span className="hidden xs:inline">
-                {quizProgress.allFinished ? '¡Podio Listo!' : 'Mostrar Resultados'}
+                {effectiveFinishedCount >= effectiveTotalParticipants ? '¡Podio Listo!' : `Mostrar Resultados (${effectiveFinishedCount}/${effectiveTotalParticipants})`}
               </span>
               <span>📊</span>
             </button>
@@ -1632,7 +1848,7 @@ const MeetRoomPage = () => {
                         Pregunta {myQuestionIndex + 1} de {activeQuestions.length}
                       </span>
                       <span className="text-[11px] sm:text-xs text-gray-300 font-semibold hidden xs:inline">
-                        • {quizProgress.finishedCount} de {safeTotalParticipants} completaron
+                        • {effectiveFinishedCount} de {effectiveTotalParticipants} completaron
                       </span>
                     </div>
                     {/* Barra de progreso de preguntas respondidas */}
@@ -1668,7 +1884,7 @@ const MeetRoomPage = () => {
                   <div className="bg-blue-950/40 border border-blue-500/40 p-2.5 rounded-xl flex items-center justify-between text-xs text-blue-200">
                     <div className="flex items-center gap-2">
                       <span className="font-bold text-gold">👑 Panel Líder:</span>
-                      <span>{quizProgress.finishedCount} de {safeTotalParticipants} completaron todas las preguntas.</span>
+                      <span>{effectiveFinishedCount} de {effectiveTotalParticipants} completaron todas las preguntas.</span>
                     </div>
                     <button
                       onClick={handleRevealQuizResults}
@@ -1783,11 +1999,15 @@ const MeetRoomPage = () => {
                 <div className="bg-slate-900/60 border border-white/10 rounded-xl p-3 text-xs text-gray-300 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Users className="w-3.5 h-3.5 text-gold" />
-                    <span>Progreso de la sala: {quizProgress.finishedCount} de {safeTotalParticipants} completaron</span>
+                    <span>Progreso de la sala: {effectiveFinishedCount} de {effectiveTotalParticipants} completaron</span>
                   </div>
-                  <span className="text-gray-400 font-mono text-[11px]">
-                    {quizProgress.allFinished ? '¡Todos listos!' : 'Respondiendo a su ritmo'}
-                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setIsQuizProgressModalOpen(true)}
+                    className="text-gold hover:text-white font-mono text-[11px] underline cursor-pointer transition-colors"
+                  >
+                    {effectiveFinishedCount >= effectiveTotalParticipants ? '¡Todos listos! Ver lista' : 'Ver quiénes están listos 🔍'}
+                  </button>
                 </div>
 
               </div>
@@ -1843,12 +2063,12 @@ const MeetRoomPage = () => {
                         Progreso de los Hermanos en Vivo
                       </h3>
                       <p className="text-[11px] text-gray-400">
-                        {quizProgress.finishedCount} de {safeTotalParticipants} participantes han finalizado
+                        {effectiveFinishedCount} de {effectiveTotalParticipants} participantes han finalizado
                       </p>
                     </div>
                   </div>
 
-                  {quizProgress.allFinished ? (
+                  {effectiveFinishedCount >= effectiveTotalParticipants ? (
                     <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/20 border border-emerald-400 text-emerald-300 animate-pulse">
                       <CheckCheck className="w-4 h-4" />
                       <span>¡Todos Terminaron!</span>
@@ -1856,7 +2076,7 @@ const MeetRoomPage = () => {
                   ) : (
                     <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-500/20 border border-amber-400 text-amber-300">
                       <Clock className="w-3.5 h-3.5 animate-spin" />
-                      <span>Esperando ({Math.max(0, safeTotalParticipants - quizProgress.finishedCount)})</span>
+                      <span>Esperando ({Math.max(0, effectiveTotalParticipants - effectiveFinishedCount)})</span>
                     </span>
                   )}
                 </div>
@@ -1865,38 +2085,72 @@ const MeetRoomPage = () => {
                 <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden border border-white/10">
                   <div 
                     className="h-full bg-gradient-to-r from-gold to-emerald-400 transition-all duration-500"
-                    style={{ width: `${safeTotalParticipants > 0 ? (quizProgress.finishedCount / safeTotalParticipants) * 100 : 0}%` }}
+                    style={{ width: `${effectiveTotalParticipants > 0 ? (effectiveFinishedCount / effectiveTotalParticipants) * 100 : 0}%` }}
                   />
                 </div>
 
                 {/* Lista de Participantes: Listos vs En Progreso */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-48 overflow-y-auto">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-56 overflow-y-auto pr-1">
                   {/* Listos */}
                   <div className="space-y-1.5">
-                    <p className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1">
-                      <CheckCircle className="w-3.5 h-3.5" />
-                      <span>Listos ({quizProgress.finishedCount})</span>
+                    <p className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider flex items-center justify-between">
+                      <span className="flex items-center gap-1">
+                        <CheckCircle className="w-3.5 h-3.5" />
+                        <span>Listos ({readyParticipants.length})</span>
+                      </span>
+                      <span className="text-[10px] text-emerald-300/80 font-normal">Concluyeron</span>
                     </p>
-                    {(quizProgress.participantsProgress || []).filter(p => p.isFinished).map(p => (
-                      <div key={p.id} className="flex items-center justify-between p-2 rounded-lg bg-emerald-950/30 border border-emerald-500/30 text-xs text-emerald-200">
-                        <span className="font-semibold truncate">{p.username}</span>
-                        <span className="font-mono text-emerald-400 font-bold">{p.score} pts</span>
-                      </div>
-                    ))}
+                    {readyParticipants.length === 0 ? (
+                      <p className="text-[11px] text-gray-500 italic p-2 rounded bg-slate-950/40 border border-white/5">
+                        Esperando que concluyan...
+                      </p>
+                    ) : (
+                      readyParticipants.map(p => (
+                        <div key={p.id} className={`flex items-center justify-between p-2 rounded-lg border text-xs ${
+                          p.isMe 
+                            ? 'bg-emerald-900/40 border-emerald-400/50 text-emerald-100 ring-1 ring-emerald-400/40' 
+                            : 'bg-emerald-950/30 border-emerald-500/30 text-emerald-200'
+                        }`}>
+                          <div className="flex items-center gap-1.5 truncate">
+                            <span className="font-semibold truncate">{p.username}</span>
+                            {p.isMe && <span className="text-[9px] bg-emerald-500/30 text-emerald-300 px-1 rounded font-bold">(Tú)</span>}
+                          </div>
+                          <span className="font-mono text-emerald-400 font-bold ml-2 shrink-0">{p.score} pts</span>
+                        </div>
+                      ))
+                    )}
                   </div>
 
                   {/* En progreso */}
                   <div className="space-y-1.5">
-                    <p className="text-[11px] font-bold text-amber-300 uppercase tracking-wider flex items-center gap-1">
-                      <Clock className="w-3.5 h-3.5" />
-                      <span>En Progreso ({(quizProgress.participantsProgress || []).filter(p => !p.isFinished).length})</span>
+                    <p className="text-[11px] font-bold text-amber-300 uppercase tracking-wider flex items-center justify-between">
+                      <span className="flex items-center gap-1">
+                        <Clock className="w-3.5 h-3.5" />
+                        <span>En Progreso ({inProgressParticipants.length})</span>
+                      </span>
+                      <span className="text-[10px] text-amber-300/80 font-normal">Respondiendo</span>
                     </p>
-                    {(quizProgress.participantsProgress || []).filter(p => !p.isFinished).map(p => (
-                      <div key={p.id} className="flex items-center justify-between p-2 rounded-lg bg-amber-950/25 border border-amber-500/30 text-xs text-amber-200">
-                        <span className="truncate">{p.username}</span>
-                        <span className="text-[10px] text-amber-400 font-mono">Pregunta {p.completedCount + 1}/{activeQuestions.length} ⏳</span>
-                      </div>
-                    ))}
+                    {inProgressParticipants.length === 0 ? (
+                      <p className="text-[11px] text-gray-500 italic p-2 rounded bg-slate-950/40 border border-white/5">
+                        Ningún hermano en progreso
+                      </p>
+                    ) : (
+                      inProgressParticipants.map(p => (
+                        <div key={p.id} className={`flex items-center justify-between p-2 rounded-lg border text-xs ${
+                          p.isMe 
+                            ? 'bg-amber-900/30 border-amber-400/50 text-amber-100 ring-1 ring-amber-400/40' 
+                            : 'bg-amber-950/25 border-amber-500/30 text-amber-200'
+                        }`}>
+                          <div className="flex items-center gap-1.5 truncate">
+                            <span className="truncate">{p.username}</span>
+                            {p.isMe && <span className="text-[9px] bg-amber-500/30 text-amber-300 px-1 rounded font-bold">(Tú)</span>}
+                          </div>
+                          <span className="text-[10px] text-amber-400 font-mono ml-2 shrink-0">
+                            Pregunta {Math.min(activeQuestions.length, (p.completedCount || 0) + 1)}/{activeQuestions.length} ⏳
+                          </span>
+                        </div>
+                      ))
+                    )}
                   </div>
                 </div>
 
@@ -1909,7 +2163,7 @@ const MeetRoomPage = () => {
                     👑 Control de Moderación del Líder
                   </h4>
                   <p className="text-xs text-gray-300 max-w-md mx-auto">
-                    {quizProgress.allFinished 
+                    {effectiveFinishedCount >= effectiveTotalParticipants 
                       ? '¡Gloria a Dios! Todos los participantes han contestado las preguntas. Ya puedes revelar el podio oficial y los resultados.'
                       : 'Puedes esperar a que todos concluyan o pulsar el botón para mostrar los resultados en este instante.'}
                   </p>
@@ -1917,16 +2171,16 @@ const MeetRoomPage = () => {
                   <button
                     onClick={handleRevealQuizResults}
                     className={`w-full sm:w-auto px-6 py-3 rounded-xl font-black text-sm shadow-xl transition-all cursor-pointer hover:scale-105 inline-flex items-center justify-center gap-2 ${
-                      quizProgress.allFinished
+                      effectiveFinishedCount >= effectiveTotalParticipants
                         ? 'bg-gradient-to-r from-emerald-500 to-green-500 hover:from-emerald-400 hover:to-green-400 text-slate-900 ring-4 ring-emerald-400/50 animate-bounce'
                         : 'bg-gradient-to-r from-gold to-gold-dark hover:from-gold-dark hover:to-gold text-white'
                     }`}
                   >
                     <BarChart3 className="w-5 h-5" />
                     <span>
-                      {quizProgress.allFinished 
+                      {effectiveFinishedCount >= effectiveTotalParticipants 
                         ? '¡Revelar Resultados y Podio Final Ahora! 🏆' 
-                        : `Mostrar Resultados (${quizProgress.finishedCount}/${safeTotalParticipants} Listos) 📊`}
+                        : `Mostrar Resultados (${effectiveFinishedCount}/${effectiveTotalParticipants} Listos) 📊`}
                     </span>
                   </button>
                 </div>
@@ -3088,6 +3342,124 @@ const MeetRoomPage = () => {
               </button>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Progreso del Quiz en Vivo (Listos y En Progreso) */}
+      {isQuizProgressModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-slate-900 border-2 border-gold/40 rounded-2xl max-w-lg w-full max-h-[85vh] flex flex-col shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between p-4 border-b border-white/10 bg-slate-950/60">
+              <div className="flex items-center gap-2">
+                <Users className="w-5 h-5 text-gold" />
+                <h3 className="text-base font-bold text-white font-[Cinzel]">
+                  Progreso del Quiz en Vivo
+                </h3>
+              </div>
+              <button
+                onClick={() => setIsQuizProgressModalOpen(false)}
+                className="p-1 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-all cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-4 overflow-y-auto">
+              {/* Barra de progreso */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-xs text-gray-300 font-semibold">
+                  <span>{effectiveFinishedCount} de {effectiveTotalParticipants} completaron</span>
+                  <span className="text-gold font-mono">
+                    {effectiveTotalParticipants > 0 ? Math.round((effectiveFinishedCount / effectiveTotalParticipants) * 100) : 0}%
+                  </span>
+                </div>
+                <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden border border-white/10">
+                  <div 
+                    className="h-full bg-gradient-to-r from-gold to-emerald-400 transition-all duration-500"
+                    style={{ width: `${effectiveTotalParticipants > 0 ? (effectiveFinishedCount / effectiveTotalParticipants) * 100 : 0}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* Listas */}
+              <div className="space-y-3">
+                {/* Listos */}
+                <div>
+                  <p className="text-xs font-bold text-emerald-400 uppercase tracking-wider mb-2 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <CheckCircle className="w-4 h-4 text-emerald-400" />
+                      <span>Listos ({readyParticipants.length})</span>
+                    </span>
+                    <span className="text-[10px] text-emerald-300/80 font-normal">Concluyeron</span>
+                  </p>
+                  {readyParticipants.length === 0 ? (
+                    <p className="text-xs text-gray-500 italic p-2 rounded bg-slate-950/40 border border-white/5">
+                      Esperando que los hermanos concluyan...
+                    </p>
+                  ) : (
+                    <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                      {readyParticipants.map(p => (
+                        <div key={p.id} className={`flex items-center justify-between p-2 rounded-lg border text-xs ${
+                          p.isMe 
+                            ? 'bg-emerald-900/40 border-emerald-400/50 text-emerald-100 ring-1 ring-emerald-400/40' 
+                            : 'bg-emerald-950/30 border-emerald-500/30 text-emerald-200'
+                        }`}>
+                          <div className="flex items-center gap-1.5 truncate">
+                            <span className="font-semibold truncate">{p.username}</span>
+                            {p.isMe && <span className="text-[9px] bg-emerald-500/30 text-emerald-300 px-1 rounded font-bold">(Tú)</span>}
+                          </div>
+                          <span className="font-mono text-emerald-400 font-bold ml-2 shrink-0">{p.score} pts</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* En progreso */}
+                <div>
+                  <p className="text-xs font-bold text-amber-300 uppercase tracking-wider mb-2 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <Clock className="w-4 h-4 text-amber-400" />
+                      <span>En Progreso ({inProgressParticipants.length})</span>
+                    </span>
+                    <span className="text-[10px] text-amber-300/80 font-normal">Respondiendo</span>
+                  </p>
+                  {inProgressParticipants.length === 0 ? (
+                    <p className="text-xs text-gray-500 italic p-2 rounded bg-slate-950/40 border border-white/5">
+                      Ningún hermano en progreso
+                    </p>
+                  ) : (
+                    <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                      {inProgressParticipants.map(p => (
+                        <div key={p.id} className={`flex items-center justify-between p-2 rounded-lg border text-xs ${
+                          p.isMe 
+                            ? 'bg-amber-900/30 border-amber-400/50 text-amber-100 ring-1 ring-amber-400/40' 
+                            : 'bg-amber-950/25 border-amber-500/30 text-amber-200'
+                        }`}>
+                          <div className="flex items-center gap-1.5 truncate">
+                            <span className="truncate">{p.username}</span>
+                            {p.isMe && <span className="text-[9px] bg-amber-500/30 text-amber-300 px-1 rounded font-bold">(Tú)</span>}
+                          </div>
+                          <span className="text-[10px] text-amber-400 font-mono ml-2 shrink-0">
+                            Pregunta {Math.min(activeQuestions.length, (p.completedCount || 0) + 1)}/{activeQuestions.length} ⏳
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="p-3 border-t border-white/10 bg-slate-950/60 flex justify-end">
+              <button
+                onClick={() => setIsQuizProgressModalOpen(false)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-gray-200 font-bold text-xs rounded-xl transition-all cursor-pointer"
+              >
+                Cerrar
+              </button>
+            </div>
           </div>
         </div>
       )}
