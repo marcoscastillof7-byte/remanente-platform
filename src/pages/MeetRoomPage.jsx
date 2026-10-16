@@ -2198,39 +2198,53 @@ const MeetRoomPage = () => {
 
         {/* ---------------- FASE C: PODIO FINAL & RESULTADOS COMPLETOS (SALA PERMANECE ABIERTA) ---------------- */}
         {(phase === 'finished' || revealedResults) && resultsViewMode === 'results' && (() => {
-          // 1. Obtener lista bruta de participantes/podio desde todas las fuentes disponibles
-          const rawPodiumList = (revealedResults?.leaderboard && Array.isArray(revealedResults.leaderboard) && revealedResults.leaderboard.length > 0)
+          // 1. Obtener la tabla de posiciones autoritativa emitida por el servidor (Single Source of Truth)
+          const authoritativeLeaderboard = (revealedResults?.leaderboard && Array.isArray(revealedResults.leaderboard) && revealedResults.leaderboard.length > 0)
             ? revealedResults.leaderboard
-            : (revealedResults?.podium && Array.isArray(revealedResults.podium) && revealedResults.podium.length > 0)
-            ? revealedResults.podium
-            : (finalPodium && Array.isArray(finalPodium) && finalPodium.length > 0)
-            ? finalPodium
             : (liveLeaderboard && Array.isArray(liveLeaderboard) && liveLeaderboard.length > 0)
             ? liveLeaderboard
+            : (quizProgress?.leaderboard && Array.isArray(quizProgress.leaderboard) && quizProgress.leaderboard.length > 0)
+            ? quizProgress.leaderboard
+            : (finalPodium && Array.isArray(finalPodium) && finalPodium.length > 0)
+            ? finalPodium
             : allRoomParticipants;
 
-          // 2. Normalizar datos, asociar puntuación de sesión actual y ordenar de mayor a menor puntuación y aciertos
-          const sortedPodiumList = [...(Array.isArray(rawPodiumList) ? rawPodiumList : [])]
+          // Normalizar elementos asegurando id, username, score y rank exactos emitidos por el servidor
+          const leaderboardList = [...(Array.isArray(authoritativeLeaderboard) ? authoritativeLeaderboard : [])]
             .filter(p => p && (p.username || p.name || p.id || p.userId))
-            .map(p => {
-              const isMe = String(p.id) === String(user?.id) || String(p.userId) === String(user?.id) || p.username === user?.username;
-              const effScore = isMe 
-                ? Math.max(Number(p.score) || 0, mySessionScore || 0)
-                : (Number(p.score) || 0);
-              const effCorrect = isMe && (p.correctCount === undefined || p.correctCount === null)
-                ? myCorrectCount
-                : (Number(p.correctCount) || 0);
-              return {
-                ...p,
-                id: p.id || p.userId || p.username,
-                username: p.username || p.name || 'Participante',
-                score: effScore,
-                correctCount: effCorrect
-              };
-            })
-            .sort((a, b) => b.score - a.score || b.correctCount - a.correctCount);
+            .map((p, idx) => ({
+              ...p,
+              id: String(p.id || p.userId || p.username),
+              username: p.username || p.name || 'Participante',
+              score: Number(p.score) || 0,
+              correctCount: Number(p.correctCount) || 0,
+              rank: p.rank || (idx + 1),
+              hasParticipated: p.hasParticipated !== undefined 
+                ? p.hasParticipated 
+                : ((Number(p.score) || 0) > 0 || (Number(p.completedCount) || 0) > 0)
+            }));
 
-          const leaderboardList = sortedPodiumList;
+          // 2. Podio oficial: ÚNICAMENTE participantes reales que respondieron preguntas o sumaron puntos
+          const rawPodium = (revealedResults?.podium && Array.isArray(revealedResults.podium) && revealedResults.podium.length > 0)
+            ? revealedResults.podium
+            : (quizProgress?.podium && Array.isArray(quizProgress.podium) && quizProgress.podium.length > 0)
+            ? quizProgress.podium
+            : (finalPodium && Array.isArray(finalPodium) && finalPodium.length > 0)
+            ? finalPodium
+            : leaderboardList.filter(p => p.hasParticipated);
+
+          const podiumList = rawPodium
+            .filter(p => p && (p.hasParticipated || (Number(p.score) || 0) > 0 || (Number(p.completedCount) || 0) > 0))
+            .slice(0, 3)
+            .map((p, idx) => ({
+              ...p,
+              id: String(p.id || p.userId || p.username),
+              username: p.username || p.name || 'Participante',
+              score: Number(p.score) || 0,
+              correctCount: Number(p.correctCount) || 0,
+              rank: idx + 1
+            }));
+
           const totalQuestionsCount = (activeQuestions && activeQuestions.length > 0) 
             ? activeQuestions.length 
             : (revealedResults?.totalQuestions || 15);
@@ -2401,8 +2415,8 @@ const MeetRoomPage = () => {
                   {/* TAB 1: PODIO DE HONOR Y TABLA GENERAL DE POSICIONES */}
                   {activeResultsTab === 'posiciones' && (() => {
                     const myRankIndex = leaderboardList.findIndex(p => String(p.id) === String(user?.id) || p.username === user?.username);
-                    const myRankNumber = myRankIndex !== -1 ? myRankIndex + 1 : null;
                     const myRecord = myRankIndex !== -1 ? leaderboardList[myRankIndex] : null;
+                    const myRankNumber = myRecord ? (myRecord.rank || myRankIndex + 1) : null;
 
                     const filteredLeaderboardList = leaderboardList.filter(p => {
                       if (!resultsSearchQuery.trim()) return true;
@@ -2421,12 +2435,12 @@ const MeetRoomPage = () => {
                             </span>
                           </div>
 
-                          {leaderboardList.length === 0 ? (
+                          {podiumList.length === 0 ? (
                             <div className="text-center py-6 text-gray-400 space-y-1.5">
                               <Trophy className="w-8 h-8 text-gold/40 mx-auto animate-pulse" />
-                              <p className="text-xs">Consolidando las posiciones de los participantes...</p>
+                              <p className="text-xs">No se registraron participantes con respuestas en este quiz.</p>
                             </div>
-                          ) : leaderboardList.length === 1 ? (
+                          ) : podiumList.length === 1 ? (
                             /* UN SOLO PARTICIPANTE */
                             <div className="w-full flex justify-center py-3 sm:py-5">
                               <div className="w-56 sm:w-64 bg-slate-950/80 border-2 border-yellow-500/50 rounded-2xl p-4 sm:p-5 flex flex-col items-center shadow-2xl relative overflow-hidden shrink-0">
@@ -2435,14 +2449,14 @@ const MeetRoomPage = () => {
                                 <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-gradient-to-tr from-amber-600 via-yellow-400 to-amber-300 border-2 border-yellow-200 flex items-center justify-center text-3xl sm:text-4xl font-bold shadow-xl shadow-amber-500/30 mb-2">
                                   🥇
                                 </div>
-                                <span className="text-sm sm:text-base font-black text-gold-light truncate max-w-[200px] text-center" title={leaderboardList[0].username}>
-                                  {leaderboardList[0].username}
+                                <span className="text-sm sm:text-base font-black text-gold-light truncate max-w-[200px] text-center" title={podiumList[0].username}>
+                                  {podiumList[0].username}
                                 </span>
                                 <span className="text-sm sm:text-base font-mono font-black text-yellow-300 mt-0.5">
-                                  {leaderboardList[0].score || 0} pts
+                                  {podiumList[0].score || 0} pts
                                 </span>
                                 <span className="text-xs text-yellow-200/80 font-bold mt-0.5 mb-3">
-                                  {leaderboardList[0].correctCount}/{totalQuestionsCount} aciertos
+                                  {podiumList[0].correctCount}/{totalQuestionsCount} aciertos
                                 </span>
                                 <div className="w-full bg-gradient-to-t from-amber-950 via-amber-800 to-yellow-600/90 border border-yellow-400/60 rounded-xl py-2 flex flex-col items-center justify-center shadow-lg">
                                   <span className="text-xl sm:text-2xl font-black text-yellow-100">1º Puesto</span>
@@ -2450,7 +2464,7 @@ const MeetRoomPage = () => {
                                 </div>
                               </div>
                             </div>
-                          ) : leaderboardList.length === 2 ? (
+                          ) : podiumList.length === 2 ? (
                             /* DOS PARTICIPANTES: 2º Plata (Izq) y 1º Oro (Der) */
                             <div className="w-full flex items-end justify-center gap-4 sm:gap-8 pt-2 pb-2 max-w-md mx-auto">
                               {/* 2º LUGAR */}
@@ -2458,14 +2472,14 @@ const MeetRoomPage = () => {
                                 <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-slate-800 border-2 border-slate-300 flex items-center justify-center text-2xl font-bold shadow mb-1.5">
                                   🥈
                                 </div>
-                                <span className="text-xs sm:text-sm font-bold text-slate-200 truncate max-w-[130px] text-center" title={leaderboardList[1].username}>
-                                  {leaderboardList[1].username}
+                                <span className="text-xs sm:text-sm font-bold text-slate-200 truncate max-w-[130px] text-center" title={podiumList[1].username}>
+                                  {podiumList[1].username}
                                 </span>
                                 <span className="text-xs sm:text-sm font-mono font-bold text-slate-300">
-                                  {leaderboardList[1].score || 0} pts
+                                  {podiumList[1].score || 0} pts
                                 </span>
                                 <span className="text-[10px] sm:text-xs text-gray-400 mb-2">
-                                  {leaderboardList[1].correctCount}/{totalQuestionsCount} aciertos
+                                  {podiumList[1].correctCount}/{totalQuestionsCount} aciertos
                                 </span>
                                 <div className="w-full bg-gradient-to-t from-slate-900 via-slate-800 to-slate-700 border-t-2 border-slate-300 rounded-t-xl h-16 sm:h-20 flex flex-col items-center justify-center shadow-inner">
                                   <span className="text-lg sm:text-xl font-black text-slate-200">2º</span>
@@ -2479,14 +2493,14 @@ const MeetRoomPage = () => {
                                 <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-gradient-to-tr from-amber-600 to-yellow-400 border-2 border-yellow-200 flex items-center justify-center text-3xl font-bold shadow-lg shadow-amber-500/30 mb-1.5">
                                   🥇
                                 </div>
-                                <span className="text-sm sm:text-base font-black text-gold-light truncate max-w-[140px] text-center" title={leaderboardList[0].username}>
-                                  {leaderboardList[0].username}
+                                <span className="text-sm sm:text-base font-black text-gold-light truncate max-w-[140px] text-center" title={podiumList[0].username}>
+                                  {podiumList[0].username}
                                 </span>
                                 <span className="text-sm sm:text-base font-mono font-black text-yellow-300">
-                                  {leaderboardList[0].score || 0} pts
+                                  {podiumList[0].score || 0} pts
                                 </span>
                                 <span className="text-xs text-yellow-300/80 font-bold mb-2">
-                                  {leaderboardList[0].correctCount}/{totalQuestionsCount} aciertos
+                                  {podiumList[0].correctCount}/{totalQuestionsCount} aciertos
                                 </span>
                                 <div className="w-full bg-gradient-to-t from-amber-950 via-amber-800 to-yellow-600/90 border-t-2 border-yellow-300 rounded-t-xl h-24 sm:h-28 flex flex-col items-center justify-center shadow-2xl ring-1 ring-yellow-400/50">
                                   <span className="text-2xl sm:text-3xl font-black text-yellow-200">1º</span>
@@ -2502,14 +2516,14 @@ const MeetRoomPage = () => {
                                 <div className="w-11 h-11 sm:w-13 sm:h-13 rounded-full bg-slate-800 border-2 border-slate-300 flex items-center justify-center text-xl sm:text-2xl font-bold shadow mb-1.5">
                                   🥈
                                 </div>
-                                <span className="text-xs sm:text-sm font-bold text-slate-200 truncate max-w-[110px] sm:max-w-[130px] text-center" title={leaderboardList[1].username}>
-                                  {leaderboardList[1].username}
+                                <span className="text-xs sm:text-sm font-bold text-slate-200 truncate max-w-[110px] sm:max-w-[130px] text-center" title={podiumList[1].username}>
+                                  {podiumList[1].username}
                                 </span>
                                 <span className="text-xs font-mono font-bold text-slate-300">
-                                  {leaderboardList[1].score || 0} pts
+                                  {podiumList[1].score || 0} pts
                                 </span>
                                 <span className="text-[10px] sm:text-xs text-gray-400 mb-2">
-                                  {leaderboardList[1].correctCount}/{totalQuestionsCount} aciertos
+                                  {podiumList[1].correctCount}/{totalQuestionsCount} aciertos
                                 </span>
                                 <div className="w-full bg-gradient-to-t from-slate-900 via-slate-800 to-slate-700 border-t-2 border-slate-300 rounded-t-xl h-16 sm:h-20 flex flex-col items-center justify-center shadow-inner">
                                   <span className="text-lg sm:text-xl font-black text-slate-200">2º</span>
@@ -2523,14 +2537,14 @@ const MeetRoomPage = () => {
                                 <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-gradient-to-tr from-amber-600 to-yellow-400 border-2 border-yellow-200 flex items-center justify-center text-2xl sm:text-3xl font-bold shadow-lg shadow-amber-500/30 mb-1.5">
                                   🥇
                                 </div>
-                                <span className="text-xs sm:text-base font-black text-gold-light truncate max-w-[130px] sm:max-w-[150px] text-center" title={leaderboardList[0].username}>
-                                  {leaderboardList[0].username}
+                                <span className="text-xs sm:text-base font-black text-gold-light truncate max-w-[130px] sm:max-w-[150px] text-center" title={podiumList[0].username}>
+                                  {podiumList[0].username}
                                 </span>
                                 <span className="text-sm font-mono font-black text-yellow-300">
-                                  {leaderboardList[0].score || 0} pts
+                                  {podiumList[0].score || 0} pts
                                 </span>
                                 <span className="text-xs text-yellow-300/80 font-bold mb-2">
-                                  {leaderboardList[0].correctCount}/{totalQuestionsCount} aciertos
+                                  {podiumList[0].correctCount}/{totalQuestionsCount} aciertos
                                 </span>
                                 <div className="w-full bg-gradient-to-t from-amber-950 via-amber-800 to-yellow-600/90 border-t-2 border-yellow-300 rounded-t-xl h-24 sm:h-28 flex flex-col items-center justify-center shadow-2xl ring-1 ring-yellow-400/50">
                                   <span className="text-2xl sm:text-3xl font-black text-yellow-200">1º</span>
@@ -2543,14 +2557,14 @@ const MeetRoomPage = () => {
                                 <div className="w-11 h-11 sm:w-13 sm:h-13 rounded-full bg-slate-800 border-2 border-amber-600 flex items-center justify-center text-xl sm:text-2xl font-bold shadow mb-1.5">
                                   🥉
                                 </div>
-                                <span className="text-xs sm:text-sm font-bold text-amber-300 truncate max-w-[110px] sm:max-w-[130px] text-center" title={leaderboardList[2].username}>
-                                  {leaderboardList[2].username}
+                                <span className="text-xs sm:text-sm font-bold text-amber-300 truncate max-w-[110px] sm:max-w-[130px] text-center" title={podiumList[2].username}>
+                                  {podiumList[2].username}
                                 </span>
                                 <span className="text-xs font-mono font-bold text-amber-400">
-                                  {leaderboardList[2].score || 0} pts
+                                  {podiumList[2].score || 0} pts
                                 </span>
                                 <span className="text-[10px] sm:text-xs text-gray-400 mb-2">
-                                  {leaderboardList[2].correctCount}/{totalQuestionsCount} aciertos
+                                  {podiumList[2].correctCount}/{totalQuestionsCount} aciertos
                                 </span>
                                 <div className="w-full bg-gradient-to-t from-stone-950 via-stone-900 to-amber-900 border-t-2 border-amber-600 rounded-t-xl h-12 sm:h-16 flex flex-col items-center justify-center shadow-inner">
                                   <span className="text-base sm:text-lg font-black text-amber-400">3º</span>
@@ -2564,7 +2578,7 @@ const MeetRoomPage = () => {
                         {/* B. BARRA DE CONTROL, BÚSQUEDA Y DESTACADO PERSONAL */}
                         <div className="flex flex-col sm:flex-row items-center justify-between gap-2.5">
                           {/* Banner resumen personal si el usuario participó */}
-                          {myRecord && (
+                          {myRecord && myRecord.hasParticipated && (
                             <div className="w-full sm:w-auto bg-gold/15 border border-gold/40 rounded-xl px-3 py-1.5 text-xs text-gold-light flex items-center gap-2">
                               <span className="font-bold">✨ Tu resultado:</span>
                               <span className="font-mono font-black">{myRankNumber}º Puesto</span>

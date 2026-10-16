@@ -231,32 +231,46 @@ async function runBotsSimulation() {
 
         console.log('\n[6/6] Host revela los resultados finales (meet:reveal-quiz-results)...');
         
-        const resultsPromise = new Promise((resolve, reject) => {
-            const timeout = setTimeout(() => reject(new Error('Timeout esperando resultados finales')), 8000);
-            
+        // Registrar recepción de resultados en el Host y en los 5 Bots para validar sincronización absoluta
+        const receivedResultsMap = new Map();
+
+        const hostResultsPromise = new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => reject(new Error('Timeout esperando resultados en Host')), 8000);
             hostSocket.on('meet:quiz-results-revealed', (resultsPayload) => {
                 clearTimeout(timeout);
+                receivedResultsMap.set('host_alexas', resultsPayload);
                 resolve(resultsPayload);
             });
         });
 
+        const botResultsPromises = botSockets.map(b => {
+            return new Promise((resolve, reject) => {
+                const timeout = setTimeout(() => reject(new Error(`Timeout esperando resultados en ${b.config.username}`)), 8000);
+                b.socket.on('meet:quiz-results-revealed', (resultsPayload) => {
+                    clearTimeout(timeout);
+                    receivedResultsMap.set(b.config.username, resultsPayload);
+                    resolve(resultsPayload);
+                });
+            });
+        });
+
         hostSocket.emit('meet:reveal-quiz-results', { meetId });
-        const revealed = await resultsPromise;
+        const [revealed] = await Promise.all([hostResultsPromise, ...botResultsPromises]);
 
         console.log('\n======================================================');
         console.log('       RESULTADOS OFICIALES DE LA SIMULACIÓN');
         console.log('======================================================');
         
-        console.log(`\n🏆 PODIO DE HONOR:`);
+        console.log(`\n🏆 PODIO DE HONOR (${(revealed.podium || []).length} participantes):`);
         const podium = revealed.podium || [];
         podium.forEach((p, idx) => {
             const medal = idx === 0 ? '🥇 1º' : idx === 1 ? '🥈 2º' : '🥉 3º';
             console.log(`   ${medal} ${p.username.padEnd(14)} | ${p.score} pts | ${p.correctCount}/${p.totalQuestions || 5} aciertos`);
         });
 
-        console.log(`\n📊 TABLA GENERAL DE CLASIFICACIÓN (${(revealed.leaderboard || []).length} participantes):`);
+        console.log(`\n📊 TABLA GENERAL DE CLASIFICACIÓN (${(revealed.leaderboard || []).length} personas en sala):`);
         (revealed.leaderboard || []).forEach((p, idx) => {
-            console.log(`   #${idx + 1} ${p.username.padEnd(14)} | Score: ${String(p.score).padStart(4)} pts | Aciertos: ${p.correctCount}/5 | Tiempo Prom: ${p.avgTimeSec}s`);
+            console.log(`   #${idx + 1} ${p.username.padEnd(14)} | Score: ${String(p.score).padStart(4)} pts | Aciertos: ${p.correctCount}/5 | Tiempo Prom: ${p.avgTimeSec}s | Participó: ${p.hasParticipated ? 'Sí' : 'No (Espectador)'}`);
         });
 
         console.log(`\n📈 ESTADÍSTICAS POR PREGUNTA:`);
@@ -267,7 +281,7 @@ async function runBotsSimulation() {
 
         // Verificaciones y comprobaciones de integridad
         console.log('\n======================================================');
-        console.log('             INSPECCIÓN DE ERRORES');
+        console.log('             INSPECCIÓN DE ERRORES Y VERACIDAD');
         console.log('======================================================');
 
         if (detectedErrors.length === 0) {
@@ -276,7 +290,29 @@ async function runBotsSimulation() {
             console.error('❌ ERRORES DETECTADOS:', detectedErrors);
         }
 
-        // Validar orden del leaderboard
+        // 1. Validar sincronización 100% idéntica entre todos los clientes (Host y los 5 Bots)
+        const expectedWinner = revealed.podium?.[0]?.username;
+        let syncValid = true;
+        for (const [clientName, clientPayload] of receivedResultsMap.entries()) {
+            const clientWinner = clientPayload.podium?.[0]?.username;
+            if (clientWinner !== expectedWinner) {
+                syncValid = false;
+                detectedErrors.push(`Desincronización en ${clientName}: vio a "${clientWinner}" en 1er lugar en vez de "${expectedWinner}"`);
+            }
+        }
+        if (syncValid) {
+            console.log(`✅ Sincronización absoluta: los 6 participantes (Host + 5 Bots) vieron exactamente al mismo ganador (#1 ${expectedWinner}).`);
+        }
+
+        // 2. Validar que espectadores (alexas con 0 respuestas) NO aparezcan en el podio de honor
+        const spectatorOnPodium = (revealed.podium || []).find(p => p.username === 'alexas' || p.score === 0 && p.completedCount === 0);
+        if (spectatorOnPodium) {
+            detectedErrors.push(`Falsa información en podio: el espectador "${spectatorOnPodium.username}" apareció en el podio sin participar.`);
+        } else {
+            console.log('✅ Veracidad del podio: Ningún espectador sin respuestas ocupó puestos del podio.');
+        }
+
+        // 3. Validar orden estrictamente determinista del leaderboard
         let orderValid = true;
         for (let i = 0; i < (revealed.leaderboard || []).length - 1; i++) {
             const curr = revealed.leaderboard[i];

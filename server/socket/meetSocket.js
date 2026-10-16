@@ -463,8 +463,8 @@ export function getRoomQuizProgress(room) {
     const totalParticipants = participantsList.length;
     const allFinished = totalParticipants > 0 && finishedCount >= totalParticipants;
 
-    // Ordenamiento oficial de posicionamiento con desempate infalible
-    const liveLeaderboard = [...participantsList].sort((a, b) => {
+    // Ordenamiento oficial de posicionamiento con desempate infalible y determinista
+    const deterministicSort = (a, b) => {
         // 1. Mayor puntuación
         if ((b.score || 0) !== (a.score || 0)) {
             return (b.score || 0) - (a.score || 0);
@@ -474,8 +474,40 @@ export function getRoomQuizProgress(room) {
             return (b.correctCount || 0) - (a.correctCount || 0);
         }
         // 3. Menor tiempo total empleado (más rápido)
-        return (a.totalTimeTakenMs || 0) - (b.totalTimeTakenMs || 0);
-    }).map((p, idx) => ({ ...p, rank: idx + 1 }));
+        if ((a.totalTimeTakenMs || 0) !== (b.totalTimeTakenMs || 0)) {
+            return (a.totalTimeTakenMs || 0) - (b.totalTimeTakenMs || 0);
+        }
+        // 4. Orden alfabético determinista por nombre de usuario
+        const nameComp = String(a.username || '').localeCompare(String(b.username || ''));
+        if (nameComp !== 0) return nameComp;
+        // 5. Fallback por ID único
+        return String(a.id || '').localeCompare(String(b.id || ''));
+    };
+
+    // Separar participantes activos (los que realmente respondieron o sumaron puntos) de espectadores
+    const activeParticipants = [...participantsList]
+        .filter(p => p.completedCount > 0 || (p.score || 0) > 0)
+        .sort(deterministicSort);
+
+    const spectatorParticipants = [...participantsList]
+        .filter(p => p.completedCount === 0 && (p.score || 0) === 0)
+        .sort((a, b) => {
+            const nameComp = String(a.username || '').localeCompare(String(b.username || ''));
+            if (nameComp !== 0) return nameComp;
+            return String(a.id || '').localeCompare(String(b.id || ''));
+        });
+
+    const liveLeaderboard = [...activeParticipants, ...spectatorParticipants].map((p, idx) => ({
+        ...p,
+        rank: idx + 1,
+        hasParticipated: p.completedCount > 0 || (p.score || 0) > 0
+    }));
+
+    // El podio SOLO se compone de participantes activos (máximo 3)
+    const podium = activeParticipants.slice(0, 3).map((p, idx) => ({
+        ...p,
+        rank: idx + 1
+    }));
 
     return {
         meetId: String(room.meetId),
@@ -484,7 +516,8 @@ export function getRoomQuizProgress(room) {
         finishedCount,
         allFinished,
         participantsProgress: participantsList,
-        leaderboard: liveLeaderboard
+        leaderboard: liveLeaderboard,
+        podium
     };
 }
 
@@ -1013,16 +1046,19 @@ export async function revealRoomQuizResults(meetId, io = null) {
     });
 
     const quizProg = getRoomQuizProgress(room);
-    const finalPodium = (quizProg?.leaderboard && quizProg.leaderboard.length > 0)
+    const finalLeaderboard = (quizProg?.leaderboard && quizProg.leaderboard.length > 0)
         ? quizProg.leaderboard
         : Array.from(room.participants.values()).sort((a, b) => (b.score || 0) - (a.score || 0)).map((p, idx) => ({ ...p, rank: idx + 1 }));
+    const finalPodium = (quizProg?.podium && quizProg.podium.length > 0)
+        ? quizProg.podium
+        : finalLeaderboard.filter(p => p.hasParticipated || (p.score || 0) > 0 || p.completedCount > 0).slice(0, 3);
 
     // 4. Acreditar Puntos de Sabiduría a los participantes en la base de datos (solo una vez)
     if (!room.pointsAwarded) {
         room.pointsAwarded = true;
         try {
             const supabase = getDb();
-            for (let p of finalPodium) {
+            for (let p of finalLeaderboard) {
                 if (p.score > 0) {
                     const { data: u } = await supabase.from('users').select('points').eq('id', p.id).single();
                     const currentPts = (u && u.points) ? u.points : 0;
@@ -1050,7 +1086,7 @@ export async function revealRoomQuizResults(meetId, io = null) {
         questionsResults: allQuestionsResults,
         allUserAnswers,
         podium: finalPodium,
-        leaderboard: finalPodium,
+        leaderboard: finalLeaderboard,
         totalJoinedCount: totalAttendance,
         platformOnlineCount: getPlatformOnlineCount()
     };
@@ -1080,6 +1116,7 @@ export async function revealRoomQuizResults(meetId, io = null) {
         io.to(`meet:${idStr}`).emit('meet:final-podium', {
             meetId: idStr,
             podium: finalPodium,
+            leaderboard: finalLeaderboard,
             totalJoinedCount: totalAttendance,
             platformOnlineCount: getPlatformOnlineCount()
         });
@@ -1110,6 +1147,7 @@ export async function endRoomSession(meetId, io = null) {
     let room = activeRooms.get(idStr);
     const supabase = getDb();
 
+    let finalLeaderboard = [];
     let finalPodium = [];
     let totalAttendance = 0;
     if (room) {
@@ -1119,8 +1157,11 @@ export async function endRoomSession(meetId, io = null) {
         }
         room.status = 'ended';
         room.phase = 'finished';
-        finalPodium = Array.from(room.participants.values())
-            .sort((a, b) => (b.score || 0) - (a.score || 0));
+        const quizProg = getRoomQuizProgress(room);
+        finalLeaderboard = quizProg?.leaderboard || Array.from(room.participants.values())
+            .sort((a, b) => (b.score || 0) - (a.score || 0))
+            .map((p, idx) => ({ ...p, rank: idx + 1 }));
+        finalPodium = quizProg?.podium || finalLeaderboard.filter(p => p.hasParticipated || (p.score || 0) > 0 || p.completedCount > 0).slice(0, 3);
         totalAttendance = room.allTimeParticipants ? room.allTimeParticipants.size : room.participants.size;
     }
 
@@ -1129,6 +1170,7 @@ export async function endRoomSession(meetId, io = null) {
         message: 'La reunión ha sido finalizada por el líder.',
         closed: true,
         podium: finalPodium,
+        leaderboard: finalLeaderboard,
         totalJoinedCount: totalAttendance,
         platformOnlineCount: getPlatformOnlineCount()
     };
@@ -1139,15 +1181,16 @@ export async function endRoomSession(meetId, io = null) {
         io.to(`meet:${idStr}`).emit('meet:final-podium', { 
             meetId: idStr,
             podium: finalPodium,
+            leaderboard: finalLeaderboard,
             totalJoinedCount: totalAttendance,
             platformOnlineCount: getPlatformOnlineCount()
         });
     }
 
     try {
-        if (!room?.pointsAwarded && finalPodium.length > 0) {
+        if (!room?.pointsAwarded && finalLeaderboard.length > 0) {
             if (room) room.pointsAwarded = true;
-            for (let p of finalPodium) {
+            for (let p of finalLeaderboard) {
                 if (p.score > 0) {
                     const { data: u } = await supabase.from('users').select('points').eq('id', p.id).single();
                     const currentPts = (u && u.points) ? u.points : 0;
@@ -1364,7 +1407,8 @@ export function setupMeetSocket(io) {
                 myIsFinished,
                 quizProgress,
                 revealedResults: room.revealedResults,
-                leaderboard: quizProgress?.leaderboard || [],
+                leaderboard: room.revealedResults?.leaderboard || quizProgress?.leaderboard || [],
+                podium: room.revealedResults?.podium || quizProgress?.podium || [],
                 myScore: score,
                 connectedCount: sanitizedParticipantsList.filter(p => p.connected !== false).length,
                 totalJoinedCount: room.allTimeParticipants ? room.allTimeParticipants.size : room.participants.size,
