@@ -1840,41 +1840,39 @@ const MeetRoomPage = () => {
           !isSelfFinished ? (
             /* SUB-FASE B.1: CUESTIONARIO INDIVIDUAL EN CURSO */
             currentQuestion ? (
-              <div className="flex-1 flex flex-col justify-between p-3 sm:p-5 md:p-8 pb-24 sm:pb-8 max-w-4xl mx-auto w-full overflow-y-auto space-y-4 touch-pan-y overscroll-contain">
+              <div className="flex-1 w-full h-full flex flex-col justify-between p-2.5 sm:p-4 md:p-6 lg:p-8 max-w-7xl 2xl:max-w-[1750px] mx-auto overflow-y-auto overflow-x-hidden min-h-0 space-y-3 sm:space-y-4 md:space-y-5 animate-fadeIn">
                 
-                {/* 1. Barra de Progreso Personal, Temporizador y Puntos */}
-                <div className="bg-slate-900/90 border border-gold/30 p-3 sm:p-4 rounded-xl flex flex-wrap items-center justify-between gap-3 text-white">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[11px] sm:text-xs font-black text-gold uppercase tracking-wider bg-gold/15 px-2.5 py-0.5 rounded-full border border-gold/30">
-                        Pregunta {myQuestionIndex + 1} de {activeQuestions.length}
-                      </span>
-                      <span className="text-[11px] sm:text-xs text-gray-300 font-semibold hidden xs:inline">
-                        • {effectiveFinishedCount} de {effectiveTotalParticipants} completaron
-                      </span>
-                    </div>
+                {/* 1. Barra Superior: Progreso Personal, Contador, Temporizador y Puntos */}
+                <div className="shrink-0 w-full bg-slate-900/90 border border-gold/40 p-2.5 sm:p-3.5 md:p-4 rounded-xl sm:rounded-2xl flex flex-wrap items-center justify-between gap-2.5 sm:gap-4 text-white shadow-xl backdrop-blur-md">
+                  <div className="min-w-0 flex items-center gap-2 sm:gap-3 flex-wrap">
+                    <span className="text-[10px] sm:text-xs font-black text-gold uppercase tracking-wider bg-gold/15 px-2.5 py-1 rounded-full border border-gold/30 shrink-0">
+                      Pregunta {myQuestionIndex + 1} de {activeQuestions.length}
+                    </span>
+                    <span className="text-[10px] sm:text-xs text-gray-300 font-semibold hidden xs:inline">
+                      • {effectiveFinishedCount} de {effectiveTotalParticipants} listos
+                    </span>
                     {/* Barra de progreso de preguntas respondidas */}
-                    <div className="w-36 sm:w-56 bg-white/10 rounded-full h-1.5 mt-2 overflow-hidden">
+                    <div className="w-24 xs:w-36 sm:w-48 md:w-64 bg-white/10 rounded-full h-2 overflow-hidden border border-white/10 shrink-0">
                       <div 
-                        className="bg-gold h-full transition-all duration-300"
+                        className="bg-gradient-to-r from-amber-500 to-gold h-full transition-all duration-300 shadow-sm"
                         style={{ width: `${activeQuestions.length > 0 ? ((myQuestionIndex) / activeQuestions.length) * 100 : 0}%` }}
                       />
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 sm:gap-3">
-                    <div className="bg-white/10 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg border border-white/15 text-xs font-bold text-amber-300 flex items-center gap-1.5">
-                      <Award className="w-3.5 h-3.5 text-gold" />
-                      <span>Mis Puntos: <strong className="text-white font-mono">{mySessionScore}</strong></span>
+                  <div className="flex items-center gap-2 sm:gap-3 shrink-0 ml-auto">
+                    <div className="bg-white/10 px-2.5 sm:px-3.5 py-1 sm:py-1.5 rounded-xl border border-white/15 text-xs sm:text-sm font-bold text-amber-300 flex items-center gap-1.5 shadow-inner">
+                      <Award className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gold shrink-0" />
+                      <span className="whitespace-nowrap">Mis Puntos: <strong className="text-white font-mono">{mySessionScore}</strong></span>
                     </div>
 
                     {!currentFeedback && (
-                      <div className={`flex items-center gap-1.5 px-3 sm:px-4 py-1.5 rounded-xl font-mono text-sm sm:text-base font-black ${
+                      <div className={`flex items-center gap-1.5 px-3 sm:px-4 py-1 sm:py-1.5 rounded-xl font-mono text-xs sm:text-sm md:text-base font-black shrink-0 transition-all ${
                         timeLeft <= 5 
-                          ? 'bg-red-600 text-white animate-pulse ring-2 ring-red-400' 
+                          ? 'bg-red-600 text-white animate-pulse ring-2 ring-red-400 shadow-lg shadow-red-600/40' 
                           : 'bg-gold/20 text-gold-light border border-gold/40'
                       }`}>
-                        <Clock className="w-4 h-4" />
+                        <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
                         <span>{timeLeft}s</span>
                       </div>
                     )}
@@ -1883,42 +1881,56 @@ const MeetRoomPage = () => {
 
                 {/* Banner de Supervisión para el Líder si está respondiendo */}
                 {isHost && (
-                  <div className="bg-blue-950/40 border border-blue-500/40 p-2.5 rounded-xl flex items-center justify-between text-xs text-blue-200">
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-gold">👑 Panel Líder:</span>
-                      <span>{effectiveFinishedCount} de {effectiveTotalParticipants} completaron todas las preguntas.</span>
+                  <div className="shrink-0 w-full bg-blue-950/60 border border-blue-500/40 p-2.5 sm:p-3 rounded-xl sm:rounded-2xl flex flex-wrap items-center justify-between gap-2 text-xs text-blue-200 shadow-md">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="font-bold text-gold shrink-0">👑 Panel Líder:</span>
+                      <span className="truncate">{effectiveFinishedCount} de {effectiveTotalParticipants} completaron todas las preguntas.</span>
                     </div>
                     <button
                       onClick={handleRevealQuizResults}
-                      className="px-3 py-1 bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold rounded-lg text-[11px] transition-all cursor-pointer shadow"
+                      className="px-3.5 py-1.5 bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-black rounded-lg text-xs transition-all cursor-pointer shadow-md hover:scale-105 shrink-0 ml-auto"
                     >
                       Mostrar Resultados 📊
                     </button>
                   </div>
                 )}
 
-                {/* 2. Tarjeta Principal de la Pregunta */}
-                <div className="bg-slate-900 border-2 border-gold/50 p-4 sm:p-6 rounded-2xl shadow-xl text-center relative overflow-hidden">
-                  <div className="absolute top-0 right-0 w-32 h-32 bg-gold/10 rounded-full blur-2xl pointer-events-none" />
-                  <h2 className="font-[Cinzel] text-lg sm:text-2xl font-bold text-white leading-relaxed">
+                {/* 2. Tarjeta Principal de la Pregunta (Ocupa el ancho completo con tipografía responsive) */}
+                <div className="w-full flex-1 min-h-[110px] sm:min-h-[140px] md:min-h-[180px] lg:min-h-[220px] max-h-[38vh] bg-gradient-to-b from-slate-900/95 via-slate-900/90 to-slate-950 border-2 border-gold/60 p-4 sm:p-6 md:p-8 lg:p-10 rounded-2xl sm:rounded-3xl shadow-2xl flex flex-col items-center justify-center text-center relative overflow-hidden group">
+                  <div className="absolute inset-0 bg-radial from-amber-500/10 via-transparent to-transparent pointer-events-none" />
+                  <div className="absolute top-0 right-0 w-48 h-48 bg-gold/5 rounded-full blur-3xl pointer-events-none" />
+                  <div className="absolute bottom-0 left-0 w-48 h-48 bg-amber-500/5 rounded-full blur-3xl pointer-events-none" />
+                  
+                  <div className="flex items-center gap-2 mb-2 sm:mb-3 flex-wrap justify-center">
+                    <span className="text-[10px] sm:text-xs font-black uppercase tracking-widest text-gold bg-gold/15 px-3 py-1 rounded-full border border-gold/30 shadow-sm inline-flex items-center gap-1.5">
+                      📖 Palabra de Dios • Pregunta #{myQuestionIndex + 1}
+                    </span>
+                    {(currentQuestion.verse_reference || currentQuestion.verseReference) && (
+                      <span className="text-[10px] sm:text-xs text-amber-300/90 font-mono hidden sm:inline-flex items-center gap-1 bg-white/5 px-2.5 py-0.5 rounded-full border border-white/10">
+                        ✨ {currentQuestion.verse_reference || currentQuestion.verseReference}
+                      </span>
+                    )}
+                  </div>
+
+                  <h2 className="font-[Cinzel] text-base sm:text-xl md:text-2xl lg:text-3xl xl:text-4xl font-bold text-white leading-snug sm:leading-relaxed max-w-5xl mx-auto px-2 select-text">
                     {currentQuestion.question_text || currentQuestion.questionText}
                   </h2>
                 </div>
 
-                {/* Barra Visual del Cronómetro */}
+                {/* Barra Visual del Cronómetro (Largo completo) */}
                 {!currentFeedback && (
-                  <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden border border-white/10">
+                  <div className="shrink-0 w-full bg-slate-900 rounded-full h-2 sm:h-2.5 overflow-hidden border border-white/10 shadow-inner">
                     <div 
                       className={`h-full transition-all duration-1000 ease-linear ${
-                        timeLeft <= 5 ? 'bg-red-500 animate-pulse' : 'bg-gradient-to-r from-gold to-amber-500'
+                        timeLeft <= 5 ? 'bg-red-500 animate-pulse shadow-[0_0_12px_#ef4444]' : 'bg-gradient-to-r from-gold via-yellow-400 to-amber-500'
                       }`}
                       style={{ width: `${Math.max(0, Math.min(100, (timeLeft / (currentQuestion.time_limit_seconds || 25)) * 100))}%` }}
                     />
                   </div>
                 )}
 
-                {/* 3. Las 4 Opciones Interactivas (A, B, C, D) */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3.5">
+                {/* 3. Las 4 Opciones Interactivas (A, B, C, D) en cuadrícula responsive que abarca toda la pantalla */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3.5 md:gap-4 lg:gap-5 w-full flex-1">
                   {['a', 'b', 'c', 'd'].map(optKey => {
                     const optText = currentQuestion[`option_${optKey}`] || currentQuestion[`option${optKey.toUpperCase()}`];
                     if (!optText) return null;
@@ -1927,11 +1939,26 @@ const MeetRoomPage = () => {
                     const isCorrect = currentFeedback && currentFeedback.correctAnswer === optKey;
                     const isWrongSelected = currentFeedback && isSelected && !isCorrect;
 
-                    let btnStyle = 'bg-slate-900 hover:bg-slate-800 border-gray-700 text-gray-200';
+                    // Colores temáticos elegantes para cada opción
+                    const letterBadgeStyles = {
+                      a: 'bg-red-500/20 border-red-500/40 text-red-300 group-hover:bg-red-500 group-hover:text-white',
+                      b: 'bg-blue-500/20 border-blue-500/40 text-blue-300 group-hover:bg-blue-500 group-hover:text-white',
+                      c: 'bg-amber-500/20 border-amber-500/40 text-yellow-300 group-hover:bg-amber-500 group-hover:text-slate-950',
+                      d: 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300 group-hover:bg-emerald-500 group-hover:text-slate-950'
+                    };
+
+                    let btnStyle = 'bg-slate-900/90 hover:bg-slate-800/95 border-white/15 hover:border-gold/60 text-gray-100 hover:shadow-xl hover:shadow-gold/5';
+                    let badgeStyle = letterBadgeStyles[optKey] || 'bg-white/10 text-white';
+
                     if (isCorrect) {
-                      btnStyle = 'bg-green-600/30 border-green-500 text-green-200 ring-2 ring-green-500 font-bold';
+                      btnStyle = 'bg-emerald-950/80 border-emerald-400 text-emerald-100 ring-2 ring-emerald-400 shadow-xl shadow-emerald-500/20 font-bold';
+                      badgeStyle = 'bg-emerald-400 text-slate-950 font-black';
                     } else if (isWrongSelected) {
-                      btnStyle = 'bg-red-600/30 border-red-500 text-red-200 ring-2 ring-red-500';
+                      btnStyle = 'bg-red-950/80 border-red-500 text-red-100 ring-2 ring-red-500 shadow-xl shadow-red-500/20';
+                      badgeStyle = 'bg-red-500 text-white font-black';
+                    } else if (isSelected) {
+                      btnStyle = 'bg-gold/20 border-gold text-gold-light ring-2 ring-gold';
+                      badgeStyle = 'bg-gold text-slate-950 font-black';
                     }
 
                     return (
@@ -1939,56 +1966,56 @@ const MeetRoomPage = () => {
                         key={optKey}
                         disabled={!!currentFeedback}
                         onClick={() => handleAnswerSelect(optKey)}
-                        className={`p-3 sm:p-4 min-h-[52px] rounded-xl border text-left flex items-center justify-between gap-3 transition-all cursor-pointer disabled:cursor-default touch-manipulation select-none active:scale-[0.99] ${btnStyle}`}
+                        className={`group w-full h-full min-h-[56px] sm:min-h-[70px] md:min-h-[82px] lg:min-h-[96px] xl:min-h-[105px] p-3 sm:p-4 md:p-5 rounded-xl sm:rounded-2xl border-2 text-left flex items-center justify-between gap-3 sm:gap-4 transition-all cursor-pointer disabled:cursor-default touch-manipulation select-none active:scale-[0.98] shadow-md ${btnStyle}`}
                       >
-                        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
-                          <span className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center font-bold text-xs sm:text-sm uppercase shrink-0 ${
-                            isCorrect ? 'bg-green-500 text-slate-900' : isWrongSelected ? 'bg-red-500 text-white' : isSelected ? 'bg-gold text-slate-900' : 'bg-white/10 text-white'
-                          }`}>
+                        <div className="flex items-center gap-2.5 sm:gap-3.5 md:gap-4 min-w-0">
+                          <span className={`w-8 h-8 sm:w-10 sm:h-10 md:w-11 md:h-11 rounded-xl flex items-center justify-center font-black text-xs sm:text-base md:text-lg uppercase shrink-0 border transition-all ${badgeStyle}`}>
                             {optKey}
                           </span>
-                          <span className="text-xs sm:text-sm font-medium">{optText}</span>
+                          <span className="text-xs sm:text-sm md:text-base lg:text-lg font-semibold leading-snug line-clamp-3 sm:line-clamp-none">
+                            {optText}
+                          </span>
                         </div>
 
-                        <div className="shrink-0 flex items-center gap-1.5">
-                          {isCorrect && <CheckCircle className="w-5 h-5 text-green-400" />}
-                          {isWrongSelected && <XCircle className="w-5 h-5 text-red-400" />}
+                        <div className="shrink-0 flex items-center gap-1.5 ml-2">
+                          {isCorrect && <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7 text-emerald-400 animate-bounce" />}
+                          {isWrongSelected && <XCircle className="w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7 text-red-400 animate-pulse" />}
                         </div>
                       </button>
                     );
                   })}
                 </div>
 
-                {/* 4. Feedback Inmediato y Botón de Avance */}
+                {/* 4. Feedback Inmediato y Botón de Avance a Pantalla Completa */}
                 {currentFeedback && (
-                  <div className="bg-slate-900 border border-gold/40 p-3 sm:p-4 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-3 animate-fadeIn">
-                    <div className="flex items-center gap-2.5 text-xs sm:text-sm">
+                  <div className="shrink-0 w-full bg-gradient-to-r from-slate-900 via-slate-900/95 to-slate-950 border-2 border-gold/50 p-3 sm:p-4 md:p-5 rounded-xl sm:rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3 shadow-2xl animate-fadeIn">
+                    <div className="flex items-center gap-3 text-xs sm:text-sm md:text-base min-w-0">
                       {currentFeedback.isTimeout ? (
-                        <div className="flex items-center gap-1.5 text-amber-400 font-bold">
-                          <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-red-400 animate-pulse" />
-                          <span>⏰ ¡Tiempo agotado! (0 pts) • La correcta era la ({currentFeedback.correctAnswer?.toUpperCase()})</span>
+                        <div className="flex items-center gap-2 text-amber-400 font-bold">
+                          <Clock className="w-5 h-5 sm:w-6 sm:h-6 text-red-400 animate-pulse shrink-0" />
+                          <span>⏰ ¡Tiempo agotado! (0 pts) • La opción correcta era la <strong>({currentFeedback.correctAnswer?.toUpperCase()})</strong></span>
                         </div>
                       ) : currentFeedback.isCorrect ? (
-                        <div className="flex items-center gap-1.5 text-green-400 font-bold">
-                          <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5" />
-                          <span>¡Correcto! +{currentFeedback.points} pts</span>
+                        <div className="flex items-center gap-2 text-emerald-400 font-bold">
+                          <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-400 shrink-0" />
+                          <span>¡Respuesta Correcta! +{currentFeedback.points} pts</span>
                         </div>
                       ) : (
-                        <div className="flex items-center gap-1.5 text-red-400 font-bold">
-                          <XCircle className="w-4 h-4 sm:w-5 sm:h-5" />
-                          <span>Respuesta incorrecta. La correcta era la ({currentFeedback.correctAnswer?.toUpperCase()})</span>
+                        <div className="flex items-center gap-2 text-red-400 font-bold">
+                          <XCircle className="w-5 h-5 sm:w-6 sm:h-6 text-red-400 shrink-0" />
+                          <span>Respuesta incorrecta. La opción correcta era la <strong>({currentFeedback.correctAnswer?.toUpperCase()})</strong></span>
                         </div>
                       )}
-                      {currentFeedback.verseReference && (
-                        <span className="text-gold font-semibold italic text-xs hidden md:inline">
-                          📖 {currentFeedback.verseReference}
+                      {(currentFeedback.verseReference || currentQuestion.verse_reference) && (
+                        <span className="text-gold font-semibold italic text-xs md:text-sm hidden md:inline ml-2 pl-3 border-l border-white/15">
+                          📖 {currentFeedback.verseReference || currentQuestion.verse_reference}
                         </span>
                       )}
                     </div>
 
                     <button
                       onClick={handleGoToNextQuestion}
-                      className="w-full sm:w-auto px-5 py-2.5 bg-gradient-to-r from-gold to-gold-dark hover:from-gold-dark hover:to-gold text-white font-bold rounded-xl text-xs sm:text-sm shadow-lg transition-all cursor-pointer hover:scale-105 shrink-0 flex items-center justify-center gap-1.5"
+                      className="w-full sm:w-auto px-6 sm:px-8 py-3 sm:py-3.5 bg-gradient-to-r from-gold via-yellow-400 to-amber-500 hover:from-yellow-400 hover:to-gold text-slate-950 font-black rounded-xl sm:rounded-2xl text-xs sm:text-sm md:text-base shadow-xl shadow-amber-500/30 transition-all cursor-pointer hover:scale-105 active:scale-95 shrink-0 flex items-center justify-center gap-2"
                     >
                       <span>
                         {myQuestionIndex + 1 < activeQuestions.length ? 'Siguiente Pregunta ➡️' : 'Finalizar Cuestionario ✅'}
@@ -1997,16 +2024,16 @@ const MeetRoomPage = () => {
                   </div>
                 )}
 
-                {/* Mini estado de la sala en vivo */}
-                <div className="bg-slate-900/60 border border-white/10 rounded-xl p-3 text-xs text-gray-300 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Users className="w-3.5 h-3.5 text-gold" />
-                    <span>Progreso de la sala: {effectiveFinishedCount} de {effectiveTotalParticipants} completaron</span>
+                {/* 5. Barra Inferior de Progreso de la Sala */}
+                <div className="shrink-0 w-full bg-slate-900/60 border border-white/10 rounded-xl sm:rounded-2xl p-2.5 sm:p-3 text-[11px] sm:text-xs text-gray-300 flex items-center justify-between gap-2 shadow-inner">
+                  <div className="flex items-center gap-2 truncate">
+                    <Users className="w-3.5 h-3.5 text-gold shrink-0" />
+                    <span className="truncate">Progreso de la sala: {effectiveFinishedCount} de {effectiveTotalParticipants} completaron</span>
                   </div>
                   <button
                     type="button"
                     onClick={() => setIsQuizProgressModalOpen(true)}
-                    className="text-gold hover:text-white font-mono text-[11px] underline cursor-pointer transition-colors"
+                    className="text-gold hover:text-white font-mono text-[11px] sm:text-xs font-bold underline cursor-pointer transition-colors shrink-0 whitespace-nowrap ml-2"
                   >
                     {effectiveFinishedCount >= effectiveTotalParticipants ? '¡Todos listos! Ver lista' : 'Ver quiénes están listos 🔍'}
                   </button>
@@ -2024,23 +2051,23 @@ const MeetRoomPage = () => {
             )
           ) : (
             /* SUB-FASE B.2: PANTALLA DE ESPERA (TRAS COMPLETAR TODAS LAS PREGUNTAS) */
-            <div className="flex-1 flex flex-col justify-center items-center p-4 sm:p-6 md:p-8 max-w-3xl mx-auto w-full overflow-y-auto space-y-5 animate-fadeIn">
+            <div className="flex-1 flex flex-col justify-center items-center p-3 sm:p-6 md:p-8 max-w-5xl 2xl:max-w-6xl mx-auto w-full overflow-y-auto space-y-4 sm:space-y-6 animate-fadeIn">
               
               {/* Encabezado Celebratorio */}
               <div className="text-center space-y-2">
                 <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto rounded-full bg-gold/20 border-2 border-gold flex items-center justify-center text-gold shadow-lg shadow-gold/20 animate-pulse">
                   <Hourglass className="w-8 h-8 sm:w-10 sm:h-10 text-gold" />
                 </div>
-                <h2 className="font-[Cinzel] text-xl sm:text-3xl font-bold text-gold">
+                <h2 className="font-[Cinzel] text-xl sm:text-2xl md:text-3xl font-bold text-gold">
                   ¡Has completado todas las preguntas bíblicas!
                 </h2>
-                <p className="text-xs sm:text-sm text-gray-300 max-w-md mx-auto">
+                <p className="text-xs sm:text-sm text-gray-300 max-w-lg mx-auto">
                   Excelente trabajo escudriñando las Escrituras. Ahora estamos esperando a que los demás hermanos terminen para revelar los resultados finales y el podio.
                 </p>
               </div>
 
               {/* Tarjeta de Resumen Personal */}
-              <div className="grid grid-cols-3 gap-2.5 sm:gap-3 w-full max-w-lg">
+              <div className="grid grid-cols-3 gap-2.5 sm:gap-4 w-full max-w-2xl">
                 <div className="bg-slate-900 border border-gold/40 p-3 rounded-xl text-center">
                   <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider block">Mis Puntos</span>
                   <span className="text-lg sm:text-2xl font-black text-amber-300 font-mono">{mySessionScore}</span>
