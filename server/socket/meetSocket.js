@@ -6,6 +6,43 @@ export const activeRooms = new Map();
 // Registro en memoria de sockets y usuarios conectados a la plataforma en tiempo real
 const globalPlatformSockets = new Map(); // socketId -> { userId, username, lastPing }
 
+// Temporizadores de desconexión aislados para evitar ciclos circulares de Node.js Timeout en Socket.io
+const participantDisconnectTimers = new Map(); // `${meetId}:${userId}` -> Timeout
+
+export function clearParticipantDisconnectTimer(meetId, userId) {
+    const key = `${meetId}:${userId}`;
+    if (participantDisconnectTimers.has(key)) {
+        clearTimeout(participantDisconnectTimers.get(key));
+        participantDisconnectTimers.delete(key);
+    }
+}
+
+export function clearAllRoomDisconnectTimers(meetId) {
+    const prefix = `${meetId}:`;
+    for (const [key, timer] of participantDisconnectTimers.entries()) {
+        if (key.startsWith(prefix)) {
+            clearTimeout(timer);
+            participantDisconnectTimers.delete(key);
+        }
+    }
+}
+
+/**
+ * Devuelve la lista de participantes sanitizada, serializable y sin referencias circulares
+ */
+export function getSanitizedParticipants(room) {
+    if (!room || !room.participants) return [];
+    return Array.from(room.participants.values()).map(p => ({
+        id: String(p.id),
+        username: p.username || 'Participante',
+        role: p.role || 'user',
+        isHost: !!p.isHost,
+        score: p.score || 0,
+        handRaised: !!p.handRaised,
+        connected: p.connected !== false
+    }));
+}
+
 /**
  * Limpia sockets inactivos sin ping reciente para evitar conteos fantasmas
  */
@@ -200,6 +237,7 @@ export async function broadcastPlatformOnlineStats(io) {
  */
 export function endActiveRoom(meetId) {
     const idStr = String(meetId);
+    clearAllRoomDisconnectTimers(idStr);
     const room = activeRooms.get(idStr);
     if (room) {
         if (room.revealTimer) {
@@ -216,6 +254,10 @@ export function endActiveRoom(meetId) {
  * Limpia y finaliza todas las salas activas en memoria
  */
 export function endAllActiveRooms() {
+    for (const timer of participantDisconnectTimers.values()) {
+        clearTimeout(timer);
+    }
+    participantDisconnectTimers.clear();
     for (const [id, room] of activeRooms.entries()) {
         if (room.revealTimer) {
             clearTimeout(room.revealTimer);
@@ -1240,11 +1282,8 @@ export function setupMeetSocket(io) {
             const isHost = userIdStr === String(room.hostId) || user.role === 'admin' || user.role === 'superadmin';
             
             // Si el usuario ya estaba, preservar score y cancelar cualquier temporizador de desconexión previo
+            clearParticipantDisconnectTimer(currentMeetId, userIdStr);
             const existing = room.participants.get(userIdStr);
-            if (existing && existing.disconnectTimer) {
-                clearTimeout(existing.disconnectTimer);
-                existing.disconnectTimer = null;
-            }
             const score = existing ? (existing.score || 0) : 0;
 
             room.participants.set(userIdStr, {
@@ -1303,6 +1342,7 @@ export function setupMeetSocket(io) {
             }
 
             const quizProgress = getRoomQuizProgress(room);
+            const sanitizedParticipantsList = getSanitizedParticipants(room);
 
             socket.emit('meet:initial-state', {
                 meetId: room.meetId,
@@ -1316,7 +1356,7 @@ export function setupMeetSocket(io) {
                 currentPage: room.currentPage,
                 currentReader: room.currentReader,
                 questionsCount: sanitizedQuestions.length,
-                participants: Array.from(room.participants.values()),
+                participants: sanitizedParticipantsList,
                 questions: sanitizedQuestions,
                 // Datos del Quiz individual y progreso global
                 myAnswers: myAnswersList,
@@ -1326,18 +1366,18 @@ export function setupMeetSocket(io) {
                 revealedResults: room.revealedResults,
                 leaderboard: quizProgress?.leaderboard || [],
                 myScore: score,
-                connectedCount: Array.from(room.participants.values()).filter(p => p.connected !== false).length,
+                connectedCount: sanitizedParticipantsList.filter(p => p.connected !== false).length,
                 totalJoinedCount: room.allTimeParticipants ? room.allTimeParticipants.size : room.participants.size,
                 peakAttendance: room.peakAttendance || room.participants.size,
                 platformOnlineCount: getPlatformOnlineCount()
             });
 
             // Avisar a los demás
-            const activeCount = Array.from(room.participants.values()).filter(p => p.connected !== false).length;
+            const activeCount = sanitizedParticipantsList.filter(p => p.connected !== false).length;
             io.to(`meet:${currentMeetId}`).emit('meet:participants-updated', {
-                participants: Array.from(room.participants.values()),
+                participants: sanitizedParticipantsList,
                 connectedCount: activeCount,
-                totalCount: room.participants.size,
+                totalCount: sanitizedParticipantsList.length,
                 totalJoinedCount: room.allTimeParticipants ? room.allTimeParticipants.size : room.participants.size,
                 peakAttendance: room.peakAttendance || room.participants.size,
                 platformOnlineCount: getPlatformOnlineCount()
@@ -1381,7 +1421,7 @@ export function setupMeetSocket(io) {
 
             io.to(`meet:${meetId}`).emit('meet:hands-updated', {
                 handsRaised: Array.from(room.handsRaised),
-                participants: Array.from(room.participants.values())
+                participants: getSanitizedParticipants(room)
             });
         });
 
@@ -1538,12 +1578,9 @@ export function setupMeetSocket(io) {
             const room = activeRooms.get(idStr);
             if (room && targetUser) {
                 const userIdStr = String(targetUser.id);
+                clearParticipantDisconnectTimer(idStr, userIdStr);
                 const p = room.participants.get(userIdStr);
                 if (p) {
-                    if (p.disconnectTimer) {
-                        clearTimeout(p.disconnectTimer);
-                        p.disconnectTimer = null;
-                    }
                     p.connected = false;
                     p.socketDisconnected = true;
                     p.lastDisconnectedAt = Date.now();
@@ -1551,13 +1588,14 @@ export function setupMeetSocket(io) {
                 room.handsRaised.delete(userIdStr);
                 socket.leave(`meet:${idStr}`);
 
-                const activeCount = Array.from(room.participants.values()).filter(part => part.connected !== false).length;
+                const sanitized = getSanitizedParticipants(room);
+                const activeCount = sanitized.filter(part => part.connected !== false).length;
                 io.to(`meet:${idStr}`).emit('meet:participants-updated', {
-                    participants: Array.from(room.participants.values()),
+                    participants: sanitized,
                     connectedCount: activeCount,
-                    totalCount: room.participants.size,
-                    totalJoinedCount: room.allTimeParticipants ? room.allTimeParticipants.size : room.participants.size,
-                    peakAttendance: room.peakAttendance || room.participants.size,
+                    totalCount: sanitized.length,
+                    totalJoinedCount: room.allTimeParticipants ? room.allTimeParticipants.size : sanitized.length,
+                    peakAttendance: room.peakAttendance || sanitized.length,
                     platformOnlineCount: getPlatformOnlineCount()
                 });
             }
@@ -1579,23 +1617,27 @@ export function setupMeetSocket(io) {
                         p.lastDisconnectedAt = Date.now();
                         
                         // Período de gracia de 35s antes de dar por desconectado
-                        if (p.disconnectTimer) clearTimeout(p.disconnectTimer);
-                        p.disconnectTimer = setTimeout(() => {
+                        clearParticipantDisconnectTimer(currentMeetId, userIdStr);
+                        const key = `${currentMeetId}:${userIdStr}`;
+                        const timer = setTimeout(() => {
+                            participantDisconnectTimers.delete(key);
                             if (p.socketDisconnected && p.socketId === socket.id) {
                                 p.connected = false;
                                 room.handsRaised.delete(userIdStr);
 
-                                const activeCount = Array.from(room.participants.values()).filter(part => part.connected !== false).length;
+                                const sanitized = getSanitizedParticipants(room);
+                                const activeCount = sanitized.filter(part => part.connected !== false).length;
                                 io.to(`meet:${currentMeetId}`).emit('meet:participants-updated', {
-                                    participants: Array.from(room.participants.values()),
+                                    participants: sanitized,
                                     connectedCount: activeCount,
-                                    totalCount: room.participants.size,
-                                    totalJoinedCount: room.allTimeParticipants ? room.allTimeParticipants.size : room.participants.size,
-                                    peakAttendance: room.peakAttendance || room.participants.size,
+                                    totalCount: sanitized.length,
+                                    totalJoinedCount: room.allTimeParticipants ? room.allTimeParticipants.size : sanitized.length,
+                                    peakAttendance: room.peakAttendance || sanitized.length,
                                     platformOnlineCount: getPlatformOnlineCount()
                                 });
                             }
                         }, 35000);
+                        participantDisconnectTimers.set(key, timer);
                     }
                 }
             }
