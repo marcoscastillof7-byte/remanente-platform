@@ -1053,20 +1053,26 @@ export async function revealRoomQuizResults(meetId, io = null) {
         ? quizProg.podium
         : finalLeaderboard.filter(p => p.hasParticipated || (p.score || 0) > 0 || p.completedCount > 0).slice(0, 3);
 
-    // 4. Sincronizar puntos de plataforma para visualización en podio (los puntos de Meet quedan en la sesión y no inflan los puntos globales)
+    // 4. Acreditar Puntos de Sabiduría a los participantes en la base de datos (solo una vez)
     if (!room.pointsAwarded) {
         room.pointsAwarded = true;
         try {
             const supabase = getDb();
             for (let p of finalLeaderboard) {
-                const { data: u } = await supabase.from('users').select('points').eq('id', p.id).single();
-                p.totalPlatformPoints = (u && u.points) ? u.points : 0;
+                if (p.score > 0) {
+                    const { data: u } = await supabase.from('users').select('points').eq('id', p.id).single();
+                    const currentPts = (u && u.points) ? u.points : 0;
+                    const newPts = currentPts + p.score;
+                    await supabase.from('users').update({ points: newPts }).eq('id', p.id);
+                    p.totalPlatformPoints = newPts;
+                }
             }
             if (io) {
+                io.emit('leaderboard-update');
                 io.emit('meet:updated');
             }
         } catch (dbErr) {
-            console.error('[MeetSocket] Error sincronizando puntos de reunión:', dbErr);
+            console.error('[MeetSocket] Error guardando puntos finales:', dbErr);
         }
     }
 
@@ -1184,6 +1190,13 @@ export async function endRoomSession(meetId, io = null) {
     try {
         if (!room?.pointsAwarded && finalLeaderboard.length > 0) {
             if (room) room.pointsAwarded = true;
+            for (let p of finalLeaderboard) {
+                if (p.score > 0) {
+                    const { data: u } = await supabase.from('users').select('points').eq('id', p.id).single();
+                    const currentPts = (u && u.points) ? u.points : 0;
+                    await supabase.from('users').update({ points: currentPts + p.score }).eq('id', p.id);
+                }
+            }
         }
 
         // Eliminar automáticamente toda la data transitoria del meet (respuestas en vivo, progreso, podio en caché)
