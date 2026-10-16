@@ -30,7 +30,8 @@ import {
   TrendingUp,
   Filter,
   RotateCcw,
-  X
+  X,
+  Search
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { api } from '../utils/api';
@@ -140,6 +141,7 @@ const MeetRoomPage = () => {
   const [participantsModalTab, setParticipantsModalTab] = useState('room'); // 'room' | 'platform'
   const [isQuizProgressModalOpen, setIsQuizProgressModalOpen] = useState(false);
   const [roomPresenceUsers, setRoomPresenceUsers] = useState([]);
+  const [resultsSearchQuery, setResultsSearchQuery] = useState('');
 
   const isHost = meet && (String(user?.id) === String(meet.host_id) || ['admin', 'superadmin', 'lider', 'leader'].includes(user?.role?.toLowerCase()));
   const isLeaderOrAdmin = Boolean(
@@ -2234,237 +2236,125 @@ const MeetRoomPage = () => {
             : (revealedResults?.totalQuestions || 15);
 
           return (
-            <div className="flex-1 flex flex-col p-3 sm:p-6 md:p-8 max-w-4xl mx-auto w-full overflow-y-auto space-y-5 sm:space-y-6 text-white animate-fadeIn pb-24">
+            <div className="flex-1 flex flex-col p-3 sm:p-5 md:p-6 max-w-5xl mx-auto w-full overflow-y-auto space-y-4 sm:space-y-5 text-white animate-fadeIn pb-24">
 
-              {/* Encabezado Celebratorio */}
-              <div className="text-center space-y-2">
-                <Trophy className="w-14 h-14 sm:w-16 sm:h-16 text-gold animate-bounce mx-auto" />
-                <h2 className="font-[Cinzel] text-2xl sm:text-3xl font-bold text-gold">
-                  ¡Gran Estudio y Quiz Finalizado!
-                </h2>
-                <p className="text-xs sm:text-sm text-gray-300 max-w-md mx-auto">
-                  La gloria sea a Dios por su Palabra. Los Puntos de Sabiduría han sido acreditados a los participantes.
-                </p>
-              </div>
-
-              {/* Estadísticas de Asistencia y Conectados */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 w-full max-w-xl mx-auto">
-                <div 
-                  onClick={() => { setParticipantsModalTab('room'); setIsRoomParticipantsModalOpen(true); }}
-                  className="bg-slate-900/90 border border-gold/40 rounded-xl p-3 flex flex-col items-center shadow-lg text-center cursor-pointer hover:border-gold hover:scale-105 transition-all"
-                  title="Clic para ver detalles de los participantes en sala"
-                >
-                  <Users className="w-4 h-4 text-gold mb-1" />
-                  <span className="text-[10px] text-gray-400 uppercase font-bold">Asistencia al Meet</span>
-                  <span className="text-base sm:text-lg font-black text-white font-mono">
-                    {Math.max(totalJoinedCount || 0, connectedCount, allRoomParticipants.length)}
-                  </span>
+              {/* 1. HERO BANNER SUPERIOR CON TROFEO Y MÉTRICAS (UBICACIÓN HORIZONTAL Y RESPONSIVE) */}
+              <div className="bg-gradient-to-r from-slate-900/95 via-slate-900/90 to-slate-950 border border-gold/40 rounded-2xl p-3.5 sm:p-4 md:p-5 shadow-2xl backdrop-blur-md flex flex-col lg:flex-row items-center justify-between gap-4">
+                
+                {/* Lado Izquierdo: Icono Trofeo + Título del Estudio */}
+                <div className="flex items-center gap-3.5 w-full lg:w-auto justify-center lg:justify-start">
+                  <div className="w-11 h-11 sm:w-13 sm:h-13 rounded-2xl bg-gradient-to-tr from-amber-600 via-yellow-500 to-amber-400 border-2 border-yellow-200/70 flex items-center justify-center text-2xl sm:text-3xl shrink-0 shadow-lg shadow-amber-500/25">
+                    🏆
+                  </div>
+                  <div className="text-center lg:text-left min-w-0">
+                    <div className="flex items-center justify-center lg:justify-start gap-2">
+                      <span className="text-[10px] sm:text-[11px] font-black uppercase tracking-widest text-gold bg-gold/15 px-2.5 py-0.5 rounded-full border border-gold/30">
+                        Resultados Oficiales
+                      </span>
+                      <span className="text-[10px] text-gray-400 font-mono hidden sm:inline">
+                        {totalQuestionsCount} Preguntas
+                      </span>
+                    </div>
+                    <h2 className="font-[Cinzel] text-base sm:text-xl font-bold text-white truncate max-w-xs sm:max-w-md mt-0.5">
+                      {meet?.title || 'Estudio Bíblico y Quiz'}
+                    </h2>
+                    <p className="text-[11px] text-gray-400 hidden sm:block">
+                      La gloria sea a Dios por su Palabra • Puntos de Sabiduría acreditados
+                    </p>
+                  </div>
                 </div>
-                {isLeaderOrAdmin ? (
+
+                {/* Lado Derecho: Las 3 Métricas de la Imagen (Asistencia, Plataforma, Tu Puntaje) + Botón Rápido */}
+                <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-2.5 w-full lg:w-auto">
+                  {/* Asistencia al Meet */}
                   <div 
-                    onClick={() => { setParticipantsModalTab('platform'); setIsRoomParticipantsModalOpen(true); }}
-                    className="bg-slate-900/90 border border-emerald-500/40 rounded-xl p-3 flex flex-col items-center shadow-lg text-center cursor-pointer hover:border-emerald-400 hover:scale-105 transition-all"
-                    title="Clic para ver personas en línea en la plataforma (Líderes/Admin)"
+                    onClick={() => { setParticipantsModalTab('room'); setIsRoomParticipantsModalOpen(true); }}
+                    className="bg-slate-950/80 hover:bg-slate-900 border border-gold/30 hover:border-gold rounded-xl px-3 py-2 flex items-center gap-2.5 shadow cursor-pointer transition-all hover:scale-105"
+                    title="Clic para ver detalles de los participantes en sala"
                   >
-                    <Users className="w-4 h-4 text-emerald-400 mb-1" />
-                    <span className="text-[10px] text-gray-400 uppercase font-bold">En Plataforma</span>
-                    <span className="text-base sm:text-lg font-black text-emerald-400 font-mono">
-                      {platformOnlineCount}
-                    </span>
+                    <div className="w-7 h-7 rounded-lg bg-gold/15 flex items-center justify-center shrink-0">
+                      <Users className="w-3.5 h-3.5 text-gold" />
+                    </div>
+                    <div className="text-left leading-none">
+                      <span className="text-[9px] uppercase tracking-wider text-gray-400 font-bold block mb-1">Asistencia</span>
+                      <span className="text-xs sm:text-sm font-black text-white font-mono">
+                        {Math.max(totalJoinedCount || 0, connectedCount, allRoomParticipants.length)}
+                      </span>
+                    </div>
                   </div>
-                ) : (
-                  <div 
-                    className="bg-slate-900/90 border border-emerald-500/40 rounded-xl p-3 flex flex-col items-center shadow-lg text-center cursor-default select-none"
-                    title={`${platformOnlineCount} personas en línea en la plataforma`}
+
+                  {/* En Plataforma */}
+                  {isLeaderOrAdmin ? (
+                    <div 
+                      onClick={() => { setParticipantsModalTab('platform'); setIsRoomParticipantsModalOpen(true); }}
+                      className="bg-slate-950/80 hover:bg-slate-900 border border-emerald-500/30 hover:border-emerald-400 rounded-xl px-3 py-2 flex items-center gap-2.5 shadow cursor-pointer transition-all hover:scale-105"
+                      title="Clic para ver personas en línea en la plataforma (Líderes/Admin)"
+                    >
+                      <div className="w-7 h-7 rounded-lg bg-emerald-500/15 flex items-center justify-center shrink-0">
+                        <Users className="w-3.5 h-3.5 text-emerald-400" />
+                      </div>
+                      <div className="text-left leading-none">
+                        <span className="text-[9px] uppercase tracking-wider text-gray-400 font-bold block mb-1">Plataforma</span>
+                        <span className="text-xs sm:text-sm font-black text-emerald-400 font-mono">
+                          {platformOnlineCount}
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div 
+                      className="bg-slate-950/80 border border-emerald-500/30 rounded-xl px-3 py-2 flex items-center gap-2.5 shadow select-none"
+                      title={`${platformOnlineCount} personas en línea en la plataforma`}
+                    >
+                      <div className="w-7 h-7 rounded-lg bg-emerald-500/15 flex items-center justify-center shrink-0">
+                        <Users className="w-3.5 h-3.5 text-emerald-400" />
+                      </div>
+                      <div className="text-left leading-none">
+                        <span className="text-[9px] uppercase tracking-wider text-gray-400 font-bold block mb-1">Plataforma</span>
+                        <span className="text-xs sm:text-sm font-black text-emerald-400 font-mono">
+                          {platformOnlineCount}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Tu Puntaje */}
+                  <div className="bg-gradient-to-r from-amber-950/60 to-slate-950 border border-amber-500/40 rounded-xl px-3.5 py-2 flex items-center gap-2.5 shadow">
+                    <div className="w-7 h-7 rounded-lg bg-amber-500/20 flex items-center justify-center shrink-0">
+                      <Award className="w-4 h-4 text-amber-400" />
+                    </div>
+                    <div className="text-left leading-none">
+                      <span className="text-[9px] uppercase tracking-wider text-amber-300/80 font-bold block mb-1">Tu Puntaje</span>
+                      <span className="text-xs sm:text-sm font-black text-amber-300 font-mono">
+                        {(mySessionScore !== undefined && mySessionScore !== null) ? mySessionScore : Object.values(myAnswers || {}).reduce((acc, a) => acc + (Number(a?.points) || 0), 0)} pts
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Botón Volver a la Lectura */}
+                  <button
+                    onClick={() => setResultsViewMode('reading')}
+                    className="bg-blue-600/30 hover:bg-blue-600/50 border border-blue-400/40 text-blue-200 hover:text-white px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow transition-all cursor-pointer hover:scale-105"
+                    title="Volver a la lectura del documento"
                   >
-                    <Users className="w-4 h-4 text-emerald-400 mb-1" />
-                    <span className="text-[10px] text-gray-400 uppercase font-bold">En Plataforma</span>
-                    <span className="text-base sm:text-lg font-black text-emerald-400 font-mono">
-                      {platformOnlineCount}
-                    </span>
-                  </div>
-                )}
-                <div className="col-span-2 sm:col-span-1 bg-slate-900/90 border border-amber-500/40 rounded-xl p-3 flex flex-col items-center shadow-lg text-center">
-                  <Award className="w-4 h-4 text-amber-400 mb-1" />
-                  <span className="text-[10px] text-gray-400 uppercase font-bold">Tu Puntaje</span>
-                  <span className="text-base sm:text-lg font-black text-amber-300 font-mono">
-                    {(mySessionScore !== undefined && mySessionScore !== null) ? mySessionScore : Object.values(myAnswers || {}).reduce((acc, a) => acc + (Number(a?.points) || 0), 0)} pts
-                  </span>
+                    <BookOpen className="w-3.5 h-3.5 text-gold-light" />
+                    <span className="hidden sm:inline">Ver Lectura</span>
+                  </button>
                 </div>
               </div>
 
-              {/* PODIO OLÍMPICO VISUAL (Top 3) */}
-              <div className="bg-gradient-to-b from-slate-900/95 via-slate-900/90 to-slate-950 border-2 border-gold/40 rounded-2xl p-4 sm:p-6 shadow-2xl relative overflow-hidden">
-                <div className="text-center mb-6">
-                  <span className="text-[11px] sm:text-xs uppercase tracking-widest font-black text-gold bg-gold/15 px-4 py-1.5 rounded-full border border-gold/30 shadow-sm inline-flex items-center gap-1.5">
-                    🏆 Podio de Honor
-                  </span>
-                </div>
-
-                {leaderboardList.length === 0 ? (
-                  <div className="text-center py-8 text-gray-400 space-y-2">
-                    <Trophy className="w-10 h-10 text-gold/40 mx-auto animate-pulse" />
-                    <p className="text-xs sm:text-sm">Consolidando las posiciones de los participantes...</p>
-                  </div>
-                ) : leaderboardList.length === 1 ? (
-                  /* CASO 1: UN SOLO PARTICIPANTE (Campeón Central Destacado) */
-                  <div className="w-full flex justify-center pt-2 pb-2">
-                    <div className="w-36 sm:w-48 flex flex-col items-center">
-                      <div className="relative mb-2">
-                        <Crown className="w-7 h-7 sm:w-8 sm:h-8 text-yellow-300 mx-auto -mb-1 filter drop-shadow animate-pulse" />
-                        <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-gradient-to-tr from-amber-600 to-yellow-400 border-2 border-yellow-200 flex items-center justify-center text-3xl sm:text-4xl font-bold shadow-xl shadow-amber-500/30">
-                          🥇
-                        </div>
-                      </div>
-                      <span className="text-sm sm:text-base font-black text-gold-light truncate max-w-[140px] sm:max-w-[180px] text-center" title={leaderboardList[0].username}>
-                        {leaderboardList[0].username}
-                      </span>
-                      <span className="text-xs sm:text-sm font-mono font-black text-yellow-300">
-                        {leaderboardList[0].score || 0} pts
-                      </span>
-                      <span className="text-[10px] sm:text-xs text-yellow-300/80 font-bold mb-2">
-                        {leaderboardList[0].correctCount}/{totalQuestionsCount} aciertos
-                      </span>
-                      <div className="w-full bg-gradient-to-t from-amber-950 via-amber-800 to-yellow-600/90 border-t-2 border-yellow-300 rounded-t-2xl h-32 sm:h-40 flex flex-col items-center justify-center shadow-2xl ring-1 ring-yellow-400/50">
-                        <span className="text-3xl sm:text-4xl font-black text-yellow-200">1º</span>
-                        <span className="text-[10px] sm:text-xs uppercase tracking-wider text-yellow-300 font-black">Campeón</span>
-                      </div>
-                    </div>
-                  </div>
-                ) : leaderboardList.length === 2 ? (
-                  /* CASO 2: DOS PARTICIPANTES (Plata Izquierda y Oro Derecha Equilibrados) */
-                  <div className="w-full flex items-end justify-center gap-4 sm:gap-8 pt-3 pb-2 max-w-md mx-auto">
-                    {/* 2º LUGAR (Plata - Izquierda) */}
-                    <div className="w-32 sm:w-40 flex flex-col items-center shrink-0">
-                      <div className="relative mb-2">
-                        <div className="w-13 h-13 sm:w-16 sm:h-16 rounded-full bg-slate-800 border-2 border-slate-300 flex items-center justify-center text-2xl sm:text-3xl font-bold shadow-lg shadow-slate-400/20">
-                          🥈
-                        </div>
-                      </div>
-                      <span className="text-xs sm:text-sm font-bold text-slate-200 truncate max-w-[110px] sm:max-w-[140px] text-center" title={leaderboardList[1].username}>
-                        {leaderboardList[1].username}
-                      </span>
-                      <span className="text-[11px] sm:text-xs font-mono font-bold text-slate-300">
-                        {leaderboardList[1].score || 0} pts
-                      </span>
-                      <span className="text-[10px] sm:text-xs text-gray-400 mb-2">
-                        {leaderboardList[1].correctCount}/{totalQuestionsCount} aciertos
-                      </span>
-                      <div className="w-full bg-gradient-to-t from-slate-900 via-slate-800 to-slate-700 border-t-2 border-slate-300 rounded-t-xl h-24 sm:h-28 flex flex-col items-center justify-center shadow-inner">
-                        <span className="text-2xl sm:text-3xl font-black text-slate-300">2º</span>
-                        <span className="text-[9px] uppercase tracking-wider text-slate-300/80 font-bold">Subcampeón</span>
-                      </div>
-                    </div>
-
-                    {/* 1º LUGAR (Oro - Derecha/Centro) */}
-                    <div className="w-36 sm:w-44 flex flex-col items-center shrink-0 z-10">
-                      <div className="relative mb-2">
-                        <Crown className="w-6 h-6 sm:w-7 sm:h-7 text-yellow-300 mx-auto -mb-1 filter drop-shadow animate-pulse" />
-                        <div className="w-15 h-15 sm:w-18 sm:h-18 rounded-full bg-gradient-to-tr from-amber-600 to-yellow-400 border-2 border-yellow-200 flex items-center justify-center text-2xl sm:text-3xl font-bold shadow-xl shadow-amber-500/30">
-                          🥇
-                        </div>
-                      </div>
-                      <span className="text-xs sm:text-sm font-black text-gold-light truncate max-w-[120px] sm:max-w-[150px] text-center" title={leaderboardList[0].username}>
-                        {leaderboardList[0].username}
-                      </span>
-                      <span className="text-xs sm:text-sm font-mono font-black text-yellow-300">
-                        {leaderboardList[0].score || 0} pts
-                      </span>
-                      <span className="text-[10px] sm:text-xs text-yellow-300/80 font-bold mb-2">
-                        {leaderboardList[0].correctCount}/{totalQuestionsCount} aciertos
-                      </span>
-                      <div className="w-full bg-gradient-to-t from-amber-950 via-amber-800 to-yellow-600/90 border-t-2 border-yellow-300 rounded-t-xl h-32 sm:h-38 flex flex-col items-center justify-center shadow-2xl ring-1 ring-yellow-400/50">
-                        <span className="text-2xl sm:text-3xl font-black text-yellow-200">1º</span>
-                        <span className="text-[9px] uppercase tracking-wider text-yellow-300 font-extrabold">Campeón</span>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  /* CASO 3: TRES O MÁS PARTICIPANTES (Podio Olímpico Clásico 2º - 1º - 3º) */
-                  <div className="w-full flex items-end justify-center gap-2 sm:gap-4 md:gap-6 pt-3 pb-2 max-w-xl mx-auto overflow-x-auto scrollbar-none">
-                    {/* 2º LUGAR (Plata - Izquierda) */}
-                    <div className="w-26 sm:w-36 md:w-40 flex flex-col items-center shrink-0">
-                      <div className="relative mb-2">
-                        <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-slate-800 border-2 border-slate-300 flex items-center justify-center text-xl sm:text-2xl font-bold shadow-lg shadow-slate-400/20">
-                          🥈
-                        </div>
-                      </div>
-                      <span className="text-xs sm:text-sm font-bold text-slate-200 truncate max-w-[90px] sm:max-w-[120px] text-center" title={leaderboardList[1].username}>
-                        {leaderboardList[1].username}
-                      </span>
-                      <span className="text-[11px] sm:text-xs font-mono font-bold text-slate-300">
-                        {leaderboardList[1].score || 0} pts
-                      </span>
-                      <span className="text-[10px] text-gray-400 mb-2">
-                        {leaderboardList[1].correctCount}/{totalQuestionsCount} aciertos
-                      </span>
-                      <div className="w-full bg-gradient-to-t from-slate-900 via-slate-800 to-slate-700 border-t-2 border-slate-300 rounded-t-xl h-22 sm:h-26 flex flex-col items-center justify-center shadow-inner">
-                        <span className="text-xl sm:text-2xl font-black text-slate-300">2º</span>
-                        <span className="text-[8px] sm:text-[9px] uppercase tracking-wider text-slate-400 font-bold">Plata</span>
-                      </div>
-                    </div>
-
-                    {/* 1º LUGAR (Oro - Centro Elevado) */}
-                    <div className="w-28 sm:w-40 md:w-44 flex flex-col items-center shrink-0 z-10">
-                      <div className="relative mb-2">
-                        <Crown className="w-6 h-6 sm:w-7 sm:h-7 text-yellow-300 mx-auto -mb-1 filter drop-shadow animate-pulse" />
-                        <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-gradient-to-tr from-amber-600 to-yellow-400 border-2 border-yellow-200 flex items-center justify-center text-2xl sm:text-3xl font-bold shadow-xl shadow-amber-500/30">
-                          🥇
-                        </div>
-                      </div>
-                      <span className="text-xs sm:text-sm font-black text-gold-light truncate max-w-[100px] sm:max-w-[140px] text-center" title={leaderboardList[0].username}>
-                        {leaderboardList[0].username}
-                      </span>
-                      <span className="text-xs font-mono font-black text-yellow-300">
-                        {leaderboardList[0].score || 0} pts
-                      </span>
-                      <span className="text-[10px] text-yellow-300/80 font-bold mb-2">
-                        {leaderboardList[0].correctCount}/{totalQuestionsCount} aciertos
-                      </span>
-                      <div className="w-full bg-gradient-to-t from-amber-950 via-amber-800 to-yellow-600/90 border-t-2 border-yellow-300 rounded-t-xl h-30 sm:h-38 flex flex-col items-center justify-center shadow-2xl ring-1 ring-yellow-400/50">
-                        <span className="text-2xl sm:text-3xl font-black text-yellow-200">1º</span>
-                        <span className="text-[9px] sm:text-[10px] uppercase tracking-wider text-yellow-300 font-extrabold">Campeón</span>
-                      </div>
-                    </div>
-
-                    {/* 3º LUGAR (Bronce - Derecha) */}
-                    <div className="w-26 sm:w-36 md:w-40 flex flex-col items-center shrink-0">
-                      <div className="relative mb-2">
-                        <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-slate-800 border-2 border-amber-600 flex items-center justify-center text-xl sm:text-2xl font-bold shadow-lg shadow-amber-700/20">
-                          🥉
-                        </div>
-                      </div>
-                      <span className="text-xs sm:text-sm font-bold text-amber-300 truncate max-w-[90px] sm:max-w-[120px] text-center" title={leaderboardList[2].username}>
-                        {leaderboardList[2].username}
-                      </span>
-                      <span className="text-[11px] sm:text-xs font-mono font-bold text-amber-400">
-                        {leaderboardList[2].score || 0} pts
-                      </span>
-                      <span className="text-[10px] text-gray-400 mb-2">
-                        {leaderboardList[2].correctCount}/{totalQuestionsCount} aciertos
-                      </span>
-                      <div className="w-full bg-gradient-to-t from-stone-950 via-stone-900 to-amber-900 border-t-2 border-amber-600 rounded-t-xl h-16 sm:h-20 flex flex-col items-center justify-center shadow-inner">
-                        <span className="text-xl sm:text-2xl font-black text-amber-500">3º</span>
-                        <span className="text-[8px] sm:text-[9px] uppercase tracking-wider text-amber-500/80 font-bold">Bronce</span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Pestañas de Resultados: Tabla de Posicionamiento, Recap de Respuestas, Estadísticas de la Sala y Tabla Global */}
+              {/* 2. PESTAÑAS PRINCIPALES DE RESULTADOS */}
               <div className="bg-slate-900 border border-gold/40 rounded-2xl overflow-hidden shadow-2xl">
                 <div className="sticky top-0 z-20 flex border-b border-gold/20 bg-slate-950/95 backdrop-blur-md overflow-x-auto scrollbar-thin scrollbar-thumb-gold/30 touch-pan-x p-1.5 gap-1.5">
                   <button
                     onClick={() => setActiveResultsTab('posiciones')}
-                    className={`flex-1 min-w-[130px] py-2.5 px-3 text-xs sm:text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                    className={`flex-1 min-w-[140px] py-2.5 px-3 text-xs sm:text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
                       activeResultsTab === 'posiciones' 
                         ? 'bg-gold/25 text-gold-light border border-gold/60 shadow-inner' 
                         : 'text-gray-400 hover:text-white hover:bg-white/5'
                     }`}
                   >
                     <Trophy className="w-4 h-4 text-gold shrink-0" />
-                    <span>Posicionamiento ({leaderboardList.length})</span>
+                    <span>Podio & Clasificación ({leaderboardList.length})</span>
                   </button>
                   <button
                     onClick={() => setActiveResultsTab('revision')}
@@ -2508,100 +2398,420 @@ const MeetRoomPage = () => {
                 </div>
 
                 <div className="p-3 sm:p-5">
-                  {/* TAB 1: TABLA DE POSICIONAMIENTO COMPLETA */}
-                  {activeResultsTab === 'posiciones' && (
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between text-xs text-gray-400 px-2 py-1">
-                        <span>Participantes clasificados por puntuación, aciertos y velocidad</span>
-                        <span className="font-mono">{leaderboardList.length} en clasificación</span>
-                      </div>
+                  {/* TAB 1: PODIO DE HONOR Y TABLA GENERAL DE POSICIONES */}
+                  {activeResultsTab === 'posiciones' && (() => {
+                    const myRankIndex = leaderboardList.findIndex(p => String(p.id) === String(user?.id) || p.username === user?.username);
+                    const myRankNumber = myRankIndex !== -1 ? myRankIndex + 1 : null;
+                    const myRecord = myRankIndex !== -1 ? leaderboardList[myRankIndex] : null;
 
-                      <div className="max-h-[55vh] sm:max-h-[480px] overflow-y-auto space-y-2 pr-1.5 scrollbar-thin scrollbar-thumb-gold/30 touch-pan-y overscroll-contain">
-                        {leaderboardList.map((p, idx) => {
-                          const isMe = String(p.id) === String(user?.id);
-                          const isConnected = p.connected !== false;
-                          const correctCnt = p.correctCount !== undefined ? p.correctCount : 0;
-                          const totalQs = p.totalQuestions || activeQuestions.length;
-                          const accuracyPct = totalQs > 0 ? Math.round((correctCnt / totalQs) * 100) : 0;
+                    const filteredLeaderboardList = leaderboardList.filter(p => {
+                      if (!resultsSearchQuery.trim()) return true;
+                      const q = resultsSearchQuery.toLowerCase();
+                      return (p.username || '').toLowerCase().includes(q) || (p.name || '').toLowerCase().includes(q);
+                    });
 
-                          return (
-                            <div
-                              key={p.id || idx}
-                              className={`flex flex-col sm:flex-row sm:items-center justify-between p-3 sm:p-3.5 rounded-xl border text-xs sm:text-sm font-semibold transition-all gap-2.5 ${
-                                isMe 
-                                  ? 'bg-gold/25 border-gold text-gold-light ring-1 ring-gold shadow-md' 
-                                  : idx === 0 
-                                  ? 'bg-amber-500/15 border-amber-400/60 text-amber-200' 
-                                  : idx === 1 
-                                  ? 'bg-slate-400/15 border-slate-300/60 text-slate-200' 
-                                  : idx === 2 
-                                  ? 'bg-amber-800/15 border-amber-700/60 text-amber-300' 
-                                  : 'bg-white/5 border-white/10 text-gray-300'
-                              }`}
-                            >
-                              <div className="flex items-center gap-3 min-w-0">
-                                <span className="font-black text-sm sm:text-base w-7 sm:w-8 shrink-0">
-                                  {idx === 0 ? '🥇 1º' : idx === 1 ? '🥈 2º' : idx === 2 ? '🥉 3º' : `${idx + 1}º`}
+                    return (
+                      <div className="space-y-4 sm:space-y-5">
+                        
+                        {/* A. PODIO OLÍMPICO COMPACTO Y PROPORCIONAL (Top 3) */}
+                        <div className="bg-gradient-to-b from-slate-950/90 via-slate-900/90 to-slate-950 border border-gold/30 rounded-2xl p-3.5 sm:p-5 shadow-xl relative overflow-hidden">
+                          <div className="text-center mb-3">
+                            <span className="text-[10px] sm:text-xs uppercase tracking-widest font-black text-gold bg-gold/15 px-3 py-1 rounded-full border border-gold/30 shadow-sm inline-flex items-center gap-1.5">
+                              🏆 Podio de Honor
+                            </span>
+                          </div>
+
+                          {leaderboardList.length === 0 ? (
+                            <div className="text-center py-6 text-gray-400 space-y-1.5">
+                              <Trophy className="w-8 h-8 text-gold/40 mx-auto animate-pulse" />
+                              <p className="text-xs">Consolidando las posiciones de los participantes...</p>
+                            </div>
+                          ) : leaderboardList.length === 1 ? (
+                            /* UN SOLO PARTICIPANTE */
+                            <div className="w-full flex justify-center py-2">
+                              <div className="w-44 sm:w-52 flex flex-col items-center">
+                                <Crown className="w-6 h-6 text-yellow-300 mx-auto -mb-1 animate-pulse" />
+                                <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-gradient-to-tr from-amber-600 to-yellow-400 border-2 border-yellow-200 flex items-center justify-center text-2xl sm:text-3xl font-bold shadow-lg shadow-amber-500/30 mb-1">
+                                  🥇
+                                </div>
+                                <span className="text-xs sm:text-sm font-black text-gold-light truncate max-w-[160px] text-center" title={leaderboardList[0].username}>
+                                  {leaderboardList[0].username}
                                 </span>
-                                
-                                <div className="w-8 h-8 rounded-full bg-slate-800 border border-white/20 flex items-center justify-center text-xs font-bold shrink-0 text-white shadow">
-                                  {(p.username || 'P').charAt(0).toUpperCase()}
+                                <span className="text-xs sm:text-sm font-mono font-black text-yellow-300">
+                                  {leaderboardList[0].score || 0} pts
+                                </span>
+                                <span className="text-[10px] sm:text-[11px] text-yellow-300/80 font-bold mb-2">
+                                  {leaderboardList[0].correctCount}/{totalQuestionsCount} aciertos
+                                </span>
+                                <div className="w-full bg-gradient-to-t from-amber-950 via-amber-800 to-yellow-600/90 border-t-2 border-yellow-300 rounded-t-xl h-16 sm:h-20 flex flex-col items-center justify-center shadow-lg">
+                                  <span className="text-xl sm:text-2xl font-black text-yellow-200">1º</span>
+                                  <span className="text-[9px] uppercase tracking-wider text-yellow-300 font-black">Campeón</span>
                                 </div>
-
-                                <div className="flex flex-col min-w-0">
-                                  <div className="flex items-center gap-1.5 truncate">
-                                    <span className="truncate font-bold text-white">{p.username}</span>
-                                    {isMe && (
-                                      <span className="text-[10px] bg-gold/20 text-gold-light px-1.5 py-0.5 rounded border border-gold/40 font-bold shrink-0">
-                                        (Tú)
-                                      </span>
-                                    )}
-                                    {(p.isHost || ['admin', 'superadmin', 'lider', 'leader'].includes(p.role?.toLowerCase())) && (
-                                      <span className="text-[10px] bg-blue-500/20 text-blue-300 px-1.5 py-0.5 rounded border border-blue-400/30 font-bold shrink-0">
-                                        Líder
-                                      </span>
-                                    )}
-                                    <span 
-                                      className={`w-2 h-2 rounded-full shrink-0 ${isConnected ? 'bg-emerald-400 animate-pulse' : 'bg-gray-500'}`}
-                                      title={isConnected ? 'Conectado a la sala' : 'Desconectado'}
-                                    />
-                                  </div>
-                                  <div className="flex items-center gap-2 text-[11px] text-gray-400">
-                                    <span>{correctCnt}/{totalQs} aciertos ({accuracyPct}%)</span>
-                                    {p.avgTimeSec ? <span>• {p.avgTimeSec}s prom</span> : null}
-                                  </div>
-                                </div>
-                              </div>
-
-                              <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-white/10">
-                                <div className="text-left sm:text-right">
-                                  <span className="font-mono font-black text-gold text-sm sm:text-base block">
-                                    +{p.score || 0} pts
-                                  </span>
-                                  {p.totalPlatformPoints && (
-                                    <span className="text-[10px] text-amber-300/80 font-mono block">
-                                      🌟 {p.totalPlatformPoints} acum.
-                                    </span>
-                                  )}
-                                </div>
-
-                                <button
-                                  onClick={() => {
-                                    setSelectedUserForRecap(p.id);
-                                    setActiveResultsTab('revision');
-                                  }}
-                                  className="px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-[11px] font-bold text-gray-200 transition-all cursor-pointer whitespace-nowrap"
-                                  title="Ver respuestas de este participante"
-                                >
-                                  Ver Recap 🔍
-                                </button>
                               </div>
                             </div>
-                          );
-                        })}
+                          ) : leaderboardList.length === 2 ? (
+                            /* DOS PARTICIPANTES: 2º Plata (Izq) y 1º Oro (Der) */
+                            <div className="w-full flex items-end justify-center gap-4 sm:gap-8 pt-2 pb-1 max-w-sm mx-auto">
+                              {/* 2º LUGAR */}
+                              <div className="w-28 sm:w-36 flex flex-col items-center shrink-0">
+                                <div className="w-11 h-11 sm:w-13 sm:h-13 rounded-full bg-slate-800 border-2 border-slate-300 flex items-center justify-center text-xl sm:text-2xl font-bold shadow mb-1">
+                                  🥈
+                                </div>
+                                <span className="text-xs font-bold text-slate-200 truncate max-w-[110px] text-center" title={leaderboardList[1].username}>
+                                  {leaderboardList[1].username}
+                                </span>
+                                <span className="text-[11px] sm:text-xs font-mono font-bold text-slate-300">
+                                  {leaderboardList[1].score || 0} pts
+                                </span>
+                                <span className="text-[10px] text-gray-400 mb-1.5">
+                                  {leaderboardList[1].correctCount}/{totalQuestionsCount} aciertos
+                                </span>
+                                <div className="w-full bg-gradient-to-t from-slate-900 via-slate-800 to-slate-700 border-t-2 border-slate-300 rounded-t-xl h-14 sm:h-18 flex flex-col items-center justify-center shadow-inner">
+                                  <span className="text-lg sm:text-xl font-black text-slate-300">2º</span>
+                                  <span className="text-[8px] sm:text-[9px] uppercase tracking-wider text-slate-400 font-bold">Subcampeón</span>
+                                </div>
+                              </div>
+
+                              {/* 1º LUGAR */}
+                              <div className="w-32 sm:w-40 flex flex-col items-center shrink-0 z-10">
+                                <Crown className="w-5 h-5 text-yellow-300 mx-auto -mb-0.5 animate-pulse" />
+                                <div className="w-13 h-13 sm:w-15 sm:h-15 rounded-full bg-gradient-to-tr from-amber-600 to-yellow-400 border-2 border-yellow-200 flex items-center justify-center text-2xl font-bold shadow-lg shadow-amber-500/30 mb-1">
+                                  🥇
+                                </div>
+                                <span className="text-xs sm:text-sm font-black text-gold-light truncate max-w-[130px] text-center" title={leaderboardList[0].username}>
+                                  {leaderboardList[0].username}
+                                </span>
+                                <span className="text-xs sm:text-sm font-mono font-black text-yellow-300">
+                                  {leaderboardList[0].score || 0} pts
+                                </span>
+                                <span className="text-[10px] text-yellow-300/80 font-bold mb-1.5">
+                                  {leaderboardList[0].correctCount}/{totalQuestionsCount} aciertos
+                                </span>
+                                <div className="w-full bg-gradient-to-t from-amber-950 via-amber-800 to-yellow-600/90 border-t-2 border-yellow-300 rounded-t-xl h-20 sm:h-24 flex flex-col items-center justify-center shadow-2xl ring-1 ring-yellow-400/50">
+                                  <span className="text-xl sm:text-2xl font-black text-yellow-200">1º</span>
+                                  <span className="text-[9px] uppercase tracking-wider text-yellow-300 font-extrabold">Campeón</span>
+                                </div>
+                              </div>
+                            </div>
+                          ) : (
+                            /* TRES O MÁS PARTICIPANTES: 2º - 1º - 3º */
+                            <div className="w-full flex items-end justify-center gap-2 sm:gap-4 md:gap-6 pt-2 pb-1 max-w-lg mx-auto">
+                              {/* 2º LUGAR */}
+                              <div className="w-24 sm:w-32 md:w-36 flex flex-col items-center shrink-0">
+                                <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-slate-800 border-2 border-slate-300 flex items-center justify-center text-lg sm:text-xl font-bold shadow mb-1">
+                                  🥈
+                                </div>
+                                <span className="text-[11px] sm:text-xs font-bold text-slate-200 truncate max-w-[90px] sm:max-w-[120px] text-center" title={leaderboardList[1].username}>
+                                  {leaderboardList[1].username}
+                                </span>
+                                <span className="text-[10px] sm:text-xs font-mono font-bold text-slate-300">
+                                  {leaderboardList[1].score || 0} pts
+                                </span>
+                                <span className="text-[9px] sm:text-[10px] text-gray-400 mb-1.5">
+                                  {leaderboardList[1].correctCount}/{totalQuestionsCount} aciertos
+                                </span>
+                                <div className="w-full bg-gradient-to-t from-slate-900 via-slate-800 to-slate-700 border-t-2 border-slate-300 rounded-t-xl h-14 sm:h-18 flex flex-col items-center justify-center shadow-inner">
+                                  <span className="text-lg sm:text-xl font-black text-slate-300">2º</span>
+                                  <span className="text-[8px] sm:text-[9px] uppercase tracking-wider text-slate-400 font-bold">Plata</span>
+                                </div>
+                              </div>
+
+                              {/* 1º LUGAR */}
+                              <div className="w-28 sm:w-36 md:w-40 flex flex-col items-center shrink-0 z-10">
+                                <Crown className="w-5 h-5 text-yellow-300 mx-auto -mb-0.5 animate-pulse" />
+                                <div className="w-12 h-12 sm:w-15 sm:h-15 rounded-full bg-gradient-to-tr from-amber-600 to-yellow-400 border-2 border-yellow-200 flex items-center justify-center text-xl sm:text-2xl font-bold shadow-lg shadow-amber-500/30 mb-1">
+                                  🥇
+                                </div>
+                                <span className="text-xs sm:text-sm font-black text-gold-light truncate max-w-[100px] sm:max-w-[140px] text-center" title={leaderboardList[0].username}>
+                                  {leaderboardList[0].username}
+                                </span>
+                                <span className="text-xs font-mono font-black text-yellow-300">
+                                  {leaderboardList[0].score || 0} pts
+                                </span>
+                                <span className="text-[10px] text-yellow-300/80 font-bold mb-1.5">
+                                  {leaderboardList[0].correctCount}/{totalQuestionsCount} aciertos
+                                </span>
+                                <div className="w-full bg-gradient-to-t from-amber-950 via-amber-800 to-yellow-600/90 border-t-2 border-yellow-300 rounded-t-xl h-20 sm:h-26 flex flex-col items-center justify-center shadow-2xl ring-1 ring-yellow-400/50">
+                                  <span className="text-xl sm:text-2xl font-black text-yellow-200">1º</span>
+                                  <span className="text-[8px] sm:text-[9px] uppercase tracking-wider text-yellow-300 font-extrabold">Campeón</span>
+                                </div>
+                              </div>
+
+                              {/* 3º LUGAR */}
+                              <div className="w-24 sm:w-32 md:w-36 flex flex-col items-center shrink-0">
+                                <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-slate-800 border-2 border-amber-600 flex items-center justify-center text-lg sm:text-xl font-bold shadow mb-1">
+                                  🥉
+                                </div>
+                                <span className="text-[11px] sm:text-xs font-bold text-amber-300 truncate max-w-[90px] sm:max-w-[120px] text-center" title={leaderboardList[2].username}>
+                                  {leaderboardList[2].username}
+                                </span>
+                                <span className="text-[10px] sm:text-xs font-mono font-bold text-amber-400">
+                                  {leaderboardList[2].score || 0} pts
+                                </span>
+                                <span className="text-[9px] sm:text-[10px] text-gray-400 mb-1.5">
+                                  {leaderboardList[2].correctCount}/{totalQuestionsCount} aciertos
+                                </span>
+                                <div className="w-full bg-gradient-to-t from-stone-950 via-stone-900 to-amber-900 border-t-2 border-amber-600 rounded-t-xl h-10 sm:h-14 flex flex-col items-center justify-center shadow-inner">
+                                  <span className="text-base sm:text-lg font-black text-amber-500">3º</span>
+                                  <span className="text-[8px] sm:text-[9px] uppercase tracking-wider text-amber-500/80 font-bold">Bronce</span>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* B. BARRA DE CONTROL, BÚSQUEDA Y DESTACADO PERSONAL */}
+                        <div className="flex flex-col sm:flex-row items-center justify-between gap-2.5">
+                          {/* Banner resumen personal si el usuario participó */}
+                          {myRecord && (
+                            <div className="w-full sm:w-auto bg-gold/15 border border-gold/40 rounded-xl px-3 py-1.5 text-xs text-gold-light flex items-center gap-2">
+                              <span className="font-bold">✨ Tu resultado:</span>
+                              <span className="font-mono font-black">{myRankNumber}º Puesto</span>
+                              <span>•</span>
+                              <span className="font-mono font-bold">+{myRecord.score || 0} pts</span>
+                              <span>•</span>
+                              <span>{myRecord.correctCount}/{totalQuestionsCount} aciertos</span>
+                            </div>
+                          )}
+
+                          {/* Buscador de participante si hay varios */}
+                          {leaderboardList.length > 3 && (
+                            <div className="relative w-full sm:w-64 ml-auto">
+                              <Search className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                              <input
+                                type="text"
+                                value={resultsSearchQuery}
+                                onChange={(e) => setResultsSearchQuery(e.target.value)}
+                                placeholder="Buscar participante..."
+                                className="w-full bg-slate-950/80 border border-white/10 focus:border-gold/50 rounded-xl pl-8 pr-3 py-1.5 text-xs text-gray-200 placeholder:text-gray-500 outline-none transition-colors"
+                              />
+                            </div>
+                          )}
+                        </div>
+
+                        {/* C. VISTA DE TABLA COMPLETA PARA TABLETS Y COMPUTADORAS (Desktop >= 640px) */}
+                        <div className="hidden sm:block overflow-hidden rounded-xl border border-gold/30 shadow-lg bg-slate-950/60">
+                          <div className="max-h-[50vh] sm:max-h-[460px] overflow-y-auto scrollbar-thin scrollbar-thumb-gold/30">
+                            <table className="w-full text-left border-collapse text-xs">
+                              <thead className="sticky top-0 bg-slate-950 text-gold font-bold border-b border-gold/30 uppercase text-[10px] tracking-wider z-10">
+                                <tr>
+                                  <th className="py-2.5 px-3 text-center w-16">Puesto</th>
+                                  <th className="py-2.5 px-4">Participante</th>
+                                  <th className="py-2.5 px-4">Aciertos & Precisión</th>
+                                  <th className="py-2.5 px-3 text-center">Tiempo Prom.</th>
+                                  <th className="py-2.5 px-4 text-right">Puntos Meet</th>
+                                  <th className="py-2.5 px-3 text-center w-32">Acción</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-white/5 bg-slate-900/60 font-medium">
+                                {filteredLeaderboardList.length === 0 ? (
+                                  <tr>
+                                    <td colSpan={6} className="py-8 text-center text-gray-400 text-xs">
+                                      No se encontraron participantes en la búsqueda.
+                                    </td>
+                                  </tr>
+                                ) : (
+                                  filteredLeaderboardList.map((p, idx) => {
+                                    const isMe = String(p.id) === String(user?.id);
+                                    const isConnected = p.connected !== false;
+                                    const correctCnt = p.correctCount !== undefined ? p.correctCount : 0;
+                                    const totalQs = p.totalQuestions || totalQuestionsCount;
+                                    const accuracyPct = totalQs > 0 ? Math.round((correctCnt / totalQs) * 100) : 0;
+                                    const originalIndex = leaderboardList.findIndex(item => item.id === p.id);
+                                    const rank = (originalIndex !== -1 ? originalIndex : idx) + 1;
+
+                                    return (
+                                      <tr 
+                                        key={p.id || idx}
+                                        className={`transition-colors hover:bg-white/5 ${
+                                          isMe 
+                                            ? 'bg-gold/20 font-bold border-l-4 border-l-gold' 
+                                            : rank === 1 
+                                            ? 'bg-amber-500/10' 
+                                            : rank === 2 
+                                            ? 'bg-slate-400/10' 
+                                            : rank === 3 
+                                            ? 'bg-amber-800/10' 
+                                            : ''
+                                        }`}
+                                      >
+                                        <td className="py-3 px-3 text-center font-black">
+                                          {rank === 1 ? (
+                                            <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-300 border border-yellow-400/50 text-xs shadow-sm font-bold">🥇 1º</span>
+                                          ) : rank === 2 ? (
+                                            <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-full bg-slate-400/20 text-slate-200 border border-slate-300/50 text-xs shadow-sm font-bold">🥈 2º</span>
+                                          ) : rank === 3 ? (
+                                            <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-full bg-amber-800/20 text-amber-300 border border-amber-600/50 text-xs shadow-sm font-bold">🥉 3º</span>
+                                          ) : (
+                                            <span className="text-gray-400 font-mono text-xs">{rank}º</span>
+                                          )}
+                                        </td>
+                                        <td className="py-3 px-4">
+                                          <div className="flex items-center gap-2.5 min-w-0">
+                                            <div className="w-8 h-8 rounded-full bg-slate-800 border border-white/20 flex items-center justify-center text-xs font-bold text-white shrink-0 shadow">
+                                              {(p.username || 'P').charAt(0).toUpperCase()}
+                                            </div>
+                                            <div className="min-w-0">
+                                              <div className="flex items-center gap-1.5 truncate">
+                                                <span className="font-bold text-white truncate text-xs sm:text-sm">{p.username}</span>
+                                                {isMe && (
+                                                  <span className="text-[10px] bg-gold/30 text-gold-light px-1.5 py-0.2 rounded border border-gold/50 font-bold shrink-0">
+                                                    (Tú)
+                                                  </span>
+                                                )}
+                                                {(p.isHost || ['admin', 'superadmin', 'lider', 'leader'].includes(p.role?.toLowerCase())) && (
+                                                  <span className="text-[10px] bg-blue-500/20 text-blue-300 px-1.5 py-0.2 rounded border border-blue-400/30 font-bold shrink-0">
+                                                    Líder
+                                                  </span>
+                                                )}
+                                                <span 
+                                                  className={`w-2 h-2 rounded-full shrink-0 ${isConnected ? 'bg-emerald-400 animate-pulse' : 'bg-gray-500'}`}
+                                                  title={isConnected ? 'Conectado a la sala' : 'Desconectado'}
+                                                />
+                                              </div>
+                                              {p.totalPlatformPoints && (
+                                                <span className="text-[10px] text-amber-300/80 font-mono block">
+                                                  🌟 {p.totalPlatformPoints} acum. plataforma
+                                                </span>
+                                              )}
+                                            </div>
+                                          </div>
+                                        </td>
+                                        <td className="py-3 px-4">
+                                          <div className="space-y-1">
+                                            <div className="flex items-center justify-between text-xs">
+                                              <span className="font-bold text-gray-200">{correctCnt} de {totalQs} aciertos</span>
+                                              <span className="font-mono text-gray-400 text-[11px]">{accuracyPct}%</span>
+                                            </div>
+                                            <div className="w-32 md:w-40 bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                                              <div 
+                                                className={`h-full transition-all ${accuracyPct >= 70 ? 'bg-emerald-400' : accuracyPct >= 40 ? 'bg-yellow-400' : 'bg-red-400'}`}
+                                                style={{ width: `${accuracyPct}%` }}
+                                              />
+                                            </div>
+                                          </div>
+                                        </td>
+                                        <td className="py-3 px-3 text-center font-mono text-gray-300 text-xs">
+                                          {p.avgTimeSec ? `${p.avgTimeSec}s` : '-'}
+                                        </td>
+                                        <td className="py-3 px-4 text-right">
+                                          <span className="font-mono font-black text-gold text-sm sm:text-base">
+                                            +{p.score || 0} pts
+                                          </span>
+                                        </td>
+                                        <td className="py-3 px-3 text-center">
+                                          <button
+                                            onClick={() => {
+                                              setSelectedUserForRecap(p.id);
+                                              setActiveResultsTab('revision');
+                                            }}
+                                            className="px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-gold/25 hover:text-gold-light hover:border-gold/50 border border-white/10 text-[11px] font-bold text-gray-200 transition-all cursor-pointer whitespace-nowrap"
+                                            title="Ver respuestas de este participante"
+                                          >
+                                            Ver Respuestas 🔍
+                                          </button>
+                                        </td>
+                                      </tr>
+                                    );
+                                  })
+                                )}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+
+                        {/* D. VISTA DE TARJETAS RESPONSIVE PARA MÓVILES (Phone < 640px) */}
+                        <div className="sm:hidden space-y-2.5">
+                          {filteredLeaderboardList.length === 0 ? (
+                            <div className="p-6 text-center text-gray-400 text-xs">
+                              No se encontraron participantes en la búsqueda.
+                            </div>
+                          ) : (
+                            filteredLeaderboardList.map((p, idx) => {
+                              const isMe = String(p.id) === String(user?.id);
+                              const isConnected = p.connected !== false;
+                              const correctCnt = p.correctCount !== undefined ? p.correctCount : 0;
+                              const totalQs = p.totalQuestions || totalQuestionsCount;
+                              const accuracyPct = totalQs > 0 ? Math.round((correctCnt / totalQs) * 100) : 0;
+                              const originalIndex = leaderboardList.findIndex(item => item.id === p.id);
+                              const rank = (originalIndex !== -1 ? originalIndex : idx) + 1;
+
+                              return (
+                                <div
+                                  key={p.id || idx}
+                                  className={`p-3 rounded-xl border text-xs font-semibold transition-all space-y-2.5 shadow-sm ${
+                                    isMe 
+                                      ? 'bg-gold/20 border-gold text-gold-light ring-1 ring-gold shadow-md' 
+                                      : rank === 1 
+                                      ? 'bg-amber-500/15 border-amber-400/60 text-amber-200' 
+                                      : rank === 2 
+                                      ? 'bg-slate-400/15 border-slate-300/60 text-slate-200' 
+                                      : rank === 3 
+                                      ? 'bg-amber-800/15 border-amber-700/60 text-amber-300' 
+                                      : 'bg-white/5 border-white/10 text-gray-300'
+                                  }`}
+                                >
+                                  {/* Fila 1: Puesto + Avatar + Nombre + Puntos */}
+                                  <div className="flex items-center justify-between gap-2">
+                                    <div className="flex items-center gap-2 min-w-0">
+                                      <span className="font-black text-xs px-2 py-0.5 rounded-md bg-slate-950/80 border border-white/10 shrink-0">
+                                        {rank === 1 ? '🥇 1º' : rank === 2 ? '🥈 2º' : rank === 3 ? '🥉 3º' : `${rank}º`}
+                                      </span>
+                                      <div className="w-7 h-7 rounded-full bg-slate-800 border border-white/20 flex items-center justify-center text-xs font-bold shrink-0 text-white shadow">
+                                        {(p.username || 'P').charAt(0).toUpperCase()}
+                                      </div>
+                                      <span className="truncate font-bold text-white text-xs">{p.username}</span>
+                                      {isMe && (
+                                        <span className="text-[10px] bg-gold/30 text-gold-light px-1.5 py-0.2 rounded font-bold shrink-0">
+                                          (Tú)
+                                        </span>
+                                      )}
+                                      {(p.isHost || ['admin', 'superadmin', 'lider', 'leader'].includes(p.role?.toLowerCase())) && (
+                                        <span className="text-[9px] bg-blue-500/20 text-blue-300 px-1 py-0.2 rounded border border-blue-400/30 font-bold shrink-0">
+                                          Líder
+                                        </span>
+                                      )}
+                                      <span 
+                                        className={`w-1.5 h-1.5 rounded-full shrink-0 ${isConnected ? 'bg-emerald-400 animate-pulse' : 'bg-gray-500'}`}
+                                        title={isConnected ? 'Conectado a la sala' : 'Desconectado'}
+                                      />
+                                    </div>
+
+                                    <div className="text-right shrink-0">
+                                      <span className="font-mono font-black text-gold text-sm block">
+                                        +{p.score || 0} pts
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  {/* Fila 2: Aciertos + Tiempo + Botón Ver Respuestas */}
+                                  <div className="flex items-center justify-between gap-2 pt-1 border-t border-white/10 text-[11px] text-gray-400">
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="text-gray-300 font-bold">🎯 {correctCnt}/{totalQs} aciertos</span>
+                                      <span>({accuracyPct}%)</span>
+                                      {p.avgTimeSec ? <span>• ⏱️ {p.avgTimeSec}s</span> : null}
+                                    </div>
+
+                                    <button
+                                      onClick={() => {
+                                        setSelectedUserForRecap(p.id);
+                                        setActiveResultsTab('revision');
+                                      }}
+                                      className="px-2.5 py-1 rounded-md bg-white/10 hover:bg-white/20 text-[11px] font-bold text-gray-200 transition-all cursor-pointer whitespace-nowrap"
+                                      title="Ver respuestas de este participante"
+                                    >
+                                      Ver Recap 🔍
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
+
                       </div>
-                    </div>
-                  )}
+                    );
+                  })()}
 
                   {/* TAB 2: RECAP DE RESPUESTAS INFALIBLE */}
                   {activeResultsTab === 'revision' && (() => {
