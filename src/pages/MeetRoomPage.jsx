@@ -1545,7 +1545,7 @@ const MeetRoomPage = () => {
   }
 
   return (
-    <div className="flex flex-col h-[calc(100dvh-4.75rem)] sm:h-[calc(100dvh-5.5rem)] md:h-[calc(100dvh-6.75rem)] min-h-[440px] sm:min-h-[500px] max-w-7xl mx-auto bg-slate-900 rounded-xl sm:rounded-2xl shadow-2xl border border-gold/40 overflow-hidden relative">
+    <div className="flex flex-col h-[calc(100dvh-4.75rem)] sm:h-[calc(100dvh-5.5rem)] md:h-[calc(100dvh-6.75rem)] min-h-[440px] sm:min-h-[500px] w-full max-w-[99vw] 2xl:max-w-[1850px] mx-auto bg-slate-900 rounded-xl sm:rounded-2xl shadow-2xl border border-gold/40 overflow-hidden relative">
       
       {/* 1. BARRA SUPERIOR DE CONTROL & ESTADO */}
       <div className="bg-primary-dark/95 border-b border-gold/30 px-2.5 sm:px-4 py-2 sm:py-2.5 flex items-center justify-between gap-2 text-white shrink-0 z-20">
@@ -2236,10 +2236,10 @@ const MeetRoomPage = () => {
             : (revealedResults?.totalQuestions || 15);
 
           return (
-            <div className="flex-1 flex flex-col p-3 sm:p-5 md:p-6 max-w-5xl mx-auto w-full overflow-y-auto space-y-4 sm:space-y-5 text-white animate-fadeIn pb-24">
+            <div className="flex-1 flex flex-col p-2.5 sm:p-4 md:p-6 w-full overflow-y-auto space-y-4 sm:space-y-6 text-white animate-fadeIn pb-28">
 
               {/* 1. HERO BANNER SUPERIOR CON TROFEO Y MÉTRICAS (UBICACIÓN HORIZONTAL Y RESPONSIVE) */}
-              <div className="bg-gradient-to-r from-slate-900/95 via-slate-900/90 to-slate-950 border border-gold/40 rounded-2xl p-3.5 sm:p-4 md:p-5 shadow-2xl backdrop-blur-md flex flex-col lg:flex-row items-center justify-between gap-4">
+              <div className="shrink-0 w-full bg-gradient-to-r from-slate-900/95 via-slate-900/90 to-slate-950 border border-gold/40 rounded-2xl p-3.5 sm:p-4 md:p-5 shadow-2xl backdrop-blur-md flex flex-col lg:flex-row items-center justify-between gap-4">
                 
                 {/* Lado Izquierdo: Icono Trofeo + Título del Estudio */}
                 <div className="flex items-center gap-3.5 w-full lg:w-auto justify-center lg:justify-start">
@@ -2343,7 +2343,7 @@ const MeetRoomPage = () => {
               </div>
 
               {/* 2. PESTAÑAS PRINCIPALES DE RESULTADOS */}
-              <div className="bg-slate-900 border border-gold/40 rounded-2xl overflow-hidden shadow-2xl">
+              <div className="shrink-0 w-full bg-slate-900/95 border border-gold/40 rounded-2xl overflow-hidden shadow-2xl backdrop-blur-sm">
                 <div className="sticky top-0 z-20 flex border-b border-gold/20 bg-slate-950/95 backdrop-blur-md overflow-x-auto scrollbar-thin scrollbar-thumb-gold/30 touch-pan-x p-1.5 gap-1.5">
                   <button
                     onClick={() => setActiveResultsTab('posiciones')}
@@ -2414,8 +2414,8 @@ const MeetRoomPage = () => {
                       <div className="space-y-4 sm:space-y-5">
                         
                         {/* A. PODIO OLÍMPICO COMPACTO Y PROPORCIONAL (Top 3) */}
-                        <div className="bg-gradient-to-b from-slate-950/90 via-slate-900/90 to-slate-950 border border-gold/30 rounded-2xl p-3.5 sm:p-5 shadow-xl relative overflow-hidden">
-                          <div className="text-center mb-3">
+                        <div className="bg-gradient-to-b from-slate-950/90 via-slate-900/90 to-slate-950 border border-gold/30 rounded-2xl p-4 sm:p-6 shadow-xl relative overflow-hidden">
+                          <div className="text-center mb-3 sm:mb-4">
                             <span className="text-[10px] sm:text-xs uppercase tracking-widest font-black text-gold bg-gold/15 px-3 py-1 rounded-full border border-gold/30 shadow-sm inline-flex items-center gap-1.5">
                               🏆 Podio de Honor
                             </span>
@@ -2428,132 +2428,133 @@ const MeetRoomPage = () => {
                             </div>
                           ) : leaderboardList.length === 1 ? (
                             /* UN SOLO PARTICIPANTE */
-                            <div className="w-full flex justify-center py-2">
-                              <div className="w-44 sm:w-52 flex flex-col items-center">
-                                <Crown className="w-6 h-6 text-yellow-300 mx-auto -mb-1 animate-pulse" />
-                                <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-gradient-to-tr from-amber-600 to-yellow-400 border-2 border-yellow-200 flex items-center justify-center text-2xl sm:text-3xl font-bold shadow-lg shadow-amber-500/30 mb-1">
+                            <div className="w-full flex justify-center py-3 sm:py-5">
+                              <div className="w-56 sm:w-64 bg-slate-950/80 border-2 border-yellow-500/50 rounded-2xl p-4 sm:p-5 flex flex-col items-center shadow-2xl relative overflow-hidden shrink-0">
+                                <div className="absolute inset-0 bg-radial from-amber-500/10 via-transparent to-transparent pointer-events-none" />
+                                <Crown className="w-7 h-7 text-yellow-300 mx-auto mb-1 animate-pulse" />
+                                <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-gradient-to-tr from-amber-600 via-yellow-400 to-amber-300 border-2 border-yellow-200 flex items-center justify-center text-3xl sm:text-4xl font-bold shadow-xl shadow-amber-500/30 mb-2">
                                   🥇
                                 </div>
-                                <span className="text-xs sm:text-sm font-black text-gold-light truncate max-w-[160px] text-center" title={leaderboardList[0].username}>
+                                <span className="text-sm sm:text-base font-black text-gold-light truncate max-w-[200px] text-center" title={leaderboardList[0].username}>
                                   {leaderboardList[0].username}
                                 </span>
-                                <span className="text-xs sm:text-sm font-mono font-black text-yellow-300">
+                                <span className="text-sm sm:text-base font-mono font-black text-yellow-300 mt-0.5">
                                   {leaderboardList[0].score || 0} pts
                                 </span>
-                                <span className="text-[10px] sm:text-[11px] text-yellow-300/80 font-bold mb-2">
+                                <span className="text-xs text-yellow-200/80 font-bold mt-0.5 mb-3">
                                   {leaderboardList[0].correctCount}/{totalQuestionsCount} aciertos
                                 </span>
-                                <div className="w-full bg-gradient-to-t from-amber-950 via-amber-800 to-yellow-600/90 border-t-2 border-yellow-300 rounded-t-xl h-16 sm:h-20 flex flex-col items-center justify-center shadow-lg">
-                                  <span className="text-xl sm:text-2xl font-black text-yellow-200">1º</span>
-                                  <span className="text-[9px] uppercase tracking-wider text-yellow-300 font-black">Campeón</span>
+                                <div className="w-full bg-gradient-to-t from-amber-950 via-amber-800 to-yellow-600/90 border border-yellow-400/60 rounded-xl py-2 flex flex-col items-center justify-center shadow-lg">
+                                  <span className="text-xl sm:text-2xl font-black text-yellow-100">1º Puesto</span>
+                                  <span className="text-[10px] uppercase tracking-wider text-yellow-300 font-extrabold">Gran Campeón</span>
                                 </div>
                               </div>
                             </div>
                           ) : leaderboardList.length === 2 ? (
                             /* DOS PARTICIPANTES: 2º Plata (Izq) y 1º Oro (Der) */
-                            <div className="w-full flex items-end justify-center gap-4 sm:gap-8 pt-2 pb-1 max-w-sm mx-auto">
+                            <div className="w-full flex items-end justify-center gap-4 sm:gap-8 pt-2 pb-2 max-w-md mx-auto">
                               {/* 2º LUGAR */}
-                              <div className="w-28 sm:w-36 flex flex-col items-center shrink-0">
-                                <div className="w-11 h-11 sm:w-13 sm:h-13 rounded-full bg-slate-800 border-2 border-slate-300 flex items-center justify-center text-xl sm:text-2xl font-bold shadow mb-1">
+                              <div className="w-32 sm:w-40 flex flex-col items-center shrink-0">
+                                <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-slate-800 border-2 border-slate-300 flex items-center justify-center text-2xl font-bold shadow mb-1.5">
                                   🥈
                                 </div>
-                                <span className="text-xs font-bold text-slate-200 truncate max-w-[110px] text-center" title={leaderboardList[1].username}>
+                                <span className="text-xs sm:text-sm font-bold text-slate-200 truncate max-w-[130px] text-center" title={leaderboardList[1].username}>
                                   {leaderboardList[1].username}
                                 </span>
-                                <span className="text-[11px] sm:text-xs font-mono font-bold text-slate-300">
+                                <span className="text-xs sm:text-sm font-mono font-bold text-slate-300">
                                   {leaderboardList[1].score || 0} pts
                                 </span>
-                                <span className="text-[10px] text-gray-400 mb-1.5">
+                                <span className="text-[10px] sm:text-xs text-gray-400 mb-2">
                                   {leaderboardList[1].correctCount}/{totalQuestionsCount} aciertos
                                 </span>
-                                <div className="w-full bg-gradient-to-t from-slate-900 via-slate-800 to-slate-700 border-t-2 border-slate-300 rounded-t-xl h-14 sm:h-18 flex flex-col items-center justify-center shadow-inner">
-                                  <span className="text-lg sm:text-xl font-black text-slate-300">2º</span>
-                                  <span className="text-[8px] sm:text-[9px] uppercase tracking-wider text-slate-400 font-bold">Subcampeón</span>
+                                <div className="w-full bg-gradient-to-t from-slate-900 via-slate-800 to-slate-700 border-t-2 border-slate-300 rounded-t-xl h-16 sm:h-20 flex flex-col items-center justify-center shadow-inner">
+                                  <span className="text-lg sm:text-xl font-black text-slate-200">2º</span>
+                                  <span className="text-[9px] uppercase tracking-wider text-slate-300 font-bold">Subcampeón</span>
                                 </div>
                               </div>
 
                               {/* 1º LUGAR */}
-                              <div className="w-32 sm:w-40 flex flex-col items-center shrink-0 z-10">
-                                <Crown className="w-5 h-5 text-yellow-300 mx-auto -mb-0.5 animate-pulse" />
-                                <div className="w-13 h-13 sm:w-15 sm:h-15 rounded-full bg-gradient-to-tr from-amber-600 to-yellow-400 border-2 border-yellow-200 flex items-center justify-center text-2xl font-bold shadow-lg shadow-amber-500/30 mb-1">
+                              <div className="w-36 sm:w-44 flex flex-col items-center shrink-0 z-10">
+                                <Crown className="w-6 h-6 text-yellow-300 mx-auto -mb-0.5 animate-pulse" />
+                                <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-gradient-to-tr from-amber-600 to-yellow-400 border-2 border-yellow-200 flex items-center justify-center text-3xl font-bold shadow-lg shadow-amber-500/30 mb-1.5">
                                   🥇
                                 </div>
-                                <span className="text-xs sm:text-sm font-black text-gold-light truncate max-w-[130px] text-center" title={leaderboardList[0].username}>
+                                <span className="text-sm sm:text-base font-black text-gold-light truncate max-w-[140px] text-center" title={leaderboardList[0].username}>
                                   {leaderboardList[0].username}
                                 </span>
-                                <span className="text-xs sm:text-sm font-mono font-black text-yellow-300">
+                                <span className="text-sm sm:text-base font-mono font-black text-yellow-300">
                                   {leaderboardList[0].score || 0} pts
                                 </span>
-                                <span className="text-[10px] text-yellow-300/80 font-bold mb-1.5">
+                                <span className="text-xs text-yellow-300/80 font-bold mb-2">
                                   {leaderboardList[0].correctCount}/{totalQuestionsCount} aciertos
                                 </span>
-                                <div className="w-full bg-gradient-to-t from-amber-950 via-amber-800 to-yellow-600/90 border-t-2 border-yellow-300 rounded-t-xl h-20 sm:h-24 flex flex-col items-center justify-center shadow-2xl ring-1 ring-yellow-400/50">
-                                  <span className="text-xl sm:text-2xl font-black text-yellow-200">1º</span>
+                                <div className="w-full bg-gradient-to-t from-amber-950 via-amber-800 to-yellow-600/90 border-t-2 border-yellow-300 rounded-t-xl h-24 sm:h-28 flex flex-col items-center justify-center shadow-2xl ring-1 ring-yellow-400/50">
+                                  <span className="text-2xl sm:text-3xl font-black text-yellow-200">1º</span>
                                   <span className="text-[9px] uppercase tracking-wider text-yellow-300 font-extrabold">Campeón</span>
                                 </div>
                               </div>
                             </div>
                           ) : (
                             /* TRES O MÁS PARTICIPANTES: 2º - 1º - 3º */
-                            <div className="w-full flex items-end justify-center gap-2 sm:gap-4 md:gap-6 pt-2 pb-1 max-w-lg mx-auto">
+                            <div className="w-full flex items-end justify-center gap-3 sm:gap-6 md:gap-8 pt-2 pb-2 max-w-xl mx-auto">
                               {/* 2º LUGAR */}
-                              <div className="w-24 sm:w-32 md:w-36 flex flex-col items-center shrink-0">
-                                <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-slate-800 border-2 border-slate-300 flex items-center justify-center text-lg sm:text-xl font-bold shadow mb-1">
+                              <div className="w-28 sm:w-36 md:w-40 flex flex-col items-center shrink-0">
+                                <div className="w-11 h-11 sm:w-13 sm:h-13 rounded-full bg-slate-800 border-2 border-slate-300 flex items-center justify-center text-xl sm:text-2xl font-bold shadow mb-1.5">
                                   🥈
                                 </div>
-                                <span className="text-[11px] sm:text-xs font-bold text-slate-200 truncate max-w-[90px] sm:max-w-[120px] text-center" title={leaderboardList[1].username}>
+                                <span className="text-xs sm:text-sm font-bold text-slate-200 truncate max-w-[110px] sm:max-w-[130px] text-center" title={leaderboardList[1].username}>
                                   {leaderboardList[1].username}
                                 </span>
-                                <span className="text-[10px] sm:text-xs font-mono font-bold text-slate-300">
+                                <span className="text-xs font-mono font-bold text-slate-300">
                                   {leaderboardList[1].score || 0} pts
                                 </span>
-                                <span className="text-[9px] sm:text-[10px] text-gray-400 mb-1.5">
+                                <span className="text-[10px] sm:text-xs text-gray-400 mb-2">
                                   {leaderboardList[1].correctCount}/{totalQuestionsCount} aciertos
                                 </span>
-                                <div className="w-full bg-gradient-to-t from-slate-900 via-slate-800 to-slate-700 border-t-2 border-slate-300 rounded-t-xl h-14 sm:h-18 flex flex-col items-center justify-center shadow-inner">
-                                  <span className="text-lg sm:text-xl font-black text-slate-300">2º</span>
-                                  <span className="text-[8px] sm:text-[9px] uppercase tracking-wider text-slate-400 font-bold">Plata</span>
+                                <div className="w-full bg-gradient-to-t from-slate-900 via-slate-800 to-slate-700 border-t-2 border-slate-300 rounded-t-xl h-16 sm:h-20 flex flex-col items-center justify-center shadow-inner">
+                                  <span className="text-lg sm:text-xl font-black text-slate-200">2º</span>
+                                  <span className="text-[9px] uppercase tracking-wider text-slate-300 font-bold">Plata</span>
                                 </div>
                               </div>
 
                               {/* 1º LUGAR */}
-                              <div className="w-28 sm:w-36 md:w-40 flex flex-col items-center shrink-0 z-10">
-                                <Crown className="w-5 h-5 text-yellow-300 mx-auto -mb-0.5 animate-pulse" />
-                                <div className="w-12 h-12 sm:w-15 sm:h-15 rounded-full bg-gradient-to-tr from-amber-600 to-yellow-400 border-2 border-yellow-200 flex items-center justify-center text-xl sm:text-2xl font-bold shadow-lg shadow-amber-500/30 mb-1">
+                              <div className="w-32 sm:w-40 md:w-44 flex flex-col items-center shrink-0 z-10">
+                                <Crown className="w-6 h-6 text-yellow-300 mx-auto -mb-0.5 animate-pulse" />
+                                <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-gradient-to-tr from-amber-600 to-yellow-400 border-2 border-yellow-200 flex items-center justify-center text-2xl sm:text-3xl font-bold shadow-lg shadow-amber-500/30 mb-1.5">
                                   🥇
                                 </div>
-                                <span className="text-xs sm:text-sm font-black text-gold-light truncate max-w-[100px] sm:max-w-[140px] text-center" title={leaderboardList[0].username}>
+                                <span className="text-xs sm:text-base font-black text-gold-light truncate max-w-[130px] sm:max-w-[150px] text-center" title={leaderboardList[0].username}>
                                   {leaderboardList[0].username}
                                 </span>
-                                <span className="text-xs font-mono font-black text-yellow-300">
+                                <span className="text-sm font-mono font-black text-yellow-300">
                                   {leaderboardList[0].score || 0} pts
                                 </span>
-                                <span className="text-[10px] text-yellow-300/80 font-bold mb-1.5">
+                                <span className="text-xs text-yellow-300/80 font-bold mb-2">
                                   {leaderboardList[0].correctCount}/{totalQuestionsCount} aciertos
                                 </span>
-                                <div className="w-full bg-gradient-to-t from-amber-950 via-amber-800 to-yellow-600/90 border-t-2 border-yellow-300 rounded-t-xl h-20 sm:h-26 flex flex-col items-center justify-center shadow-2xl ring-1 ring-yellow-400/50">
-                                  <span className="text-xl sm:text-2xl font-black text-yellow-200">1º</span>
-                                  <span className="text-[8px] sm:text-[9px] uppercase tracking-wider text-yellow-300 font-extrabold">Campeón</span>
+                                <div className="w-full bg-gradient-to-t from-amber-950 via-amber-800 to-yellow-600/90 border-t-2 border-yellow-300 rounded-t-xl h-24 sm:h-28 flex flex-col items-center justify-center shadow-2xl ring-1 ring-yellow-400/50">
+                                  <span className="text-2xl sm:text-3xl font-black text-yellow-200">1º</span>
+                                  <span className="text-[9px] uppercase tracking-wider text-yellow-300 font-extrabold">Campeón</span>
                                 </div>
                               </div>
 
                               {/* 3º LUGAR */}
-                              <div className="w-24 sm:w-32 md:w-36 flex flex-col items-center shrink-0">
-                                <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-slate-800 border-2 border-amber-600 flex items-center justify-center text-lg sm:text-xl font-bold shadow mb-1">
+                              <div className="w-28 sm:w-36 md:w-40 flex flex-col items-center shrink-0">
+                                <div className="w-11 h-11 sm:w-13 sm:h-13 rounded-full bg-slate-800 border-2 border-amber-600 flex items-center justify-center text-xl sm:text-2xl font-bold shadow mb-1.5">
                                   🥉
                                 </div>
-                                <span className="text-[11px] sm:text-xs font-bold text-amber-300 truncate max-w-[90px] sm:max-w-[120px] text-center" title={leaderboardList[2].username}>
+                                <span className="text-xs sm:text-sm font-bold text-amber-300 truncate max-w-[110px] sm:max-w-[130px] text-center" title={leaderboardList[2].username}>
                                   {leaderboardList[2].username}
                                 </span>
-                                <span className="text-[10px] sm:text-xs font-mono font-bold text-amber-400">
+                                <span className="text-xs font-mono font-bold text-amber-400">
                                   {leaderboardList[2].score || 0} pts
                                 </span>
-                                <span className="text-[9px] sm:text-[10px] text-gray-400 mb-1.5">
+                                <span className="text-[10px] sm:text-xs text-gray-400 mb-2">
                                   {leaderboardList[2].correctCount}/{totalQuestionsCount} aciertos
                                 </span>
-                                <div className="w-full bg-gradient-to-t from-stone-950 via-stone-900 to-amber-900 border-t-2 border-amber-600 rounded-t-xl h-10 sm:h-14 flex flex-col items-center justify-center shadow-inner">
-                                  <span className="text-base sm:text-lg font-black text-amber-500">3º</span>
-                                  <span className="text-[8px] sm:text-[9px] uppercase tracking-wider text-amber-500/80 font-bold">Bronce</span>
+                                <div className="w-full bg-gradient-to-t from-stone-950 via-stone-900 to-amber-900 border-t-2 border-amber-600 rounded-t-xl h-12 sm:h-16 flex flex-col items-center justify-center shadow-inner">
+                                  <span className="text-base sm:text-lg font-black text-amber-400">3º</span>
+                                  <span className="text-[9px] uppercase tracking-wider text-amber-500 font-bold">Bronce</span>
                                 </div>
                               </div>
                             </div>
@@ -2590,8 +2591,8 @@ const MeetRoomPage = () => {
                         </div>
 
                         {/* C. VISTA DE TABLA COMPLETA PARA TABLETS Y COMPUTADORAS (Desktop >= 640px) */}
-                        <div className="hidden sm:block overflow-hidden rounded-xl border border-gold/30 shadow-lg bg-slate-950/60">
-                          <div className="max-h-[50vh] sm:max-h-[460px] overflow-y-auto scrollbar-thin scrollbar-thumb-gold/30">
+                        <div className="hidden sm:block overflow-hidden rounded-xl border border-gold/30 shadow-lg bg-slate-950/60 w-full">
+                          <div className="w-full max-h-[50vh] sm:max-h-[520px] overflow-y-auto overflow-x-auto scrollbar-thin scrollbar-thumb-gold/30">
                             <table className="w-full text-left border-collapse text-xs">
                               <thead className="sticky top-0 bg-slate-950 text-gold font-bold border-b border-gold/30 uppercase text-[10px] tracking-wider z-10">
                                 <tr>
@@ -3241,7 +3242,7 @@ const MeetRoomPage = () => {
 
 
               {/* Controles y Acciones Finales: La sala permanece abierta */}
-              <div className="space-y-3 pt-2">
+              <div className="space-y-3 pt-2 shrink-0 w-full">
                 {isHost && !sessionClosing && (
                   <div className="bg-slate-900/90 border border-gold/30 rounded-xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3 text-center sm:text-left shadow-lg">
                     <div className="space-y-0.5">

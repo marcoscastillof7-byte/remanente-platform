@@ -41,7 +41,7 @@ const Layout = ({ children }) => {
     <div className="flex flex-col min-h-screen bg-[var(--color-parchment)]">
       <Navbar />
       <div className="flex flex-1 overflow-hidden">
-        <main className={`flex-1 overflow-y-auto ${isMeetRoom ? 'p-1.5 sm:p-3 md:p-6' : 'p-3 sm:p-4 md:p-8'}`}>
+        <main className={`flex-1 overflow-y-auto ${isMeetRoom ? 'p-1 sm:p-2 md:p-3' : 'p-3 sm:p-4 md:p-8'}`}>
           <ErrorBoundary>
             <Suspense fallback={<div className="flex items-center justify-center h-64"><LoadingSpinner /></div>}>
               {children}
