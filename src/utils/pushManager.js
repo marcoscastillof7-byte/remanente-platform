@@ -56,6 +56,24 @@ export function isStandalonePWA() {
 }
 
 /**
+ * Detecta si la web está abierta dentro de un navegador embebido (WhatsApp, Instagram, etc.)
+ */
+export function isInAppBrowser() {
+  if (typeof window === 'undefined') return false;
+  const ua = navigator.userAgent || '';
+  return /FBAN|FBAV|Instagram|WhatsApp|Line|Twitter|Snapchat|Messenger/i.test(ua);
+}
+
+/**
+ * Detecta si el navegador es Safari oficial de Apple
+ */
+export function isSafariBrowser() {
+  if (typeof window === 'undefined') return false;
+  const ua = navigator.userAgent || '';
+  return /Safari/i.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS|mercury/i.test(ua) && !isInAppBrowser();
+}
+
+/**
  * Registra el Service Worker de la aplicación
  */
 export async function registerServiceWorker() {
@@ -77,6 +95,8 @@ export async function registerServiceWorker() {
 export async function getPushStatus() {
   const isIOS = isIOSDevice();
   const isStandalone = isStandalonePWA();
+  const isInApp = isInAppBrowser();
+  const isSafari = isSafariBrowser();
   const hasNativePush = typeof window !== 'undefined' &&
     'serviceWorker' in navigator &&
     'PushManager' in window &&
@@ -90,11 +110,13 @@ export async function getPushStatus() {
       isSubscribed: false,
       isIOS: false,
       isStandalone: false,
-      needsIOSInstall: false
+      needsIOSInstall: false,
+      isInApp,
+      isSafari
     };
   }
 
-  // Si es iOS pero está abierto en Safari regular (no en pantalla de inicio)
+  // Si es iOS pero está abierto en Safari regular o navegador interno (no en pantalla de inicio)
   if (isIOS && !isStandalone) {
     return {
       supported: true,
@@ -102,7 +124,9 @@ export async function getPushStatus() {
       isSubscribed: false,
       isIOS: true,
       isStandalone: false,
-      needsIOSInstall: true
+      needsIOSInstall: true,
+      isInApp,
+      isSafari
     };
   }
 
@@ -115,6 +139,8 @@ export async function getPushStatus() {
       isIOS: true,
       isStandalone: true,
       needsIOSInstall: false,
+      isInApp,
+      isSafari,
       unsupportedReason: 'Tu iPhone requiere iOS 16.4 o superior para Web Push. Por favor actualiza tu versión de iOS en Ajustes > General > Actualización de software.'
     };
   }
@@ -138,7 +164,9 @@ export async function getPushStatus() {
     isSubscribed,
     isIOS,
     isStandalone,
-    needsIOSInstall: false
+    needsIOSInstall: false,
+    isInApp,
+    isSafari
   };
 }
 

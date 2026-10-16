@@ -12,7 +12,9 @@ import {
   PlusSquare, 
   ExternalLink,
   X,
-  HelpCircle
+  HelpCircle,
+  Compass,
+  Check
 } from 'lucide-react';
 import { 
   getPushStatus, 
@@ -30,6 +32,8 @@ const PushNotificationManager = ({ compact = false }) => {
     isIOS: false,
     isStandalone: false,
     needsIOSInstall: false,
+    isInApp: false,
+    isSafari: true,
     unsupportedReason: null
   });
   const [loading, setLoading] = useState(true);
@@ -161,66 +165,123 @@ const PushNotificationManager = ({ compact = false }) => {
         {/* Modal de instrucciones iOS */}
         {showIOSModal && (
           <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 animate-fade-in backdrop-blur-xs">
-            <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-gray-100 relative">
+            <div className="bg-white rounded-2xl max-w-md w-full p-5 sm:p-6 shadow-2xl border border-gray-100 relative max-h-[90vh] overflow-y-auto">
               <button 
                 onClick={() => setShowIOSModal(false)}
-                className="absolute top-4 right-4 p-1 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+                className="absolute top-4 right-4 p-1 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
 
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-12 h-12 rounded-xl bg-primary text-gold flex items-center justify-center shrink-0 shadow-sm">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-11 h-11 rounded-xl bg-primary text-gold flex items-center justify-center shrink-0 shadow-sm">
                   <Smartphone className="w-6 h-6" />
                 </div>
                 <div>
-                  <h3 className="font-cinzel text-lg font-bold text-primary">Activar en iPhone / iPad</h3>
-                  <p className="text-xs text-gray-500">Solo toma 2 pasos rápidos (Requisito de Apple iOS)</p>
+                  <h3 className="font-cinzel text-base sm:text-lg font-bold text-primary">Activar Notificaciones en iPhone</h3>
+                  <p className="text-[11px] text-gray-500">Sin descargar apps de la App Store • 100% Gratis</p>
                 </div>
               </div>
 
-              <div className="space-y-3.5 text-xs text-gray-700 my-4">
-                <div className="p-3 bg-gray-50 rounded-xl border border-gray-100 flex items-start gap-3">
-                  <div className="w-7 h-7 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center shrink-0 text-sm">
+              {/* Alerta Roja Anti-Dashify / Anti-App Store */}
+              <div className="p-3 bg-red-50 border-2 border-red-300 rounded-xl text-red-950 mb-3.5 text-xs">
+                <div className="flex items-center gap-2 font-black text-red-700 text-xs sm:text-sm mb-1">
+                  <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+                  <span>🛑 NO descargues "Dashify" ni busques en la App Store</span>
+                </div>
+                <p className="text-gray-700 leading-relaxed text-[11px]">
+                  Remanente <strong>NO</strong> está en la App Store y <strong>NUNCA</strong> te pedirá un <em>"API Token"</em>. Si descargaste la app <strong>Dashify</strong> (con icono verde), <strong>desinstálala de tu teléfono</strong>; es una herramienta para programadores. Solo sigue los 3 pasos de abajo directamente en Safari:
+                </p>
+              </div>
+
+              {/* Alerta si está en navegador interno (WhatsApp / Instagram) */}
+              {status.isInApp && (
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-900 mb-3 text-xs flex items-start gap-2.5">
+                  <Compass className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                  <div>
+                    <strong className="block font-bold text-blue-950 mb-0.5">
+                      🌐 Estás dentro de WhatsApp / Instagram
+                    </strong>
+                    <span className="text-[11px] text-gray-700">
+                      Toca los tres puntos (•••) o el icono de brújula y selecciona <strong>"Abrir en Safari"</strong> para poder agregarlo a tu inicio.
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-2.5 text-xs text-gray-700 my-3">
+                <div className="p-2.5 bg-gray-50 rounded-xl border border-gray-150 flex items-start gap-2.5">
+                  <div className="w-6 h-6 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center shrink-0 text-xs">
                     1
+                  </div>
+                  <div>
+                    <strong className="block text-gray-900 font-semibold mb-0.5">
+                      Asegúrate de estar en Safari 🧭
+                    </strong>
+                    <span className="text-[11px] text-gray-600">
+                      Usa el navegador <strong>Safari</strong> de tu iPhone (el icono de brújula azul).
+                    </span>
+                  </div>
+                </div>
+
+                <div className="p-2.5 bg-gray-50 rounded-xl border border-gray-150 flex items-start gap-2.5">
+                  <div className="w-6 h-6 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center shrink-0 text-xs">
+                    2
                   </div>
                   <div>
                     <strong className="block text-gray-900 font-semibold mb-0.5">
                       Toca el botón Compartir ⬆️
                     </strong>
-                    En la barra inferior de Safari de tu iPhone, presiona el botón central de compartir (un cuadro con una flecha hacia arriba).
+                    <span className="text-[11px] text-gray-600">
+                      En la barra inferior de Safari, pulsa el botón central de compartir (un cuadro con una flecha hacia arriba).
+                    </span>
                   </div>
                 </div>
 
-                <div className="p-3 bg-gray-50 rounded-xl border border-gray-100 flex items-start gap-3">
-                  <div className="w-7 h-7 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center shrink-0 text-sm">
-                    2
+                <div className="p-2.5 bg-gray-50 rounded-xl border border-gray-150 flex items-start gap-2.5">
+                  <div className="w-6 h-6 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center shrink-0 text-xs">
+                    3
                   </div>
                   <div>
                     <strong className="block text-gray-900 font-semibold mb-0.5">
                       "Añadir a la pantalla de inicio" ➕
                     </strong>
-                    Baja un poco en el menú que aparece y pulsa la opción <strong>Añadir a la pantalla de inicio</strong> (o Add to Home Screen).
+                    <span className="text-[11px] text-gray-600">
+                      Desliza hacia abajo en el menú y pulsa <strong>Añadir a la pantalla de inicio</strong> (Add to Home Screen), y luego toca <strong>Añadir</strong> arriba a la derecha.
+                    </span>
                   </div>
                 </div>
 
-                <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-amber-900 flex items-start gap-3">
-                  <div className="w-7 h-7 rounded-full bg-amber-200 text-amber-900 font-bold flex items-center justify-center shrink-0 text-sm">
-                    3
+                <div className="p-2.5 bg-amber-50 rounded-xl border border-amber-200 text-amber-900 flex items-start gap-2.5">
+                  <div className="w-6 h-6 rounded-full bg-amber-200 text-amber-900 font-bold flex items-center justify-center shrink-0 text-xs">
+                    4
                   </div>
                   <div>
                     <strong className="block text-amber-950 font-semibold mb-0.5">
-                      Abre Remanente desde tu inicio 📖
+                      Abre Remanente desde tu pantalla y activa 📖
                     </strong>
-                    Abre el icono que se creó en tu pantalla de inicio y entra a Duelos o Perfil. ¡Allí podrás pulsar <strong>Activar Notificaciones</strong> directamente!
+                    <span className="text-[11px] text-amber-900">
+                      Abre el nuevo icono que apareció en tu pantalla de inicio, pulsa <strong>Activar Notificaciones</strong> y cuando tu iPhone te pregunte, presiona <strong>Permitir</strong>.
+                    </span>
                   </div>
                 </div>
               </div>
 
-              <div className="mt-5 pt-3 border-t flex justify-end">
+              <div className="mt-4 pt-3 border-t flex flex-wrap items-center justify-between gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    playNotificationSound();
+                    alert('🔔 ¡Sonido de alerta probado con éxito en tu dispositivo!');
+                  }}
+                  className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs font-bold rounded-xl transition-colors cursor-pointer flex items-center gap-1.5"
+                >
+                  <BellRing className="w-3.5 h-3.5 text-gold" />
+                  Probar Sonido
+                </button>
                 <button
                   onClick={() => setShowIOSModal(false)}
-                  className="px-5 py-2.5 bg-primary text-gold font-bold text-xs rounded-xl hover:bg-primary-light transition-colors"
+                  className="px-5 py-2.5 bg-primary text-gold font-bold text-xs rounded-xl hover:bg-primary-light transition-colors cursor-pointer"
                 >
                   Entendido, lo haré ahora
                 </button>
@@ -361,6 +422,32 @@ const PushNotificationManager = ({ compact = false }) => {
       {/* Tarjeta explicativa con pasos visuales para usuarios de iPhone / iPad en Safari regular */}
       {status.needsIOSInstall && (
         <div className="bg-gradient-to-br from-amber-50 to-orange-50/50 border border-amber-200 rounded-xl p-5 text-xs text-amber-950 mt-2 mb-4 shadow-xs">
+          {/* Alerta Roja Anti-Dashify / Anti-App Store */}
+          <div className="p-3 bg-red-50 border-2 border-red-300 rounded-xl text-red-950 mb-4 text-xs">
+            <div className="flex items-center gap-2 font-black text-red-700 text-xs sm:text-sm mb-1">
+              <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+              <span>🛑 NO descargues "Dashify" ni busques en la App Store</span>
+            </div>
+            <p className="text-gray-700 leading-relaxed text-[11px]">
+              Remanente <strong>NO</strong> está en la App Store y <strong>NUNCA</strong> te pedirá un <em>"API Token"</em>. Si descargaste la app <strong>Dashify</strong> (con icono verde), <strong>desinstálala de tu teléfono</strong>; es una herramienta para programadores. Solo sigue los 3 pasos de abajo directamente en Safari:
+            </p>
+          </div>
+
+          {/* Alerta si está en navegador interno (WhatsApp / Instagram) */}
+          {status.isInApp && (
+            <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-900 mb-4 text-xs flex items-start gap-2.5">
+              <Compass className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+              <div>
+                <strong className="block font-bold text-blue-950 mb-0.5">
+                  🌐 Estás dentro de WhatsApp / Instagram
+                </strong>
+                <span className="text-[11px] text-gray-700">
+                  Toca los tres puntos (•••) o el icono de brújula y selecciona <strong>"Abrir en Safari"</strong> para poder agregarlo a tu inicio.
+                </span>
+              </div>
+            </div>
+          )}
+
           <div className="flex items-center gap-2.5 font-bold mb-2 text-primary">
             <div className="w-6 h-6 rounded-md bg-gold/20 flex items-center justify-center">
               <Smartphone className="w-4 h-4 text-primary" />
@@ -368,7 +455,7 @@ const PushNotificationManager = ({ compact = false }) => {
             <span>¿Por qué iPhone requiere este paso?</span>
           </div>
           <p className="mb-3 text-gray-700 leading-relaxed">
-            Apple exige estrictamente en iOS que cualquier aplicación web se agregue a la <strong>pantalla de inicio</strong> para permitir notificaciones push cuando el teléfono está bloqueado o con la pantalla apagada. Sigue estos 2 sencillos pasos:
+            Apple exige estrictamente en iOS que cualquier aplicación web se agregue a la <strong>pantalla de inicio</strong> para permitir notificaciones push cuando el teléfono está bloqueado o con la pantalla apagada:
           </p>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div className="bg-white p-3.5 rounded-xl border border-amber-200/80 shadow-xs">
@@ -407,63 +494,120 @@ const PushNotificationManager = ({ compact = false }) => {
       {/* Modal si el usuario pulsa el botón de ver cómo activar en iPhone */}
       {showIOSModal && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 animate-fade-in backdrop-blur-xs">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-gray-100 relative">
+          <div className="bg-white rounded-2xl max-w-md w-full p-5 sm:p-6 shadow-2xl border border-gray-100 relative max-h-[90vh] overflow-y-auto">
             <button 
               onClick={() => setShowIOSModal(false)}
-              className="absolute top-4 right-4 p-1 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+              className="absolute top-4 right-4 p-1 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
 
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-12 h-12 rounded-xl bg-primary text-gold flex items-center justify-center shrink-0 shadow-sm">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-11 h-11 rounded-xl bg-primary text-gold flex items-center justify-center shrink-0 shadow-sm">
                 <Smartphone className="w-6 h-6" />
               </div>
               <div>
-                <h3 className="font-cinzel text-lg font-bold text-primary">Activar en iPhone / iPad</h3>
-                <p className="text-xs text-gray-500">Requisito del sistema de Apple (iOS 16.4+)</p>
+                <h3 className="font-cinzel text-base sm:text-lg font-bold text-primary">Activar Notificaciones en iPhone</h3>
+                <p className="text-[11px] text-gray-500">Sin descargar apps de la App Store • 100% Gratis</p>
               </div>
             </div>
 
-            <div className="space-y-3.5 text-xs text-gray-700 my-4">
-              <div className="p-3 bg-gray-50 rounded-xl border border-gray-100 flex items-start gap-3">
-                <div className="w-7 h-7 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center shrink-0 text-sm">
+            {/* Alerta Roja Anti-Dashify / Anti-App Store */}
+            <div className="p-3 bg-red-50 border-2 border-red-300 rounded-xl text-red-950 mb-3.5 text-xs">
+              <div className="flex items-center gap-2 font-black text-red-700 text-xs sm:text-sm mb-1">
+                <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+                <span>🛑 NO descargues "Dashify" ni busques en la App Store</span>
+              </div>
+              <p className="text-gray-700 leading-relaxed text-[11px]">
+                Remanente <strong>NO</strong> está en la App Store y <strong>NUNCA</strong> te pedirá un <em>"API Token"</em>. Si descargaste la app <strong>Dashify</strong> (con icono verde), <strong>desinstálala de tu teléfono</strong>; es una herramienta para programadores. Solo sigue los 3 pasos de abajo directamente en Safari:
+              </p>
+            </div>
+
+            {/* Alerta si está en navegador interno (WhatsApp / Instagram) */}
+            {status.isInApp && (
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-900 mb-3 text-xs flex items-start gap-2.5">
+                <Compass className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                <div>
+                  <strong className="block font-bold text-blue-950 mb-0.5">
+                    🌐 Estás dentro de WhatsApp / Instagram
+                  </strong>
+                  <span className="text-[11px] text-gray-700">
+                    Toca los tres puntos (•••) o el icono de brújula y selecciona <strong>"Abrir en Safari"</strong> para poder agregarlo a tu inicio.
+                  </span>
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-2.5 text-xs text-gray-700 my-3">
+              <div className="p-2.5 bg-gray-50 rounded-xl border border-gray-150 flex items-start gap-2.5">
+                <div className="w-6 h-6 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center shrink-0 text-xs">
                   1
+                </div>
+                <div>
+                  <strong className="block text-gray-900 font-semibold mb-0.5">
+                    Asegúrate de estar en Safari 🧭
+                  </strong>
+                  <span className="text-[11px] text-gray-600">
+                    Usa el navegador <strong>Safari</strong> de tu iPhone (el icono de brújula azul).
+                  </span>
+                </div>
+              </div>
+
+              <div className="p-2.5 bg-gray-50 rounded-xl border border-gray-150 flex items-start gap-2.5">
+                <div className="w-6 h-6 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center shrink-0 text-xs">
+                  2
                 </div>
                 <div>
                   <strong className="block text-gray-900 font-semibold mb-0.5">
                     Toca el botón Compartir ⬆️
                   </strong>
-                  En la barra inferior de Safari de tu iPhone, presiona el botón central de compartir (un cuadro con una flecha hacia arriba).
+                  <span className="text-[11px] text-gray-600">
+                    En la barra inferior de Safari, pulsa el botón central de compartir (un cuadro con una flecha hacia arriba).
+                  </span>
                 </div>
               </div>
 
-              <div className="p-3 bg-gray-50 rounded-xl border border-gray-100 flex items-start gap-3">
-                <div className="w-7 h-7 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center shrink-0 text-sm">
-                  2
+              <div className="p-2.5 bg-gray-50 rounded-xl border border-gray-150 flex items-start gap-2.5">
+                <div className="w-6 h-6 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center shrink-0 text-xs">
+                  3
                 </div>
                 <div>
                   <strong className="block text-gray-900 font-semibold mb-0.5">
                     "Añadir a la pantalla de inicio" ➕
                   </strong>
-                  Baja un poco en el menú que aparece y pulsa la opción <strong>Añadir a la pantalla de inicio</strong> (o Add to Home Screen).
+                  <span className="text-[11px] text-gray-600">
+                    Desliza hacia abajo en el menú y pulsa <strong>Añadir a la pantalla de inicio</strong> (Add to Home Screen), y luego toca <strong>Añadir</strong> arriba a la derecha.
+                  </span>
                 </div>
               </div>
 
-              <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-amber-900 flex items-start gap-3">
-                <div className="w-7 h-7 rounded-full bg-amber-200 text-amber-900 font-bold flex items-center justify-center shrink-0 text-sm">
-                  3
+              <div className="p-2.5 bg-amber-50 rounded-xl border border-amber-200 text-amber-900 flex items-start gap-2.5">
+                <div className="w-6 h-6 rounded-full bg-amber-200 text-amber-900 font-bold flex items-center justify-center shrink-0 text-xs">
+                  4
                 </div>
                 <div>
                   <strong className="block text-amber-950 font-semibold mb-0.5">
-                    Abre Remanente desde tu inicio 📖
+                    Abre Remanente desde tu pantalla y activa 📖
                   </strong>
-                  Abre la app desde tu pantalla de inicio y pulsa <strong>"Activar en este Dispositivo"</strong>. ¡Apple te pedirá el permiso y quedará 100% activa!
+                  <span className="text-[11px] text-amber-900">
+                    Abre el nuevo icono que apareció en tu pantalla de inicio, pulsa <strong>Activar Notificaciones</strong> y cuando tu iPhone te pregunte, presiona <strong>Permitir</strong>.
+                  </span>
                 </div>
               </div>
             </div>
 
-            <div className="mt-5 pt-3 border-t flex justify-end">
+            <div className="mt-4 pt-3 border-t flex flex-wrap items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  playNotificationSound();
+                  alert('🔔 ¡Sonido de alerta probado con éxito en tu dispositivo!');
+                }}
+                className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs font-bold rounded-xl transition-colors cursor-pointer flex items-center gap-1.5"
+              >
+                <BellRing className="w-3.5 h-3.5 text-gold" />
+                Probar Sonido
+              </button>
               <button
                 onClick={() => setShowIOSModal(false)}
                 className="px-5 py-2.5 bg-primary text-gold font-bold text-xs rounded-xl hover:bg-primary-light transition-colors cursor-pointer"
