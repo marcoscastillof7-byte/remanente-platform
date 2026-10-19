@@ -346,10 +346,12 @@ const MeetRoomPage = () => {
     }
 
     const all = Array.from(listMap.values());
-    const ready = all.filter(p => p.isFinished);
-    const inProgress = all.filter(p => !p.isFinished);
-    const totalCount = Math.max(all.length, quizProgress?.totalParticipants || 0, safeTotalParticipants || 1);
-    const finishedCount = Math.max(ready.length, quizProgress?.finishedCount || 0);
+    // Concursantes activos: excluir al anfitrión únicamente si solo modera y no ha respondido preguntas
+    const activeContestants = all.filter(p => !(p.isHost && (p.completedCount || 0) === 0 && !p.isFinished));
+    const ready = activeContestants.filter(p => p.isFinished);
+    const inProgress = activeContestants.filter(p => !p.isFinished);
+    const totalCount = Math.max(activeContestants.length, quizProgress?.totalParticipants || 0, 1);
+    const finishedCount = ready.length;
 
     return {
       unifiedQuizProgressList: all,
@@ -847,6 +849,38 @@ const MeetRoomPage = () => {
           playNotificationSound();
         }
       })
+      .on('broadcast', { event: 'meet:participant-progress' }, ({ payload }) => {
+        if (!payload || !payload.userId) return;
+        const pIdStr = String(payload.userId);
+        setQuizProgress(prev => {
+          const totalQ = payload.totalQuestions || prev?.totalQuestions || 0;
+          const currentList = Array.isArray(prev?.participantsProgress) ? [...prev.participantsProgress] : [];
+          const idx = currentList.findIndex(p => String(p.id) === pIdStr);
+          const updated = {
+            id: pIdStr,
+            username: payload.username || 'Participante',
+            score: payload.score || 0,
+            completedCount: payload.completedCount || 0,
+            isFinished: Boolean(payload.isFinished),
+            totalQuestions: totalQ
+          };
+          if (idx >= 0) {
+            currentList[idx] = { ...currentList[idx], ...updated };
+          } else {
+            currentList.push(updated);
+          }
+          const finishedCount = currentList.filter(p => p.isFinished).length;
+          return {
+            ...(prev || {}),
+            meetId: id,
+            totalQuestions: totalQ,
+            totalParticipants: Math.max(currentList.length, prev?.totalParticipants || 0),
+            finishedCount,
+            allFinished: currentList.length > 0 && finishedCount >= currentList.length,
+            participantsProgress: currentList
+          };
+        });
+      })
       .on('broadcast', { event: 'meet:quiz-results-revealed' }, ({ payload }) => {
         const results = payload?.results || payload;
         if (results && (results.leaderboard || results.podium)) {
@@ -1071,9 +1105,11 @@ const MeetRoomPage = () => {
 
         // 2. Sincronización automática si el líder reveló resultados
         if ((res?.phase === 'finished' || res?.revealedResults) && (!revealedResults || phase !== 'finished')) {
+          const effectiveLdr = res.revealedResults?.leaderboard || res.quizProgress?.leaderboard || [];
+          const effectivePod = res.revealedResults?.podium || res.quizProgress?.podium || effectiveLdr.slice(0, 3);
           const results = res.revealedResults || {
-            leaderboard: res.quizProgress?.leaderboard || [],
-            podium: res.quizProgress?.leaderboard || [],
+            leaderboard: effectiveLdr,
+            podium: effectivePod,
             fullQuestions: res.questions || []
           };
           if (autoAdvanceTimer) {
@@ -1207,6 +1243,25 @@ const MeetRoomPage = () => {
       [myQuestionIndex]: feedbackObj
     }));
 
+    // Transmisión inmediata por Supabase Realtime broadcast para todos los participantes
+    if (broadcastChannelRef.current) {
+      const completedCount = myQuestionIndex + 1;
+      const isFinished = completedCount >= activeQuestions.length;
+      broadcastChannelRef.current.send({
+        type: 'broadcast',
+        event: 'meet:participant-progress',
+        payload: {
+          meetId: id,
+          userId: String(user?.id),
+          username: user?.username || 'Participante',
+          completedCount,
+          totalQuestions: activeQuestions.length,
+          isFinished,
+          score: mySessionScore
+        }
+      }).catch(() => {});
+    }
+
     // 1. Envío WebSocket primario (0ms)
     if (socket && socket.connected) {
       socket.emit('meet:submit-answer', {
@@ -1273,6 +1328,25 @@ const MeetRoomPage = () => {
       ...prev,
       [myQuestionIndex]: feedbackObj
     }));
+
+    // Transmisión inmediata por Supabase Realtime broadcast para todos los participantes
+    if (broadcastChannelRef.current) {
+      const completedCount = myQuestionIndex + 1;
+      const isFinished = completedCount >= activeQuestions.length;
+      broadcastChannelRef.current.send({
+        type: 'broadcast',
+        event: 'meet:participant-progress',
+        payload: {
+          meetId: id,
+          userId: String(user?.id),
+          username: user?.username || 'Participante',
+          completedCount,
+          totalQuestions: activeQuestions.length,
+          isFinished,
+          score: mySessionScore + points
+        }
+      }).catch(() => {});
+    }
 
     // 1. Envío WebSocket primario (0ms)
     if (socket && socket.connected) {
@@ -1435,12 +1509,19 @@ const MeetRoomPage = () => {
       socket.emit('meet:reveal-quiz-results', { meetId: id });
     }
 
-    // 2. Transmisión Supabase Realtime Broadcast inmediata
+    // 2. Transmisión Supabase Realtime Broadcast inmediata para todos los participantes
     if (broadcastChannelRef.current) {
+      const immediatePayload = {
+        meetId: id,
+        phase: 'finished',
+        leaderboard: quizProgress?.leaderboard || liveLeaderboard || [],
+        podium: quizProgress?.podium || finalPodium || [],
+        fullQuestions: activeQuestions || []
+      };
       broadcastChannelRef.current.send({
         type: 'broadcast',
         event: 'meet:quiz-results-revealed',
-        payload: { meetId: id }
+        payload: immediatePayload
       }).catch(() => {});
     }
 

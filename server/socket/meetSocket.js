@@ -29,18 +29,37 @@ export function clearAllRoomDisconnectTimers(meetId) {
 
 /**
  * Devuelve la lista de participantes sanitizada, serializable y sin referencias circulares
+ * Preserva completedCount, correctCount e isFinished para que las actualizaciones no borren el progreso
  */
 export function getSanitizedParticipants(room) {
     if (!room || !room.participants) return [];
-    return Array.from(room.participants.values()).map(p => ({
-        id: String(p.id),
-        username: p.username || 'Participante',
-        role: p.role || 'user',
-        isHost: !!p.isHost,
-        score: p.score || 0,
-        handRaised: !!p.handRaised,
-        connected: p.connected !== false
-    }));
+    const totalQuestions = (room.questions || []).length;
+    return Array.from(room.participants.values()).map(p => {
+        const uIdStr = String(p.id);
+        const uAnswers = room.userAnswers?.get(uIdStr) || new Map();
+        const completedCount = uAnswers.size;
+        const isFinished = totalQuestions > 0 && completedCount >= totalQuestions;
+        let calculatedScore = 0;
+        let correctCount = 0;
+        uAnswers.forEach(ans => {
+            if (ans.isCorrect) correctCount++;
+            calculatedScore += (ans.points || 0);
+        });
+        const effectiveScore = Math.max(p.score || 0, calculatedScore);
+        return {
+            id: uIdStr,
+            username: p.username || 'Participante',
+            role: p.role || 'user',
+            isHost: !!p.isHost,
+            score: effectiveScore,
+            completedCount,
+            correctCount,
+            totalQuestions,
+            isFinished,
+            handRaised: !!p.handRaised,
+            connected: p.connected !== false
+        };
+    });
 }
 
 /**
@@ -459,9 +478,14 @@ export function getRoomQuizProgress(room) {
         };
     });
 
-    const finishedCount = participantsList.filter(p => p.isFinished).length;
-    const totalParticipants = participantsList.length;
-    const allFinished = totalParticipants > 0 && finishedCount >= totalParticipants;
+    // Los concursantes activos son todos los participantes excepto un moderador/anfitrión puro que no responde preguntas
+    const activeContestants = participantsList.filter(p => {
+        if (p.isHost && p.completedCount === 0) return false;
+        return true;
+    });
+    const effectiveTotalParticipants = activeContestants.length;
+    const effectiveFinishedCount = activeContestants.filter(p => p.isFinished).length;
+    const allFinished = effectiveTotalParticipants > 0 && effectiveFinishedCount >= effectiveTotalParticipants;
 
     // Ordenamiento oficial de posicionamiento con desempate infalible y determinista
     const deterministicSort = (a, b) => {
@@ -512,8 +536,8 @@ export function getRoomQuizProgress(room) {
     return {
         meetId: String(room.meetId),
         totalQuestions,
-        totalParticipants,
-        finishedCount,
+        totalParticipants: effectiveTotalParticipants,
+        finishedCount: effectiveFinishedCount,
         allFinished,
         participantsProgress: participantsList,
         leaderboard: liveLeaderboard,
@@ -717,6 +741,7 @@ export function scheduleRoomProgressBroadcast(io, idStr, room, immediate = false
 }
 
 const pendingPersistTimers = new Map();
+const roomPersistInFlight = new Map(); // idStr -> Promise
 
 /**
  * Guarda en lote las respuestas y participantes de la sala en Supabase.
@@ -729,38 +754,57 @@ export async function flushRoomPersist(room, idStr) {
         clearTimeout(pendingPersistTimers.get(idStr));
         pendingPersistTimers.delete(idStr);
     }
-    try {
-        const supabase = getDb();
-        const { data: currentMeet } = await supabase.from('meetings').select('description').eq('id', idStr).single();
-        let currentMeta = {};
-        try { currentMeta = JSON.parse(currentMeet?.description || '{}'); } catch {}
-        if (!currentMeta.savedUserAnswers) currentMeta.savedUserAnswers = {};
-        
-        if (room.userAnswers) {
-            room.userAnswers.forEach((ansMap, uId) => {
-                const uIdStr = String(uId);
-                if (!currentMeta.savedUserAnswers[uIdStr]) currentMeta.savedUserAnswers[uIdStr] = {};
-                ansMap.forEach((entry, qIdx) => {
-                    currentMeta.savedUserAnswers[uIdStr][qIdx] = entry;
+
+    // Serializar escrituras concurrentes para evitar condiciones de carrera en Supabase
+    if (roomPersistInFlight.has(idStr)) {
+        try {
+            await roomPersistInFlight.get(idStr);
+        } catch (e) {}
+    }
+
+    const persistPromise = (async () => {
+        try {
+            const supabase = getDb();
+            const { data: currentMeet } = await supabase.from('meetings').select('description').eq('id', idStr).single();
+            let currentMeta = {};
+            try { currentMeta = JSON.parse(currentMeet?.description || '{}'); } catch {}
+            if (!currentMeta.savedUserAnswers) currentMeta.savedUserAnswers = {};
+            
+            if (room.userAnswers) {
+                room.userAnswers.forEach((ansMap, uId) => {
+                    const uIdStr = String(uId);
+                    if (!currentMeta.savedUserAnswers[uIdStr]) currentMeta.savedUserAnswers[uIdStr] = {};
+                    ansMap.forEach((entry, qIdx) => {
+                        currentMeta.savedUserAnswers[uIdStr][qIdx] = entry;
+                    });
                 });
-            });
+            }
+            if (room.participants) {
+                if (!currentMeta.savedParticipants) currentMeta.savedParticipants = {};
+                room.participants.forEach((p, uId) => {
+                    const uIdStr = String(uId);
+                    currentMeta.savedParticipants[uIdStr] = {
+                        id: p.id,
+                        username: p.username,
+                        score: p.score || 0,
+                        role: p.role || 'user',
+                        isHost: p.isHost || false
+                    };
+                });
+            }
+            await supabase.from('meetings').update({ description: JSON.stringify(currentMeta) }).eq('id', idStr);
+        } catch (err) {
+            console.warn('[meetSocket] Error en flushRoomPersist:', err.message);
         }
-        if (room.participants) {
-            if (!currentMeta.savedParticipants) currentMeta.savedParticipants = {};
-            room.participants.forEach((p, uId) => {
-                const uIdStr = String(uId);
-                currentMeta.savedParticipants[uIdStr] = {
-                    id: p.id,
-                    username: p.username,
-                    score: p.score || 0,
-                    role: p.role || 'user',
-                    isHost: p.isHost || false
-                };
-            });
+    })();
+
+    roomPersistInFlight.set(idStr, persistPromise);
+    try {
+        await persistPromise;
+    } finally {
+        if (roomPersistInFlight.get(idStr) === persistPromise) {
+            roomPersistInFlight.delete(idStr);
         }
-        await supabase.from('meetings').update({ description: JSON.stringify(currentMeta) }).eq('id', idStr);
-    } catch (err) {
-        console.warn('[meetSocket] Error en flushRoomPersist:', err.message);
     }
 }
 

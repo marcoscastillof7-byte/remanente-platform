@@ -455,24 +455,76 @@ router.get('/:id', async (req, res) => {
             const participantsProgress = savedUsers.map(uId => {
                 const uAns = Object.values(meta.savedUserAnswers[uId] || {});
                 const sPart = meta.savedParticipants?.[uId] || {};
-                const uScore = sPart.score !== undefined ? sPart.score : uAns.reduce((acc, a) => acc + (Number(a?.points) || 0), 0);
+                let correctCount = 0;
+                let calculatedScore = 0;
+                let totalTimeTakenMs = 0;
+                uAns.forEach(a => {
+                    if (a.isCorrect) correctCount++;
+                    calculatedScore += (Number(a.points) || 0);
+                    totalTimeTakenMs += (Number(a.timeTakenMs) || 0);
+                });
+                const uScore = sPart.score !== undefined ? sPart.score : calculatedScore;
+                const completedCount = uAns.length;
+                const isFinished = questionsList.length > 0 && completedCount >= questionsList.length;
+                const avgTimeSec = completedCount > 0 ? parseFloat(((totalTimeTakenMs / completedCount) / 1000).toFixed(1)) : 0;
                 return {
-                    id: uId,
+                    id: String(uId),
                     username: sPart.username || uAns[0]?.username || 'Participante',
+                    role: sPart.role || 'user',
+                    isHost: Boolean(sPart.isHost),
                     score: uScore,
-                    completedCount: uAns.length,
-                    isFinished: questionsList.length > 0 && uAns.length >= questionsList.length
+                    completedCount,
+                    correctCount,
+                    totalTimeTakenMs,
+                    avgTimeSec,
+                    totalQuestions: questionsList.length,
+                    isFinished,
+                    connected: false
                 };
             });
-            const finishedCount = participantsProgress.filter(p => p.isFinished).length;
+
+            // Concursantes activos (excluyendo hosts que no jugaron)
+            const activeContestants = participantsProgress.filter(p => !(p.isHost && p.completedCount === 0));
+            const finishedCount = activeContestants.filter(p => p.isFinished).length;
+            const totalParticipants = activeContestants.length;
+
+            const deterministicSort = (a, b) => {
+                if ((b.score || 0) !== (a.score || 0)) return (b.score || 0) - (a.score || 0);
+                if ((b.correctCount || 0) !== (a.correctCount || 0)) return (b.correctCount || 0) - (a.correctCount || 0);
+                if ((a.totalTimeTakenMs || 0) !== (b.totalTimeTakenMs || 0)) return (a.totalTimeTakenMs || 0) - (b.totalTimeTakenMs || 0);
+                const nameComp = String(a.username || '').localeCompare(String(b.username || ''));
+                if (nameComp !== 0) return nameComp;
+                return String(a.id || '').localeCompare(String(b.id || ''));
+            };
+
+            const activeSorted = [...activeContestants]
+                .filter(p => p.completedCount > 0 || (p.score || 0) > 0)
+                .sort(deterministicSort);
+
+            const spectatorSorted = [...participantsProgress]
+                .filter(p => p.completedCount === 0 && (p.score || 0) === 0)
+                .sort((a, b) => String(a.username || '').localeCompare(String(b.username || '')));
+
+            const leaderboard = [...activeSorted, ...spectatorSorted].map((p, idx) => ({
+                ...p,
+                rank: idx + 1,
+                hasParticipated: p.completedCount > 0 || (p.score || 0) > 0
+            }));
+
+            const podium = activeSorted.slice(0, 3).map((p, idx) => ({
+                ...p,
+                rank: idx + 1
+            }));
+
             effectiveQuizProgress = {
                 meetId: String(data.id),
                 totalQuestions: questionsList.length,
-                totalParticipants: participantsProgress.length,
+                totalParticipants,
                 finishedCount,
-                allFinished: participantsProgress.length > 0 && finishedCount >= participantsProgress.length,
+                allFinished: totalParticipants > 0 && finishedCount >= totalParticipants,
                 participantsProgress,
-                leaderboard: [...participantsProgress].sort((a, b) => b.score - a.score)
+                leaderboard,
+                podium
             };
         }
 

@@ -31,8 +31,8 @@ const io = new Server(httpServer, {
         origin: '*',
         methods: ['GET', 'POST', 'PUT', 'DELETE']
     },
-    pingInterval: 10000,
-    pingTimeout: 5000,
+    pingInterval: 20000,
+    pingTimeout: 25000,
     transports: ['websocket', 'polling'],
     allowUpgrades: true,
     maxHttpBufferSize: 1e6
