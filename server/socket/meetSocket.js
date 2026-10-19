@@ -422,13 +422,38 @@ export async function getOrCreateRoom(meetId) {
             });
             roomState.userAnswers.set(String(uId), ansMap);
 
+            const sPart = meta.savedParticipants?.[String(uId)] || {};
             if (!roomState.participants.has(String(uId))) {
                 roomState.participants.set(String(uId), {
                     id: String(uId),
-                    username: ansMap.values().next().value?.username || 'Participante',
-                    score: totalScore,
+                    username: sPart.username || ansMap.values().next().value?.username || 'Participante',
+                    score: sPart.score !== undefined ? sPart.score : totalScore,
+                    role: sPart.role || 'user',
+                    isHost: Boolean(sPart.isHost),
                     connected: false
                 });
+            }
+        });
+    }
+
+    if (meta.savedParticipants && typeof meta.savedParticipants === 'object') {
+        Object.entries(meta.savedParticipants).forEach(([uId, part]) => {
+            const uIdStr = String(uId);
+            if (!roomState.participants.has(uIdStr)) {
+                roomState.participants.set(uIdStr, {
+                    id: uIdStr,
+                    username: part.username || 'Participante',
+                    score: part.score || 0,
+                    role: part.role || 'user',
+                    isHost: Boolean(part.isHost),
+                    connected: false
+                });
+            } else {
+                const existing = roomState.participants.get(uIdStr);
+                if (part.username) existing.username = part.username;
+                if (part.role) existing.role = part.role;
+                if (part.isHost !== undefined) existing.isHost = part.isHost;
+                if (part.score !== undefined && part.score > (existing.score || 0)) existing.score = part.score;
             }
         });
     }
@@ -828,8 +853,11 @@ export async function submitRoomAnswer(meetId, questionIndex, selectedAnswer, ti
     if (!room || !userObj) return { error: 'Sala o usuario no válidos' };
 
     const qIdxNum = Number(questionIndex);
-    if (room.phase !== 'quiz') {
-        return { error: 'El Meet no está en fase de quiz' };
+    if (room.phase !== 'quiz' && room.phase !== 'finished') {
+        return { error: 'El Meet no está en fase de preguntas' };
+    }
+    if (room.status === 'ended') {
+        return { error: 'La reunión ya ha finalizado' };
     }
 
     if (!room.userAnswers) room.userAnswers = new Map();
@@ -924,6 +952,12 @@ export async function submitRoomAnswer(meetId, questionIndex, selectedAnswer, ti
     // Persistencia continua por lotes (debounce 400ms) para blindar contra recarga y caídas sin colisiones
     scheduleRoomPersist(room, idStr);
 
+    // Si la fase ya está en 'finished' o ya se habían revelado resultados previamente,
+    // re-revelar y re-transmitir de inmediato para que el podio y desglose se actualicen en vivo con cada respuesta.
+    if (room.phase === 'finished' || room.revealedResults) {
+        revealRoomQuizResults(meetId, io).catch(e => console.error('[meetSocket] Error recalculando resultados en vivo:', e));
+    }
+
     return {
         success: true,
         questionIndex: qIdxNum,
@@ -942,22 +976,21 @@ export async function submitRoomAnswer(meetId, questionIndex, selectedAnswer, ti
 }
 
 /**
- * Revela los resultados de todo el quiz para todos los participantes
- * Muestra el podio final y el desglose de preguntas
+ * Genera de forma determinista y 100% verídica el payload completo de resultados revelados
+ * a partir de las preguntas, el mapa de respuestas de usuarios y los participantes.
+ * Funciona tanto con Maps de memoria como con Objects de Supabase JSON.
  */
-export async function revealRoomQuizResults(meetId, io = null) {
+export function generateRevealedResultsFromData({
+    meetId,
+    questions = [],
+    savedUserAnswers = {},
+    savedParticipants = {},
+    platformOnlineCount = 1
+}) {
     const idStr = String(meetId);
-    let room = activeRooms.get(idStr);
-    if (!room) room = await getOrCreateRoom(idStr);
-    if (!room) return { error: 'Sala Meet no encontrada' };
 
-    room.phase = 'finished';
-
-    // Asegurar que todas las respuestas pendientes se consoliden en la base de datos
-    await flushRoomPersist(room, idStr);
-
-    // 1. Preparar lista completa de preguntas con respuestas y explicaciones reales
-    const fullQuestions = (room.questions || []).map((q, idx) => ({
+    // 1. Preguntas completas y canónicas
+    const fullQuestions = (questions || []).map((q, idx) => ({
         id: q.id || `q_${idx}`,
         question_text: q.question_text || q.questionText,
         questionText: q.question_text || q.questionText,
@@ -977,91 +1010,133 @@ export async function revealRoomQuizResults(meetId, io = null) {
         time_limit_seconds: q.time_limit_seconds || 25
     }));
 
-    // 2. Generar resultados y estadísticas detalladas por cada pregunta
-    const allQuestionsResults = fullQuestions.map((q, qIdx) => {
-        const correctLetter = q.correct_answer;
-        const qAnswers = room.answers?.get(qIdx) || new Map();
-
-        const breakdown = { a: 0, b: 0, c: 0, d: 0, timeout: 0 };
-        qAnswers.forEach((ans) => {
-            let opt = String(ans.selectedAnswer || '').trim().toLowerCase();
-            if (opt === 'timeout') {
-                breakdown.timeout = (breakdown.timeout || 0) + 1;
-                return;
+    // 2. Normalizar savedUserAnswers a un Map(uId -> Map(qIdx -> answer))
+    const userAnswersMap = new Map();
+    if (savedUserAnswers instanceof Map) {
+        savedUserAnswers.forEach((ansMap, uId) => {
+            const uIdStr = String(uId);
+            const m = new Map();
+            if (ansMap instanceof Map) {
+                ansMap.forEach((v, k) => m.set(Number(k), v));
+            } else if (ansMap && typeof ansMap === 'object') {
+                Object.entries(ansMap).forEach(([k, v]) => m.set(Number(k), v));
             }
-            if (!['a', 'b', 'c', 'd'].includes(opt)) {
-                if (opt === String(q.option_a || '').trim().toLowerCase()) opt = 'a';
-                else if (opt === String(q.option_b || '').trim().toLowerCase()) opt = 'b';
-                else if (opt === String(q.option_c || '').trim().toLowerCase()) opt = 'c';
-                else if (opt === String(q.option_d || '').trim().toLowerCase()) opt = 'd';
-            }
-            if (breakdown[opt] !== undefined) {
-                breakdown[opt]++;
-            }
+            userAnswersMap.set(uIdStr, m);
         });
-
-        const correctParticipants = [];
-        const incorrectParticipants = [];
-        const unrespondedParticipants = [];
-
-        room.participants.forEach((p) => {
-            const pIdStr = String(p.id);
-            const ans = qAnswers.get(pIdStr);
-            if (ans) {
-                if (ans.isCorrect) {
-                    correctParticipants.push({
-                        id: pIdStr,
-                        username: p.username || 'Participante',
-                        selectedAnswer: ans.selectedAnswer,
-                        pointsGained: ans.points,
-                        timeTakenMs: ans.timeTakenMs
-                    });
-                } else {
-                    incorrectParticipants.push({
-                        id: pIdStr,
-                        username: p.username || 'Participante',
-                        selectedAnswer: ans.selectedAnswer,
-                        pointsGained: 0,
-                        timeTakenMs: ans.timeTakenMs
-                    });
-                }
-            } else {
-                unrespondedParticipants.push({
-                    id: pIdStr,
-                    username: p.username || 'Participante',
-                    selectedAnswer: null,
-                    pointsGained: 0
-                });
+    } else if (savedUserAnswers && typeof savedUserAnswers === 'object') {
+        Object.entries(savedUserAnswers).forEach(([uId, ansMap]) => {
+            const uIdStr = String(uId);
+            const m = new Map();
+            if (ansMap instanceof Map) {
+                ansMap.forEach((v, k) => m.set(Number(k), v));
+            } else if (ansMap && typeof ansMap === 'object') {
+                Object.entries(ansMap).forEach(([k, v]) => m.set(Number(k), v));
             }
+            userAnswersMap.set(uIdStr, m);
         });
+    }
 
-        const totalAnswered = correctParticipants.length + incorrectParticipants.length;
-        const correctPercentage = totalAnswered > 0 
-            ? Math.round((correctParticipants.length / totalAnswered) * 100) 
-            : 0;
+    // 3. Normalizar participantes
+    const participantsMap = new Map();
+    if (savedParticipants instanceof Map) {
+        savedParticipants.forEach((p, uId) => {
+            const uIdStr = String(uId);
+            participantsMap.set(uIdStr, {
+                id: uIdStr,
+                username: p.username || 'Participante',
+                role: p.role || 'user',
+                isHost: Boolean(p.isHost)
+            });
+        });
+    } else if (savedParticipants && typeof savedParticipants === 'object') {
+        Object.entries(savedParticipants).forEach(([uId, p]) => {
+            const uIdStr = String(uId);
+            participantsMap.set(uIdStr, {
+                id: uIdStr,
+                username: p.username || 'Participante',
+                role: p.role || 'user',
+                isHost: Boolean(p.isHost)
+            });
+        });
+    }
 
-        return {
-            ...q,
-            questionIndex: qIdx,
-            correctAnswerText: q[`option_${correctLetter}`] || q[`option${correctLetter.toUpperCase()}`] || '',
-            breakdown,
-            totalAnswered,
-            correctCount: correctParticipants.length,
-            incorrectCount: incorrectParticipants.length,
-            unrespondedCount: unrespondedParticipants.length,
-            correctPercentage,
-            correctParticipants,
-            incorrectParticipants,
-            unrespondedParticipants
-        };
+    // Asegurar que todo usuario con respuestas esté registrado como participante
+    userAnswersMap.forEach((ansMap, uIdStr) => {
+        if (!participantsMap.has(uIdStr)) {
+            const sample = ansMap.values().next().value;
+            participantsMap.set(uIdStr, {
+                id: uIdStr,
+                username: sample?.username || 'Participante',
+                role: 'user',
+                isHost: false
+            });
+        }
     });
 
-    // 3. Serializar todas las respuestas de todos los participantes (incluso los que no terminaron)
+    // 4. Calcular métricas por usuario
+    const userStats = [];
+    participantsMap.forEach((p, uIdStr) => {
+        const ansMap = userAnswersMap.get(uIdStr) || new Map();
+        let correctCount = 0;
+        let score = 0;
+        let totalTimeTakenMs = 0;
+
+        ansMap.forEach(ans => {
+            if (ans.isCorrect) correctCount++;
+            score += (Number(ans.points) || 0);
+            totalTimeTakenMs += (Number(ans.timeTakenMs) || 0);
+        });
+
+        const completedCount = ansMap.size;
+        const isFinished = fullQuestions.length > 0 && completedCount >= fullQuestions.length;
+        const avgTimeSec = completedCount > 0 ? parseFloat(((totalTimeTakenMs / completedCount) / 1000).toFixed(1)) : 0;
+
+        userStats.push({
+            id: uIdStr,
+            username: p.username,
+            role: p.role,
+            isHost: p.isHost,
+            score,
+            completedCount,
+            correctCount,
+            totalTimeTakenMs,
+            avgTimeSec,
+            totalQuestions: fullQuestions.length,
+            isFinished,
+            connected: true,
+            hasParticipated: completedCount > 0 || score > 0
+        });
+    });
+
+    // 5. Orden determinista
+    const deterministicSort = (a, b) => {
+        if ((b.score || 0) !== (a.score || 0)) return (b.score || 0) - (a.score || 0);
+        if ((b.correctCount || 0) !== (a.correctCount || 0)) return (b.correctCount || 0) - (a.correctCount || 0);
+        if ((a.totalTimeTakenMs || 0) !== (b.totalTimeTakenMs || 0)) return (a.totalTimeTakenMs || 0) - (b.totalTimeTakenMs || 0);
+        const nameComp = String(a.username || '').localeCompare(String(b.username || ''));
+        if (nameComp !== 0) return nameComp;
+        return String(a.id || '').localeCompare(String(b.id || ''));
+    };
+
+    const activeSorted = userStats.filter(p => p.hasParticipated).sort(deterministicSort);
+    const spectatorSorted = userStats.filter(p => !p.hasParticipated).sort((a, b) => String(a.username || '').localeCompare(String(b.username || '')));
+
+    const leaderboard = [...activeSorted, ...spectatorSorted].map((p, idx) => ({
+        ...p,
+        rank: idx + 1
+    }));
+
+    const podium = activeSorted.slice(0, 3).map((p, idx) => ({
+        ...p,
+        rank: idx + 1
+    }));
+
+    // 6. Construir allUserAnswers
     const allUserAnswers = {};
-    room.participants.forEach((p, uId) => {
-        const uIdStr = String(uId);
+    userStats.forEach(p => {
+        const uIdStr = p.id;
         allUserAnswers[uIdStr] = {};
-        const ansMap = room.userAnswers?.get(uIdStr) || new Map();
+        const ansMap = userAnswersMap.get(uIdStr) || new Map();
 
         fullQuestions.forEach((targetQ, qIdx) => {
             if (ansMap.has(qIdx)) {
@@ -1075,7 +1150,7 @@ export async function revealRoomQuizResults(meetId, io = null) {
             } else {
                 allUserAnswers[uIdStr][qIdx] = {
                     userId: uIdStr,
-                    username: p.username || 'Participante',
+                    username: p.username,
                     questionIndex: qIdx,
                     selectedAnswer: null,
                     isCorrect: false,
@@ -1089,56 +1164,189 @@ export async function revealRoomQuizResults(meetId, io = null) {
         });
     });
 
-    const quizProg = getRoomQuizProgress(room);
-    const finalLeaderboard = (quizProg?.leaderboard && quizProg.leaderboard.length > 0)
-        ? quizProg.leaderboard
-        : Array.from(room.participants.values()).sort((a, b) => (b.score || 0) - (a.score || 0)).map((p, idx) => ({ ...p, rank: idx + 1 }));
-    const finalPodium = (quizProg?.podium && quizProg.podium.length > 0)
-        ? quizProg.podium
-        : finalLeaderboard.filter(p => p.hasParticipated || (p.score || 0) > 0 || p.completedCount > 0).slice(0, 3);
+    // 7. Construir questionsResults
+    const questionsResults = fullQuestions.map((q, qIdx) => {
+        const correctLetter = q.correct_answer;
+        const breakdown = { a: 0, b: 0, c: 0, d: 0, timeout: 0 };
+        const correctParticipants = [];
+        const incorrectParticipants = [];
+        const unrespondedParticipants = [];
 
-    // 4. Sincronizar puntos de plataforma para visualización en podio (los puntos de Meet quedan en la sesión y no inflan los puntos globales)
-    if (!room.pointsAwarded) {
-        room.pointsAwarded = true;
-        try {
-            const supabase = getDb();
-            for (let p of finalLeaderboard) {
-                const { data: u } = await supabase.from('users').select('points').eq('id', p.id).single();
-                p.totalPlatformPoints = (u && u.points) ? u.points : 0;
+        userStats.forEach(p => {
+            const ans = userAnswersMap.get(p.id)?.get(qIdx);
+            if (ans) {
+                let opt = String(ans.selectedAnswer || '').trim().toLowerCase();
+                if (opt === 'timeout') {
+                    breakdown.timeout = (breakdown.timeout || 0) + 1;
+                } else if (['a', 'b', 'c', 'd'].includes(opt)) {
+                    breakdown[opt] = (breakdown[opt] || 0) + 1;
+                } else {
+                    if (opt === String(q.option_a || '').trim().toLowerCase()) breakdown.a = (breakdown.a || 0) + 1;
+                    else if (opt === String(q.option_b || '').trim().toLowerCase()) breakdown.b = (breakdown.b || 0) + 1;
+                    else if (opt === String(q.option_c || '').trim().toLowerCase()) breakdown.c = (breakdown.c || 0) + 1;
+                    else if (opt === String(q.option_d || '').trim().toLowerCase()) breakdown.d = (breakdown.d || 0) + 1;
+                }
+
+                if (ans.isCorrect) {
+                    correctParticipants.push({
+                        id: p.id,
+                        username: p.username,
+                        selectedAnswer: ans.selectedAnswer,
+                        pointsGained: ans.points || 0,
+                        timeTakenMs: ans.timeTakenMs || 0
+                    });
+                } else {
+                    incorrectParticipants.push({
+                        id: p.id,
+                        username: p.username,
+                        selectedAnswer: ans.selectedAnswer,
+                        pointsGained: 0,
+                        timeTakenMs: ans.timeTakenMs || 0
+                    });
+                }
+            } else {
+                unrespondedParticipants.push({
+                    id: p.id,
+                    username: p.username,
+                    selectedAnswer: null,
+                    pointsGained: 0
+                });
             }
-            if (io) {
-                io.emit('meet:updated');
-            }
-        } catch (dbErr) {
-            console.error('[MeetSocket] Error sincronizando puntos de reunión:', dbErr);
-        }
-    }
+        });
 
-    const totalAttendance = room.allTimeParticipants ? room.allTimeParticipants.size : room.participants.size;
+        const totalAnswered = correctParticipants.length + incorrectParticipants.length;
+        const correctPercentage = totalAnswered > 0 ? Math.round((correctParticipants.length / totalAnswered) * 100) : 0;
 
-    const resultsPayload = {
+        return {
+            ...q,
+            questionIndex: qIdx,
+            correctAnswerText: q[`option_${correctLetter}`] || '',
+            breakdown,
+            totalAnswered,
+            correctCount: correctParticipants.length,
+            incorrectCount: incorrectParticipants.length,
+            unrespondedCount: unrespondedParticipants.length,
+            correctPercentage,
+            correctParticipants,
+            incorrectParticipants,
+            unrespondedParticipants
+        };
+    });
+
+    return {
         meetId: idStr,
         phase: 'finished',
         totalQuestions: fullQuestions.length,
         fullQuestions,
-        questionsResults: allQuestionsResults,
+        questionsResults,
         allUserAnswers,
-        podium: finalPodium,
-        leaderboard: finalLeaderboard,
-        totalJoinedCount: totalAttendance,
-        platformOnlineCount: getPlatformOnlineCount()
+        podium,
+        leaderboard,
+        totalJoinedCount: participantsMap.size,
+        platformOnlineCount
     };
+}
+
+/**
+ * Revela los resultados de todo el quiz para todos los participantes
+ * Muestra el podio final y el desglose de preguntas
+ */
+export async function revealRoomQuizResults(meetId, io = null) {
+    const idStr = String(meetId);
+    let room = activeRooms.get(idStr);
+    if (!room) room = await getOrCreateRoom(idStr);
+    if (!room) return { error: 'Sala Meet no encontrada' };
+
+    room.phase = 'finished';
+
+    // Asegurar que todas las respuestas pendientes se consoliden en la base de datos
+    await flushRoomPersist(room, idStr);
+
+    // Recuperar respuestas persistidas de la base de datos para combinar lo mejor de memoria y BD
+    const supabase = getDb();
+    let metaSavedAnswers = {};
+    let metaSavedParticipants = {};
+    try {
+        const { data: dbMeet } = await supabase.from('meetings').select('description').eq('id', idStr).single();
+        if (dbMeet?.description) {
+            const meta = JSON.parse(dbMeet.description);
+            metaSavedAnswers = meta.savedUserAnswers || {};
+            metaSavedParticipants = meta.savedParticipants || {};
+        }
+    } catch (e) {}
+
+    // Combinar respuestas de memoria y base de datos
+    const combinedAnswers = {};
+    Object.entries(metaSavedAnswers).forEach(([uId, ansMap]) => {
+        combinedAnswers[uId] = { ...ansMap };
+    });
+    if (room.userAnswers) {
+        room.userAnswers.forEach((ansMap, uId) => {
+            const uIdStr = String(uId);
+            if (!combinedAnswers[uIdStr]) combinedAnswers[uIdStr] = {};
+            ansMap.forEach((ans, qIdx) => {
+                combinedAnswers[uIdStr][qIdx] = ans;
+            });
+        });
+    }
+
+    // Combinar participantes de memoria y base de datos
+    const combinedParticipants = {};
+    Object.entries(metaSavedParticipants).forEach(([uId, p]) => {
+        combinedParticipants[uId] = { ...p };
+    });
+    if (room.participants) {
+        room.participants.forEach((p, uId) => {
+            const uIdStr = String(uId);
+            combinedParticipants[uIdStr] = {
+                id: uIdStr,
+                username: p.username,
+                role: p.role,
+                isHost: p.isHost
+            };
+        });
+    }
+
+    const resultsPayload = generateRevealedResultsFromData({
+        meetId: idStr,
+        questions: room.questions || [],
+        savedUserAnswers: combinedAnswers,
+        savedParticipants: combinedParticipants,
+        platformOnlineCount: getPlatformOnlineCount()
+    });
+
+    // Sincronizar puntos de plataforma para visualización en podio
+    try {
+        for (let p of resultsPayload.leaderboard) {
+            const { data: u } = await supabase.from('users').select('points').eq('id', p.id).single();
+            p.totalPlatformPoints = (u && u.points) ? u.points : 0;
+        }
+        for (let p of resultsPayload.podium) {
+            const { data: u } = await supabase.from('users').select('points').eq('id', p.id).single();
+            p.totalPlatformPoints = (u && u.points) ? u.points : 0;
+        }
+    } catch (dbErr) {
+        console.error('[MeetSocket] Error sincronizando puntos de reunión:', dbErr);
+    }
 
     room.revealedResults = resultsPayload;
 
-    // Persistir fase finished y resultados en Supabase meetings
+    // Actualizar también room.participants en memoria para mantener consistencia 100%
+    resultsPayload.leaderboard.forEach(p => {
+        let roomPart = room.participants.get(p.id);
+        if (roomPart) {
+            roomPart.score = p.score;
+        }
+    });
+
+    // Persistir fase finished y resultados actualizados en Supabase meetings
     try {
-        const supabase = getDb();
         const { data: dbMeet } = await supabase.from('meetings').select('description').eq('id', idStr).single();
         let meta = {};
         try { meta = JSON.parse(dbMeet?.description || '{}'); } catch {}
         meta.phase = 'finished';
         meta.revealedResults = resultsPayload;
+        meta.savedParticipants = combinedParticipants;
         await supabase.from('meetings').update({ description: JSON.stringify(meta) }).eq('id', idStr);
     } catch (dbErr) {
         console.error('[meetSocket] Error guardando revealedResults en BD:', dbErr);
@@ -1153,10 +1361,10 @@ export async function revealRoomQuizResults(meetId, io = null) {
 
         io.to(`meet:${idStr}`).emit('meet:final-podium', {
             meetId: idStr,
-            podium: finalPodium,
-            leaderboard: finalLeaderboard,
-            totalJoinedCount: totalAttendance,
-            platformOnlineCount: getPlatformOnlineCount()
+            podium: resultsPayload.podium,
+            leaderboard: resultsPayload.leaderboard,
+            totalJoinedCount: resultsPayload.totalJoinedCount,
+            platformOnlineCount: resultsPayload.platformOnlineCount
         });
     }
 

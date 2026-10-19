@@ -13,7 +13,8 @@ import {
     revealRoomQuestionResults,
     advanceRoomNextQuestion,
     endRoomSession,
-    getRoomQuizProgress
+    getRoomQuizProgress,
+    generateRevealedResultsFromData
 } from '../socket/meetSocket.js';
 
 const router = express.Router();
@@ -397,12 +398,79 @@ router.get('/:id', async (req, res) => {
 
         const room = activeRooms.get(String(data.id));
         const currentPhase = room?.phase || meta.phase || (data.status === 'ended' ? 'finished' : 'reading');
-        const revealedResults = room?.revealedResults || meta.revealedResults || null;
+        let revealedResults = room?.revealedResults || meta.revealedResults || null;
 
         // Recuperar lista de preguntas desde la sala activa o la descripción en base de datos
         const sourceQuestions = (room?.questions && room.questions.length > 0)
             ? room.questions
             : (meta.questions || []);
+
+        // Si la reunión está en fase finished o finalizada o ya tiene resultados revelados,
+        // generar de forma DINÁMICA los resultados a partir de todas las respuestas reales guardadas,
+        // garantizando que NUNCA se devuelva un snapshot desactualizado o con ceros erróneos.
+        if (currentPhase === 'finished' || data.status === 'ended' || revealedResults) {
+            const combinedAnswers = {};
+            if (meta.savedUserAnswers) {
+                Object.entries(meta.savedUserAnswers).forEach(([uId, ansMap]) => {
+                    combinedAnswers[uId] = { ...ansMap };
+                });
+            }
+            if (room?.userAnswers) {
+                room.userAnswers.forEach((ansMap, uId) => {
+                    const uIdStr = String(uId);
+                    if (!combinedAnswers[uIdStr]) combinedAnswers[uIdStr] = {};
+                    ansMap.forEach((ans, qIdx) => {
+                        combinedAnswers[uIdStr][qIdx] = ans;
+                    });
+                });
+            }
+
+            const combinedParticipants = {};
+            if (meta.savedParticipants) {
+                Object.entries(meta.savedParticipants).forEach(([uId, p]) => {
+                    combinedParticipants[uId] = { ...p };
+                });
+            }
+            if (room?.participants) {
+                room.participants.forEach((p, uId) => {
+                    const uIdStr = String(uId);
+                    combinedParticipants[uIdStr] = {
+                        id: uIdStr,
+                        username: p.username,
+                        role: p.role,
+                        isHost: p.isHost
+                    };
+                });
+            }
+
+            const freshResults = generateRevealedResultsFromData({
+                meetId: data.id,
+                questions: sourceQuestions,
+                savedUserAnswers: combinedAnswers,
+                savedParticipants: combinedParticipants,
+                platformOnlineCount: 1
+            });
+
+            if (freshResults && (freshResults.leaderboard.length > 0 || freshResults.totalQuestions > 0)) {
+                revealedResults = freshResults;
+                if (room) {
+                    room.revealedResults = freshResults;
+                }
+            }
+        }
+
+        if (revealedResults?.leaderboard) {
+            for (let p of revealedResults.leaderboard) {
+                const { data: u } = await supabase.from('users').select('points').eq('id', p.id).single();
+                p.totalPlatformPoints = (u && u.points) ? u.points : 0;
+            }
+        }
+        if (revealedResults?.podium) {
+            for (let p of revealedResults.podium) {
+                const { data: u } = await supabase.from('users').select('points').eq('id', p.id).single();
+                p.totalPlatformPoints = (u && u.points) ? u.points : 0;
+            }
+        }
 
         const questionsList = sourceQuestions.map((q, idx) => ({
             id: q.id || `q_${idx}`,
@@ -437,12 +505,13 @@ router.get('/:id', async (req, res) => {
                 myAnswersList = Object.values(meta.savedUserAnswers[userIdStr]);
             }
 
+            const calcScore = myAnswersList.reduce((acc, ans) => acc + (Number(ans?.points) || 0), 0);
             if (room?.participants && room.participants.has(userIdStr)) {
-                myScore = room.participants.get(userIdStr).score || 0;
+                myScore = Math.max(room.participants.get(userIdStr).score || 0, calcScore);
             } else if (meta.savedParticipants && meta.savedParticipants[userIdStr]) {
-                myScore = meta.savedParticipants[userIdStr].score || 0;
+                myScore = Math.max(meta.savedParticipants[userIdStr].score || 0, calcScore);
             } else {
-                myScore = myAnswersList.reduce((acc, ans) => acc + (Number(ans?.points) || 0), 0);
+                myScore = calcScore;
             }
 
             myIsFinished = questionsList.length > 0 && myAnswersList.length >= questionsList.length;

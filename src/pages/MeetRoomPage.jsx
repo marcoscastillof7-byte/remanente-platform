@@ -1104,7 +1104,7 @@ const MeetRoomPage = () => {
         }
 
         // 2. Sincronización automática si el líder reveló resultados
-        if ((res?.phase === 'finished' || res?.revealedResults) && (!revealedResults || phase !== 'finished')) {
+        if (res?.phase === 'finished' || res?.revealedResults) {
           const effectiveLdr = res.revealedResults?.leaderboard || res.quizProgress?.leaderboard || [];
           const effectivePod = res.revealedResults?.podium || res.quizProgress?.podium || effectiveLdr.slice(0, 3);
           const results = res.revealedResults || {
@@ -1112,18 +1112,29 @@ const MeetRoomPage = () => {
             podium: effectivePod,
             fullQuestions: res.questions || []
           };
-          if (autoAdvanceTimer) {
-            clearTimeout(autoAdvanceTimer);
-            setAutoAdvanceTimer(null);
+          const curPodiumStr = JSON.stringify(finalPodium || []);
+          const inPodiumStr = JSON.stringify(results.podium || []);
+          const curLdrStr = JSON.stringify(liveLeaderboard || []);
+          const inLdrStr = JSON.stringify(results.leaderboard || []);
+
+          const hasNewData = !revealedResults || phase !== 'finished' || curPodiumStr !== inPodiumStr || curLdrStr !== inLdrStr;
+
+          if (hasNewData) {
+            if (autoAdvanceTimer) {
+              clearTimeout(autoAdvanceTimer);
+              setAutoAdvanceTimer(null);
+            }
+            setRevealedResults(results);
+            setPhase('finished');
+            if (results.leaderboard) setLiveLeaderboard(results.leaderboard);
+            if (results.podium) setFinalPodium(results.podium);
+            if (results.fullQuestions && Array.isArray(results.fullQuestions) && results.fullQuestions.length > 0) {
+              setQuizQuestions(results.fullQuestions);
+            }
+            if (!revealedResults && phase !== 'finished') {
+              playNotificationSound();
+            }
           }
-          setRevealedResults(results);
-          setPhase('finished');
-          if (results.leaderboard) setLiveLeaderboard(results.leaderboard);
-          if (results.podium) setFinalPodium(results.podium);
-          if (results.fullQuestions && Array.isArray(results.fullQuestions) && results.fullQuestions.length > 0) {
-            setQuizQuestions(results.fullQuestions);
-          }
-          playNotificationSound();
         }
       } catch (err) {}
     };
@@ -1504,28 +1515,12 @@ const MeetRoomPage = () => {
       setAutoAdvanceTimer(null);
     }
 
-    // 1. Envío WebSocket (0ms)
+    // 1. Envío WebSocket (0ms) - El servidor calcula resultados oficiales y los emite por socket a todos
     if (socket && socket.connected) {
       socket.emit('meet:reveal-quiz-results', { meetId: id });
     }
 
-    // 2. Transmisión Supabase Realtime Broadcast inmediata para todos los participantes
-    if (broadcastChannelRef.current) {
-      const immediatePayload = {
-        meetId: id,
-        phase: 'finished',
-        leaderboard: quizProgress?.leaderboard || liveLeaderboard || [],
-        podium: quizProgress?.podium || finalPodium || [],
-        fullQuestions: activeQuestions || []
-      };
-      broadcastChannelRef.current.send({
-        type: 'broadcast',
-        event: 'meet:quiz-results-revealed',
-        payload: immediatePayload
-      }).catch(() => {});
-    }
-
-    // 3. Respaldo HTTP infalible que procesa puntuaciones y persiste en base de datos
+    // 2. Respaldo HTTP infalible que procesa puntuaciones y persiste en base de datos
     try {
       const res = await api.post(`/meetings/${id}/reveal-results`, {});
       const resultsData = res?.results || (res?.podium ? res : null);
@@ -2447,7 +2442,7 @@ const MeetRoomPage = () => {
                     <div className="text-left leading-none">
                       <span className="text-[9px] uppercase tracking-wider text-amber-300/80 font-bold block mb-1">Tu Puntaje</span>
                       <span className="text-xs sm:text-sm font-black text-amber-300 font-mono">
-                        {(mySessionScore !== undefined && mySessionScore !== null) ? mySessionScore : Object.values(myAnswers || {}).reduce((acc, a) => acc + (Number(a?.points) || 0), 0)} pts
+                        {Math.max(Number(mySessionScore) || 0, Object.values(myAnswers || {}).reduce((acc, a) => acc + (Number(a?.points) || 0), 0))} pts
                       </span>
                     </div>
                   </div>
