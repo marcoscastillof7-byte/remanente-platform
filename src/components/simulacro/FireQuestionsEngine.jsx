@@ -69,7 +69,7 @@ export default function FireQuestionsEngine({
   onOpenDisciplinary, 
   onOpenImporter 
 }) {
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, refreshUser } = useAuth();
 
   // Jugador activo es ESTRICTAMENTE la cuenta conectada del usuario
   const activePlayer = currentUser ? {
@@ -129,6 +129,7 @@ export default function FireQuestionsEngine({
   const [pasoCount, setPasoCount] = useState(0);
   const [selectedOptKey, setSelectedOptKey] = useState(null);
   const [isNewRecord, setIsNewRecord] = useState(false);
+  const [wisdomAwarded, setWisdomAwarded] = useState(null);
 
   const timerRef = useRef(null);
 
@@ -165,6 +166,7 @@ export default function FireQuestionsEngine({
     setQIndex(0);
     setSelectedOptKey(null);
     setIsNewRecord(false);
+    setWisdomAwarded(null);
     playNotificationSound();
 
     if (timerRef.current) clearInterval(timerRef.current);
@@ -192,6 +194,24 @@ export default function FireQuestionsEngine({
 
     // Actualizar registro del jugador
     setScore(currentScore => {
+      // Transferir puntos ganados a la cuenta del jugador como Puntos de Sabiduría en Supabase
+      if (currentScore > 0 && currentUser?.id) {
+        api.post('/simulacro/points/award', {
+          competition: 'fire',
+          score: currentScore,
+          details: { category: selectedCategory, correctCount, incorrectCount }
+        }).then(res => {
+          if (res && res.success) {
+            setWisdomAwarded({
+              points: currentScore,
+              newTotal: res.newTotalPoints
+            });
+            refreshUser?.();
+            window.dispatchEvent(new CustomEvent('remanente-leaderboard-update'));
+          }
+        }).catch(err => console.warn('[Simulacro] Error acreditando sabiduría:', err));
+      }
+
       setPlayerRecords(prev => {
         const pId = String(activePlayer.id);
         const existing = prev[pId] || { bestScore: 0, runs: [] };
@@ -763,6 +783,23 @@ export default function FireQuestionsEngine({
                   <span className="text-2xl font-black font-mono text-slate-300 mt-0.5 block">{pasoCount}</span>
                 </div>
               </div>
+
+              {/* Banner de Puntos de Sabiduría Acreditados */}
+              {wisdomAwarded && (
+                <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/20 via-yellow-500/25 to-amber-500/20 border-2 border-amber-400/80 shadow-xl max-w-md mx-auto space-y-1">
+                  <div className="flex items-center justify-center gap-2">
+                    <Sparkles className="w-5 h-5 text-amber-300 animate-spin" />
+                    <span className="text-sm font-black text-amber-300 uppercase tracking-wider">
+                      ¡+{wisdomAwarded.points} Puntos de Sabiduría Transferidos!
+                    </span>
+                  </div>
+                  <p className="text-xs text-amber-100">
+                    Acreditados directamente a tu cuenta en Supabase. {typeof wisdomAwarded.newTotal === 'number' && (
+                      <span className="font-bold text-amber-200">Saldo actual: {wisdomAwarded.newTotal} pts</span>
+                    )}
+                  </p>
+                </div>
+              )}
 
               {/* Botones de Acción Posterior a la Ronda */}
               <div className="flex flex-wrap items-center justify-center gap-3 pt-2">

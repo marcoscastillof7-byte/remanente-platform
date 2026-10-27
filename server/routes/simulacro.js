@@ -615,6 +615,84 @@ router.get('/questions/ruleta', async (req, res) => {
     }
 });
 
+/**
+ * POST /api/simulacro/points/award
+ * Transfiere los puntos ganados en cualquier competición de Simulacro
+ * directamente a la cuenta del usuario como "Puntos de Sabiduría" en Supabase.
+ * Body: { competition: 'fire' | 'david' | 'dado' | 'ruleta', score: number, details?: object }
+ */
+router.post('/points/award', async (req, res) => {
+    try {
+        const user = getUserFromReq(req);
+        if (!user || !user.id) {
+            return res.status(401).json({ error: 'Debes iniciar sesión para acumular puntos de sabiduría.' });
+        }
+
+        const userId = user.id;
+        const { competition = 'simulacro', score = 0, details = {} } = req.body;
+        const pointsToAdd = Math.max(0, parseInt(score, 10) || 0);
+
+        if (pointsToAdd === 0) {
+            return res.json({ success: true, pointsAwarded: 0, message: '0 puntos para agregar' });
+        }
+
+        const competitionNames = {
+            fire: 'Fire Questions',
+            david: 'David contra Goliat',
+            dado: 'El Dado Dado',
+            ruleta: 'La Ruleta Bíblica'
+        };
+        const compLabel = competitionNames[competition] || 'Simulacro Oficial';
+
+        let newTotalPoints = null;
+        try {
+            const supabase = getDb();
+            // 1. Obtener puntos actuales de la base de datos
+            const { data: userData, error: uErr } = await supabase
+                .from('users')
+                .select('points, username')
+                .eq('id', userId)
+                .single();
+
+            if (!uErr && userData) {
+                const curPts = typeof userData.points === 'number' ? userData.points : 0;
+                newTotalPoints = curPts + pointsToAdd;
+
+                // 2. Actualizar en Supabase
+                await supabase
+                    .from('users')
+                    .update({ points: newTotalPoints })
+                    .eq('id', userId);
+
+                // 3. Crear notificación interna de recompensa de sabiduría
+                await supabase.from('notifications').insert([{
+                    user_id: userId,
+                    title: `🌟 ¡+${pointsToAdd} Puntos de Sabiduría!`,
+                    message: `Has ganado ${pointsToAdd} puntos de sabiduría en ${compLabel}. ¡Nuevo saldo: ${newTotalPoints} pts!`,
+                    link: '/profile'
+                }]).catch(() => {});
+            }
+        } catch (dbErr) {
+            console.warn('[Simulacro] Error actualizando puntos en Supabase:', dbErr.message);
+        }
+
+        // 4. Emitir eventos en tiempo real si io está activo
+        if (req.app.get('io')) {
+            req.app.get('io').emit('leaderboard-update');
+        }
+
+        res.json({
+            success: true,
+            pointsAwarded: pointsToAdd,
+            competition,
+            newTotalPoints
+        });
+    } catch (err) {
+        console.error('[Simulacro] Error en /points/award:', err);
+        res.status(500).json({ error: 'Error al transferir puntos de sabiduría' });
+    }
+});
+
 // ==============================================================================
 // SISTEMA OFICIAL DE DESAFÍOS Y ENFRENTAMIENTOS (DAVID CONTRA GOLIAT)
 // Implementa el flujo idéntico al módulo de Duelos de la plataforma:

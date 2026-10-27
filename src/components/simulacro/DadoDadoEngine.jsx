@@ -86,7 +86,7 @@ export default function DadoDadoEngine({
   onCompletePhase, 
   onOpenDisciplinary 
 }) {
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, refreshUser } = useAuth();
 
   // Jugador activo es ESTRICTAMENTE la cuenta conectada del usuario
   const activePlayer = currentUser ? {
@@ -136,6 +136,7 @@ export default function DadoDadoEngine({
   const [correctCount, setCorrectCount] = useState(0);
   const [roundFinished, setRoundFinished] = useState(false);
   const [rollHistory, setRollHistory] = useState([]);
+  const [wisdomAwarded, setWisdomAwarded] = useState(null);
 
   // Estado del dado
   const [isRolling, setIsRolling] = useState(false);
@@ -187,6 +188,7 @@ export default function DadoDadoEngine({
     setAnsweredState(null);
     setSelectedOptKey(null);
     setTimeLeft(30);
+    setWisdomAwarded(null);
 
     playTone('roll');
 
@@ -308,6 +310,24 @@ export default function DadoDadoEngine({
 
     // Guardar récord del jugador
     setScore(finalScore => {
+      // Transferir puntos ganados a la cuenta del usuario como Puntos de Sabiduría en Supabase
+      if (finalScore > 0 && currentUser?.id) {
+        api.post('/simulacro/points/award', {
+          competition: 'dado',
+          score: finalScore,
+          details: { correctCount, totalRolls: TOTAL_ROLLS }
+        }).then(res => {
+          if (res && res.success) {
+            setWisdomAwarded({
+              points: finalScore,
+              newTotal: res.newTotalPoints
+            });
+            refreshUser?.();
+            window.dispatchEvent(new CustomEvent('remanente-leaderboard-update'));
+          }
+        }).catch(err => console.warn('[Simulacro] Error acreditando sabiduría:', err));
+      }
+
       setPlayerRecords(prev => {
         const pId = String(activePlayer.id);
         const existing = prev[pId] || { bestScore: 0, runs: [] };
@@ -761,6 +781,23 @@ export default function DadoDadoEngine({
                 </p>
               </div>
 
+              {/* Banner de Puntos de Sabiduría Acreditados */}
+              {wisdomAwarded && (
+                <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-500/20 via-amber-500/25 to-emerald-500/20 border-2 border-amber-400/80 shadow-xl max-w-md mx-auto space-y-1">
+                  <div className="flex items-center justify-center gap-2">
+                    <Sparkles className="w-5 h-5 text-amber-300 animate-spin" />
+                    <span className="text-sm font-black text-amber-300 uppercase tracking-wider">
+                      ¡+{wisdomAwarded.points} Puntos de Sabiduría Transferidos!
+                    </span>
+                  </div>
+                  <p className="text-xs text-amber-100">
+                    Acreditados directamente a tu cuenta en Supabase. {typeof wisdomAwarded.newTotal === 'number' && (
+                      <span className="font-bold text-amber-200">Saldo actual: {wisdomAwarded.newTotal} pts</span>
+                    )}
+                  </p>
+                </div>
+              )}
+
               {/* Historial de Tiradas */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 max-w-xl mx-auto">
                 {rollHistory.map((item, i) => (
@@ -787,6 +824,7 @@ export default function DadoDadoEngine({
                     setRollHistory([]);
                     setHasRolled(false);
                     setCurrentQuestion(null);
+                    setWisdomAwarded(null);
                   }}
                   className="px-6 py-3 bg-gradient-to-r from-amber-500 to-yellow-400 text-slate-950 font-black text-xs sm:text-sm rounded-xl shadow-xl cursor-pointer flex items-center gap-2"
                 >

@@ -158,7 +158,10 @@ export default function SimulacroHubPage() {
               <strong className="text-amber-300"> Fire Questions</strong> (90s continuos),
               <strong className="text-blue-300"> David contra Goliat</strong> (20 preguntas con pulsador),
               <strong className="text-emerald-300"> El Dado Dado</strong> (8 tiradas de dado 3D) y
-              <strong className="text-purple-300"> La Ruleta</strong> (8 giros bíblicos con temporizador automático de 30s).
+              <strong className="text-purple-300"> La Ruleta</strong> (8 giros bíblicos con reloj automático de 30s).
+              <span className="block mt-1.5 text-amber-300/90 font-medium">
+                🌟 ¡Todos los puntos ganados se transfieren automáticamente como <strong>Puntos de Sabiduría</strong> a tu cuenta en Supabase!
+              </span>
             </p>
           </div>
 
@@ -175,8 +178,11 @@ export default function SimulacroHubPage() {
                   </span>
                   <div className="text-sm font-black text-white flex items-center gap-1.5">
                     <span>{currentUser.username}</span>
-                    <span className="text-[10px] font-mono text-emerald-400 font-bold bg-emerald-500/15 px-1.5 py-0.2 rounded border border-emerald-500/30">
+                    <span className="text-[10px] font-mono text-emerald-400 font-bold bg-emerald-500/15 px-1.5 py-0.2 rounded border border-emerald-500/30" title="Récord Simulacro">
                       {myTotalScore} pts
+                    </span>
+                    <span className="text-[10px] font-mono text-amber-300 font-bold bg-amber-500/15 px-1.5 py-0.2 rounded border border-amber-500/30" title="Puntos de Sabiduría">
+                      ✨ {typeof currentUser.points === 'number' ? currentUser.points : 0} sab.
                     </span>
                   </div>
                 </div>
