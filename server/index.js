@@ -132,9 +132,16 @@ io.on('connection', (socket) => {
 // Exportamos 'app' para poder usarlo en serverless-http
 export { app };
 
-// Si se ejecuta directamente (no a través de un import/serverless)
-if (process.env.NODE_ENV !== 'production' || process.env.RUN_LOCAL) {
-    const PORT = 3001;
+// Si se ejecuta directamente en local (no a través de un import/serverless de Netlify o Lambda)
+const isServerless = Boolean(
+    process.env.NETLIFY || 
+    process.env.LAMBDA_TASK_ROOT || 
+    process.env.AWS_LAMBDA_FUNCTION_NAME || 
+    process.env.VERCEL
+);
+
+if (!isServerless && (process.env.NODE_ENV !== 'production' || process.env.RUN_LOCAL)) {
+    const PORT = process.env.PORT || 3001;
     httpServer.listen(PORT, () => {
         console.log(`Remanente Platform servidor iniciado en puerto ${PORT}`);
     });

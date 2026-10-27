@@ -3,19 +3,25 @@ import { getDb } from '../db/database.js';
 import { auth } from '../middleware/auth.js';
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import jwt from 'jsonwebtoken';
 import { sendPushNotification } from '../utils/pushNotifier.js';
 
 const router = express.Router();
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
-// Rutas de archivos JSON de respaldo local
-const jsonDir = path.join(__dirname, '..', '..', 'database_export', 'json');
-const questionsJsonPath = path.join(jsonDir, 'questions.json');
-const usersJsonPath = path.join(jsonDir, 'users.json');
-const simulacroDuelsPath = path.join(jsonDir, 'simulacro_duels.json');
+// Rutas de archivos JSON de respaldo local (seguras para entornos Serverless y ESM/CJS)
+let questionsJsonPath = '';
+let usersJsonPath = '';
+let simulacroDuelsPath = '';
+
+try {
+    const baseDir = typeof __dirname !== 'undefined' ? __dirname : process.cwd();
+    const jsonDir = path.join(baseDir, 'database_export', 'json');
+    questionsJsonPath = path.join(jsonDir, 'questions.json');
+    usersJsonPath = path.join(jsonDir, 'users.json');
+    simulacroDuelsPath = path.join(jsonDir, 'simulacro_duels.json');
+} catch (e) {
+    // Silencioso en entornos serverless
+}
 
 // Cargar backup local de preguntas si está disponible
 let cachedQuestions = [];

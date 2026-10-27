@@ -1600,7 +1600,7 @@ export function setupMeetSocket(io) {
                 option_b: q.option_b || q.optionB,
                 optionB: q.option_b || q.optionB,
                 option_c: q.option_c || q.optionC,
-                option_c: q.option_c || q.optionC,
+                optionC: q.option_c || q.optionC,
                 option_d: q.option_d || q.optionD,
                 optionD: q.option_d || q.optionD,
                 correct_answer: getCorrectOptionLetter(q),
