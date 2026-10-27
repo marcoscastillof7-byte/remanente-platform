@@ -482,16 +482,21 @@ const MeetRoomPage = () => {
   useEffect(() => {
     if (!user || !meet) return;
 
+    const isNetlify = typeof window !== 'undefined' && (
+      window.location.hostname.includes('netlify.app') || 
+      window.location.hostname.includes('netlify.live')
+    );
+
     const socketUrl = window.location.port === '5173' 
       ? `${window.location.protocol}//${window.location.hostname}:3001` 
       : window.location.origin;
     const s = io(socketUrl, {
       transports: ['websocket', 'polling'],
-      reconnection: true,
-      reconnectionAttempts: Infinity,
-      reconnectionDelay: 500,
+      reconnection: !isNetlify,
+      reconnectionAttempts: isNetlify ? 1 : Infinity,
+      reconnectionDelay: 1000,
       reconnectionDelayMax: 2000,
-      timeout: 10000
+      timeout: 8000
     });
 
     setSocket(s);

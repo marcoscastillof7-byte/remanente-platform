@@ -7,12 +7,21 @@ let supabaseClient = null;
 
 export const getDb = () => {
   if (!supabaseClient) {
-    const supabaseUrl = process.env.VITE_SUPABASE_URL;
-    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const supabaseUrl = process.env.VITE_SUPABASE_URL || 
+                        process.env.SUPABASE_URL || 
+                        'https://ltrudmbtqtgonfjctmsz.supabase.co';
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 
+                        process.env.VITE_SUPABASE_ANON_KEY || 
+                        process.env.SUPABASE_KEY || 
+                        process.env.VITE_SUPABASE_KEY;
     if (!supabaseUrl || !supabaseKey) {
-      console.error("Faltan credenciales de Supabase en el .env");
+      console.warn("[Database] Faltan credenciales de Supabase en las variables de entorno.");
     }
-    supabaseClient = createClient(supabaseUrl, supabaseKey);
+    try {
+      supabaseClient = createClient(supabaseUrl, supabaseKey || '');
+    } catch (err) {
+      console.error("[Database] Error inicializando cliente Supabase:", err.message);
+    }
   }
   return supabaseClient;
 };

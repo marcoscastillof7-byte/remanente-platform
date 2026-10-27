@@ -704,19 +704,6 @@ function generate20BalancedQuestions() {
         points: 10
     }));
 }
-        question_number: idx + 1,
-        question_text: q.question_text,
-        option_a: q.option_a,
-        option_b: q.option_b,
-        option_c: q.option_c,
-        option_d: q.option_d,
-        correct_answer: (q.correct_answer || 'a').toLowerCase(),
-        explanation: q.explanation || 'Respuesta bíblica oficial NTV.',
-        verse_reference: q.verse_reference || '',
-        source_category: classifyQuestion(q),
-        points: 10
-    }));
-}
 
 /**
  * GET /api/simulacro/duels/users

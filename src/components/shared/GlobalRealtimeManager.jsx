@@ -172,95 +172,105 @@ const GlobalRealtimeManager = () => {
     }, 25000);
 
     // ==========================================
-    // 4. SOCKET.IO (TIEMPO REAL DE WEBSOCKETS EN SERVIDOR)
+    // 4. SOCKET.IO (TIEMPO REAL DE WEBSOCKETS EN SERVIDOR LOCAL/DEDICADO)
     // ==========================================
-    const socketUrl = window.location.port === '5173' 
-      ? `${window.location.protocol}//${window.location.hostname}:3001` 
-      : window.location.origin;
+    const isNetlify = typeof window !== 'undefined' && (
+      window.location.hostname.includes('netlify.app') || 
+      window.location.hostname.includes('netlify.live')
+    );
 
-    const socket = io(socketUrl, {
-      transports: ['websocket', 'polling'],
-      reconnection: true,
-      reconnectionAttempts: Infinity,
-      reconnectionDelay: 1000
-    });
+    let socket = null;
+    let pingInterval = null;
 
-    socketRef.current = socket;
+    if (!isNetlify) {
+      const socketUrl = window.location.port === '5173' 
+        ? `${window.location.protocol}//${window.location.hostname}:3001` 
+        : window.location.origin;
 
-    const identify = () => {
-      if (user && (user.id || user.username)) {
-        socket.emit('platform:identify', {
-          id: user.id,
-          username: user.username,
-          role: user.role,
-          points: user.points || 0
-        });
-      }
-    };
+      socket = io(socketUrl, {
+        transports: ['websocket', 'polling'],
+        reconnection: true,
+        reconnectionAttempts: 5,
+        reconnectionDelay: 2000
+      });
 
-    socket.on('connect', identify);
-    socket.on('reconnect', identify);
-    identify();
+      socketRef.current = socket;
 
-    // Ping periódico al socket
-    const pingInterval = setInterval(() => {
-      if (socket.connected) {
-        socket.emit('platform:ping');
-      }
-    }, 15000);
-
-    // Manejador unificado de estadísticas provenientes del socket
-    const handleSocketOnlineData = (data) => {
-      if (!data) return;
-      
-      // Si el socket trae usuarios, fusionarlos sin borrar los ya confirmados en presencia
-      if (Array.isArray(data.users) && data.users.length > 0) {
-        data.users.forEach(u => {
-          if (u && (u.id || u.username)) {
-            const uId = String(u.id || u.username);
-            if (!knownOnlineUsersRef.current.has(uId)) {
-              knownOnlineUsersRef.current.set(uId, {
-                id: uId,
-                username: u.username,
-                role: u.role || 'user',
-                points: u.points || 0,
-                onlineAt: new Date().toISOString()
-              });
-            }
-          }
-        });
-      }
-
-      emitUnifiedOnlineStats('socket');
-    };
-
-    socket.on('platform:online-stats', handleSocketOnlineData);
-    socket.on('platform:pong', handleSocketOnlineData);
-
-    // Notificaciones de reuniones en vivo iniciadas
-    socket.on('meet:started', (data) => {
-      window.dispatchEvent(new CustomEvent('show-notification-banner', {
-        detail: {
-          title: '📖 ¡Estudio Bíblico en Vivo!',
-          message: `${data.title || 'Una reunión'} acaba de comenzar. ¡Toca aquí para unirte!`,
-          url: `/meet/${data.meetId}`
+      const identify = () => {
+        if (user && (user.id || user.username)) {
+          socket.emit('platform:identify', {
+            id: user.id,
+            username: user.username,
+            role: user.role,
+            points: user.points || 0
+          });
         }
-      }));
-      window.dispatchEvent(new CustomEvent('remanente-meet-updated', { detail: data }));
-    });
+      };
 
-    // Actualización de Meets y Leaderboard
-    socket.on('meet:updated', (data) => {
-      window.dispatchEvent(new CustomEvent('remanente-meet-updated', { detail: data }));
-    });
+      socket.on('connect', identify);
+      socket.on('reconnect', identify);
+      identify();
 
-    socket.on('meet:session-ended', (data) => {
-      window.dispatchEvent(new CustomEvent('remanente-meet-updated', { detail: data }));
-    });
+      // Ping periódico al socket
+      pingInterval = setInterval(() => {
+        if (socket?.connected) {
+          socket.emit('platform:ping');
+        }
+      }, 15000);
 
-    socket.on('leaderboard-update', (data) => {
-      window.dispatchEvent(new CustomEvent('remanente-leaderboard-update', { detail: data }));
-    });
+      // Manejador unificado de estadísticas provenientes del socket
+      const handleSocketOnlineData = (data) => {
+        if (!data) return;
+        
+        // Si el socket trae usuarios, fusionarlos sin borrar los ya confirmados en presencia
+        if (Array.isArray(data.users) && data.users.length > 0) {
+          data.users.forEach(u => {
+            if (u && (u.id || u.username)) {
+              const uId = String(u.id || u.username);
+              if (!knownOnlineUsersRef.current.has(uId)) {
+                knownOnlineUsersRef.current.set(uId, {
+                  id: uId,
+                  username: u.username,
+                  role: u.role || 'user',
+                  points: u.points || 0,
+                  onlineAt: new Date().toISOString()
+                });
+              }
+            }
+          });
+        }
+
+        emitUnifiedOnlineStats('socket');
+      };
+
+      socket.on('platform:online-stats', handleSocketOnlineData);
+      socket.on('platform:pong', handleSocketOnlineData);
+
+      // Notificaciones de reuniones en vivo iniciadas
+      socket.on('meet:started', (data) => {
+        window.dispatchEvent(new CustomEvent('show-notification-banner', {
+          detail: {
+            title: '📖 ¡Estudio Bíblico en Vivo!',
+            message: `${data.title || 'Una reunión'} acaba de comenzar. ¡Toca aquí para unirte!`,
+            url: `/meet/${data.meetId}`
+          }
+        }));
+        window.dispatchEvent(new CustomEvent('remanente-meet-updated', { detail: data }));
+      });
+
+      // Actualización de Meets y Leaderboard
+      socket.on('meet:updated', (data) => {
+        window.dispatchEvent(new CustomEvent('remanente-meet-updated', { detail: data }));
+      });
+
+      socket.on('meet:session-ended', (data) => {
+        window.dispatchEvent(new CustomEvent('remanente-meet-updated', { detail: data }));
+      });
+
+      socket.on('leaderboard-update', (data) => {
+        window.dispatchEvent(new CustomEvent('remanente-leaderboard-update', { detail: data }));
+      });
+    }
 
     // ==========================================
     // 5. SUSCRIPCIÓN GLOBAL A CAMBIOS DE TABLAS EN SUPABASE

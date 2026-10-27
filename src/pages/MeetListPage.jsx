@@ -50,28 +50,27 @@ const MeetListPage = () => {
     };
     fetchOnline();
 
-    const socketUrl = window.location.port === '5173' 
-      ? `${window.location.protocol}//${window.location.hostname}:3001` 
-      : window.location.origin;
-    const socket = io(socketUrl, {
-      transports: ['websocket', 'polling']
-    });
+    const isNetlify = typeof window !== 'undefined' && (
+      window.location.hostname.includes('netlify.app') || 
+      window.location.hostname.includes('netlify.live')
+    );
 
-    const handleRealtimeUpdate = () => {
-      fetchMeets(false);
-    };
+    let socket = null;
+    if (!isNetlify) {
+      const socketUrl = window.location.port === '5173' 
+        ? `${window.location.protocol}//${window.location.hostname}:3001` 
+        : window.location.origin;
+      socket = io(socketUrl, {
+        transports: ['websocket', 'polling'],
+        reconnectionAttempts: 3
+      });
 
-    const handleOnlineStats = (data) => {
-      if (data && typeof data.onlineCount === 'number') {
-        setOnlineCount(Math.max(1, data.onlineCount));
-      }
-    };
-
-    socket.on('meet:updated', handleRealtimeUpdate);
-    socket.on('meet:started', handleRealtimeUpdate);
-    socket.on('meet:session-ended', handleRealtimeUpdate);
-    socket.on('meet:phase-changed', handleRealtimeUpdate);
-    socket.on('platform:online-stats', handleOnlineStats);
+      socket.on('meet:updated', handleRealtimeUpdate);
+      socket.on('meet:started', handleRealtimeUpdate);
+      socket.on('meet:session-ended', handleRealtimeUpdate);
+      socket.on('meet:phase-changed', handleRealtimeUpdate);
+      socket.on('platform:online-stats', handleOnlineStats);
+    }
 
     const handleOnlineWindow = (e) => {
       if (e.detail && typeof e.detail.onlineCount === 'number') {
@@ -103,12 +102,14 @@ const MeetListPage = () => {
       window.removeEventListener('platform-online-update', handleOnlineWindow);
       window.removeEventListener('remanente-meet-updated', handleRealtimeUpdate);
       supabase.removeChannel(supabaseChannel);
-      socket.off('meet:updated', handleRealtimeUpdate);
-      socket.off('meet:started', handleRealtimeUpdate);
-      socket.off('meet:session-ended', handleRealtimeUpdate);
-      socket.off('meet:phase-changed', handleRealtimeUpdate);
-      socket.off('platform:online-stats', handleOnlineStats);
-      socket.disconnect();
+      if (socket) {
+        socket.off('meet:updated', handleRealtimeUpdate);
+        socket.off('meet:started', handleRealtimeUpdate);
+        socket.off('meet:session-ended', handleRealtimeUpdate);
+        socket.off('meet:phase-changed', handleRealtimeUpdate);
+        socket.off('platform:online-stats', handleOnlineStats);
+        socket.disconnect();
+      }
     };
   }, []);
 
