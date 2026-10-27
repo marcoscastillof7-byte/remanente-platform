@@ -327,7 +327,18 @@ export default function FireQuestionsImporterModal({ isOpen, onClose, onImportSu
       });
 
       if (res && res.success) {
-        setSuccessMsg(`¡Importación exitosa! Se han guardado ${res.importedCount} preguntas en Supabase (${importMode === 'replace' ? 'reemplazando anteriores' : 'agregadas al banco'}). Ya están activas en Simulacro.`);
+        setSuccessMsg(`¡Importación exitosa! Se han guardado ${res.importedCount} preguntas en Supabase (${importMode === 'replace' ? 'reemplazando anteriores' : 'agregadas al banco'}). Ya están activas para todas las disciplinas de Simulacro.`);
+        
+        // Almacenar en el navegador para redundancia instantánea en todas las categorías
+        try {
+          const currentLocal = JSON.parse(localStorage.getItem('simulacro_custom_questions') || '[]');
+          const updated = importMode === 'replace' ? payloadQuestions : [...payloadQuestions, ...currentLocal];
+          localStorage.setItem('simulacro_custom_questions', JSON.stringify(updated));
+          window.dispatchEvent(new CustomEvent('remanente-simulacro-questions-updated', {
+            detail: { count: res.importedCount, category: selectedCategory }
+          }));
+        } catch (e) {}
+
         setInputText('');
         setParsedQuestions([]);
         await fetchStats();

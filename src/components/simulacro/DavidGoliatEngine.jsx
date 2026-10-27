@@ -130,6 +130,12 @@ export default function DavidGoliatEngine({
   // Cargar preguntas iniciales de David contra Goliat
   useEffect(() => {
     load20Questions();
+
+    const handleQuestionsUpdated = () => {
+      load20Questions();
+    };
+    window.addEventListener('remanente-simulacro-questions-updated', handleQuestionsUpdated);
+    return () => window.removeEventListener('remanente-simulacro-questions-updated', handleQuestionsUpdated);
   }, []);
 
   const load20Questions = async () => {

@@ -217,7 +217,8 @@ export default function DadoDadoEngine({
     setLoadingQuestion(true);
     let loadedQ = null;
     try {
-      const res = await api.get(`/simulacro/questions/dado?face=${chosenFace}`);
+      const usedIds = rollHistory.map(r => r.questionId).filter(Boolean).join(',');
+      const res = await api.get(`/simulacro/questions/dado?face=${chosenFace}&exclude=${encodeURIComponent(usedIds)}`);
       if (res && res.question) {
         loadedQ = {
           ...res.question,
@@ -280,6 +281,7 @@ export default function DadoDadoEngine({
     const entry = {
       roll: rollIndex + 1,
       face: diceFace,
+      questionId: currentQuestion?.id,
       themeName: DADO_THEMES.find(t => t.face === diceFace)?.name || 'Temática Bíblica',
       result,
       points

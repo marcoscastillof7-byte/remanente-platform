@@ -241,7 +241,8 @@ export default function RuletaEngine({
     // Cargar la pregunta en paralelo
     setLoadingQuestion(true);
     try {
-      const res = await api.get(`/simulacro/questions/ruleta?sector=${targetSectorIndex}`);
+      const usedIds = spinHistory.map(s => s.questionId).filter(Boolean).join(',');
+      const res = await api.get(`/simulacro/questions/ruleta?sector=${targetSectorIndex}&exclude=${encodeURIComponent(usedIds)}`);
       if (res && res.question) {
         setCurrentQuestion({
           ...res.question,
@@ -303,6 +304,7 @@ export default function RuletaEngine({
   const recordSpinResult = (result, points) => {
     const entry = {
       spin: spinIndex + 1,
+      questionId: currentQuestion?.id,
       sectorName: selectedSector?.name || 'Sector Bíblico',
       sectorIcon: selectedSector?.icon || '📜',
       result,

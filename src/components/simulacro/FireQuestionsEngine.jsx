@@ -152,6 +152,12 @@ export default function FireQuestionsEngine({
   // Cargar preguntas iniciales al montar o al cambiar de categoría
   useEffect(() => {
     loadCategoryQuestions(selectedCategory);
+
+    const handleQuestionsUpdated = () => {
+      loadCategoryQuestions(selectedCategory);
+    };
+    window.addEventListener('remanente-simulacro-questions-updated', handleQuestionsUpdated);
+    return () => window.removeEventListener('remanente-simulacro-questions-updated', handleQuestionsUpdated);
   }, [selectedCategory]);
 
   // Iniciar la ronda individual de 90 segundos del jugador

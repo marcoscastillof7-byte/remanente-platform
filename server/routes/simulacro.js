@@ -55,18 +55,39 @@ const FALLBACK_BIBLICAL_QUESTIONS = [
     { id: 'fb_8', question_text: '¿Cómo subió el profeta Elías al cielo en el torbellino?', option_a: 'En un carro de fuego con caballos de fuego', option_b: 'En una nube de gloria', option_c: 'Llevado por dos ángeles', option_d: 'En un carro de oro', correct_answer: 'a', explanation: 'Un carro de fuego con caballos de fuego apartó a ambos, y Elías subió al cielo.', verse_reference: '2 Reyes 2:11', custom_category: 'eventos' }
 ];
 
+let lastQuestionsFetch = 0;
+
 async function ensureQuestionsLoaded(forceRefresh = false) {
-    if (!forceRefresh && cachedQuestions.length >= 20) return cachedQuestions;
+    const now = Date.now();
+    // Cache de 30s para revalidar y cargar preguntas recién importadas automáticamente
+    if (!forceRefresh && cachedQuestions.length > 0 && (now - lastQuestionsFetch < 30000)) {
+        return cachedQuestions;
+    }
     try {
         const supabase = getDb();
-        const { data } = await supabase.from('questions').select('*').limit(3000);
-        if (data && data.length > 0) {
+        const { data, error } = await supabase
+            .from('questions')
+            .select('*')
+            .order('id', { ascending: false })
+            .limit(3000);
+
+        if (!error && data && data.length > 0) {
             cachedQuestions = data;
+            lastQuestionsFetch = now;
             return cachedQuestions;
         }
     } catch (e) {
         console.warn('[Simulacro] Error consultando preguntas de Supabase:', e.message);
     }
+
+    if (cachedQuestions.length === 0) {
+        try {
+            if (fs.existsSync(questionsJsonPath)) {
+                cachedQuestions = JSON.parse(fs.readFileSync(questionsJsonPath, 'utf8'));
+            }
+        } catch (e) {}
+    }
+
     if (cachedQuestions.length === 0) {
         cachedQuestions = [...FALLBACK_BIBLICAL_QUESTIONS];
     }
@@ -127,19 +148,24 @@ const DEFAULT_TEAMS = [
     }
 ];
 
-// Helper para clasificar preguntas por palabra clave en las 5 subcategorías de Fire Questions
+// Helper para clasificar preguntas por palabra clave en las subcategorías de Fire Questions
 function classifyQuestion(q) {
     if (q.custom_category) {
         return q.custom_category.toLowerCase();
     }
-    const text = (q.question_text || '').toLowerCase();
+    if (q.category) {
+        return q.category.toLowerCase();
+    }
+    const text = ((q.question_text || '') + ' ' + (q.explanation || '') + ' ' + (q.verse_reference || '')).toLowerCase();
     
     // 1. Cantidades (¿cuántos?, números, años, medidas)
     if (
         text.includes('cuánt') || text.includes('cuant') || text.includes('años') ||
         text.includes('días') || text.includes('meses') || text.includes('siclos') ||
         text.includes('codos') || text.includes('hombres') || text.includes('veces') ||
-        text.includes('talent') || text.includes('soldad') || text.includes('edad')
+        text.includes('talent') || text.includes('soldad') || text.includes('edad') ||
+        text.includes('número') || text.includes('numero') || text.includes('total') ||
+        text.includes('primero') || text.includes('segundo') || text.includes('tercero')
     ) {
         return 'cantidades';
     }
@@ -148,11 +174,15 @@ function classifyQuestion(q) {
     if (
         text.includes('dónde') || text.includes('donde') || text.includes('lugar') ||
         text.includes('ciudad') || text.includes('monte') || text.includes('valle') ||
-        text.includes('cueva') || text.includes('río') || text.includes('jerusalén') ||
-        text.includes('belén') || text.includes('hebrón') || text.includes('gilgal') ||
-        text.includes('silo') || text.includes('bet-el') || text.includes('carmelo') ||
-        text.includes('samaria') || text.includes('gat') || text.includes('siclag') ||
-        text.includes('nob') || text.includes('en-gadi') || text.includes('jordán')
+        text.includes('cueva') || text.includes('río') || text.includes('rio') ||
+        text.includes('jerusalén') || text.includes('belén') || text.includes('hebrón') ||
+        text.includes('gilgal') || text.includes('silo') || text.includes('bet-el') ||
+        text.includes('carmelo') || text.includes('samaria') || text.includes('gat') ||
+        text.includes('siclag') || text.includes('nob') || text.includes('en-gadi') ||
+        text.includes('jordán') || text.includes('jordan') || text.includes('egipto') ||
+        text.includes('asiria') || text.includes('babilonia') || text.includes('tiro') ||
+        text.includes('sión') || text.includes('sion') || text.includes('mizpa') ||
+        text.includes('jabes') || text.includes('tabernáculo')
     ) {
         return 'lugares';
     }
@@ -166,7 +196,9 @@ function classifyQuestion(q) {
         text.includes('oró') || text.includes('sueño') || text.includes('visión') ||
         text.includes('arca') || text.includes('altar') || text.includes('fuego') ||
         text.includes('becerro') || text.includes('espada') || text.includes('lanza') ||
-        text.includes('honda') || text.includes('estatua') || text.includes('manto')
+        text.includes('honda') || text.includes('estatua') || text.includes('manto') ||
+        text.includes('hambre') || text.includes('peste') || text.includes('plaga') ||
+        text.includes('edificó') || text.includes('construyó') || text.includes('resucitó')
     ) {
         return 'eventos';
     }
@@ -177,12 +209,36 @@ function classifyQuestion(q) {
 
 // Banco temático para El Dado Dado (6 Caras)
 const DADO_THEMES = [
-    { face: 1, name: 'Reyes y Conquistadores', filter: ['rey', 'reinó', 'saúl', 'david', 'salomón', 'acab'] },
-    { face: 2, name: 'Profetas de Dios', filter: ['profeta', 'samuel', 'elías', 'eliseo', 'natán', 'gad', 'jehú'] },
-    { face: 3, name: 'Batallas y Estrategias', filter: ['guerra', 'ejército', 'filisteo', 'espada', 'lanza', 'goliat', 'batalla'] },
-    { face: 4, name: 'Milagros y Señales', filter: ['milagro', 'fuego', 'resucitó', 'aceite', 'lepras', 'agua', 'cielo'] },
-    { face: 5, name: 'Sabiduría y Ley', filter: ['sabiduría', 'juicio', 'templo', 'arca', 'mandamiento', 'libro', 'ley'] },
-    { face: 6, name: 'Desafío de Oro (Pregunta Crucial)', filter: [] }
+    { 
+        face: 1, 
+        name: 'Reyes y Conquistadores', 
+        filter: ['rey', 'reyes', 'reinó', 'reino', 'saúl', 'david', 'salomón', 'acab', 'roboam', 'jeroboam', 'ezequías', 'josías', 'trono', 'corona', 'judá', 'israel', 'conquist'] 
+    },
+    { 
+        face: 2, 
+        name: 'Profetas de Dios', 
+        filter: ['profeta', 'profetas', 'profetizó', 'samuel', 'elías', 'eliseo', 'natán', 'gad', 'jehú', 'isaías', 'hulda', 'ahías', 'palabra', 'voz', 'visión', 'vidente'] 
+    },
+    { 
+        face: 3, 
+        name: 'Batallas y Estrategias', 
+        filter: ['guerra', 'ejército', 'filisteo', 'filisteos', 'espada', 'lanza', 'goliat', 'batalla', 'honda', 'escudo', 'campamento', 'valiente', 'soldado', 'arco', 'flecha'] 
+    },
+    { 
+        face: 4, 
+        name: 'Milagros y Señales', 
+        filter: ['milagro', 'fuego', 'resucitó', 'aceite', 'lepra', 'lepras', 'agua', 'cielo', 'hacha', 'flotó', 'sanó', 'sanado', 'señal', 'visión', 'ángel', 'sombra'] 
+    },
+    { 
+        face: 5, 
+        name: 'Sabiduría y Ley', 
+        filter: ['sabiduría', 'sabio', 'juicio', 'templo', 'arca', 'mandamiento', 'libro', 'ley', 'pacto', 'oró', 'oración', 'altar', 'justicia', 'proverbio', 'obedec'] 
+    },
+    { 
+        face: 6, 
+        name: 'Desafío de Oro (Pregunta Crucial)', 
+        filter: [] 
+    }
 ];
 
 // Banco temático para La Ruleta (8 Sectores)
@@ -399,40 +455,47 @@ router.post('/questions/import', handleQuestionsImport);
 
 /**
  * GET /api/simulacro/questions/fire-questions
- * Obtener preguntas filtradas por la subcategoría de Fire Questions
+ * Obtener preguntas filtradas por la subcategoría de Fire Questions o generales
  */
 router.get('/questions/fire-questions', async (req, res) => {
     try {
         await ensureQuestionsLoaded();
         const targetCategory = (req.query.category || 'personajes').toLowerCase();
-        const count = parseInt(req.query.count || '40', 10);
+        const count = parseInt(req.query.count || '60', 10);
 
         let questionsPool = [];
 
-        // 1. Filtrar desde preguntas locales cacheadas
-        if (cachedQuestions.length > 0) {
+        // 1. Si la categoría es 'all' o 'todas', usar todas las preguntas disponibles
+        if (targetCategory === 'all' || targetCategory === 'todas') {
+            questionsPool = [...cachedQuestions];
+        } else {
+            // Filtrar por la categoría clasificada
             questionsPool = cachedQuestions.filter(q => classifyQuestion(q) === targetCategory);
+            // Si la categoría tiene pocas preguntas, completar con el resto del banco barajado
+            if (questionsPool.length < 20) {
+                const rest = cachedQuestions.filter(q => !questionsPool.some(p => p.id === q.id));
+                questionsPool = [...questionsPool, ...rest];
+            }
         }
 
-        // 2. Si aún faltan, usar todas mezcladas
         if (questionsPool.length === 0) {
-            questionsPool = cachedQuestions.length > 0 ? cachedQuestions : [...FALLBACK_BIBLICAL_QUESTIONS];
+            questionsPool = [...FALLBACK_BIBLICAL_QUESTIONS];
         }
 
-        // Mezclar aleatoriamente
-        const shuffled = questionsPool.sort(() => 0.5 - Math.random()).slice(0, count);
+        // Mezclar aleatoriamente para garantizar variedad en cada ronda
+        const shuffled = [...questionsPool].sort(() => 0.5 - Math.random()).slice(0, count);
 
         const formatted = shuffled.map((q, idx) => ({
             id: q.id || `fq_${idx}`,
             question_text: q.question_text,
             option_a: q.option_a,
             option_b: q.option_b,
-            option_c: q.option_c,
-            option_d: q.option_d,
-            correct_answer: (q.correct_answer || 'a').toLowerCase(),
+            option_c: q.option_c || 'Ninguna de las anteriores',
+            option_d: q.option_d || 'Todas las anteriores',
+            correct_answer: (q.correct_answer || 'a').toLowerCase().trim(),
             explanation: q.explanation || 'Respuesta bíblica oficial NTV.',
             verse_reference: q.verse_reference || '',
-            category: targetCategory,
+            category: classifyQuestion(q),
             time_limit_seconds: 90
         }));
 
@@ -444,27 +507,26 @@ router.get('/questions/fire-questions', async (req, res) => {
 });
 
 /**
- * GET /api/simulacro/questions/david-goliat/import-from-fire
- * Importador de preguntas para David contra Goliat:
- * Importa 20 preguntas aleatorias y equilibradas tomadas directamente de los 4 apartados de Fire Questions
+ * GET /api/simulacro/questions/david-goliat y /import-from-fire
+ * 20 preguntas aleatorias y equilibradas tomadas directamente de todo el banco de preguntas importadas y almacenadas
  */
-router.get('/questions/david-goliat/import-from-fire', async (req, res) => {
+const handleDavidGoliatQuestions = async (req, res) => {
     try {
         await ensureQuestionsLoaded();
+        const count = 20;
         const categories = ['personajes', 'lugares', 'cantidades', 'eventos'];
         const selected = [];
 
-        // Tomar 5 preguntas de cada una de las 4 categorías para completar 20 preguntas perfectamente equilibradas
+        // Tomar preguntas equilibradas de cada una de las 4 categorías
         categories.forEach(cat => {
             const catPool = cachedQuestions.filter(q => classifyQuestion(q) === cat);
-            const shuffled = catPool.sort(() => 0.5 - Math.random());
-            const picked = shuffled.slice(0, 5);
-            selected.push(...picked);
+            const shuffledCat = [...catPool].sort(() => 0.5 - Math.random());
+            selected.push(...shuffledCat.slice(0, 5));
         });
 
-        // Si faltan para llegar a 20, rellenar del pool general
-        if (selected.length < 20) {
-            const remainingCount = 20 - selected.length;
+        // Si faltan para llegar a 20, rellenar de todo el banco de preguntas disponibles
+        if (selected.length < count) {
+            const remainingCount = count - selected.length;
             const extra = cachedQuestions
                 .filter(q => !selected.some(s => s.id === q.id))
                 .sort(() => 0.5 - Math.random())
@@ -472,18 +534,27 @@ router.get('/questions/david-goliat/import-from-fire', async (req, res) => {
             selected.push(...extra);
         }
 
-        // Mezclar las 20 preguntas finales
-        const final20 = selected.sort(() => 0.5 - Math.random()).slice(0, 20);
+        // Si aún faltaran preguntas, utilizar el fallback de emergencia
+        if (selected.length < count) {
+            const fallbackExtra = FALLBACK_BIBLICAL_QUESTIONS
+                .filter(q => !selected.some(s => s.id === q.id))
+                .sort(() => 0.5 - Math.random())
+                .slice(0, count - selected.length);
+            selected.push(...fallbackExtra);
+        }
+
+        // Mezclar las 20 preguntas finales aleatoriamente
+        const final20 = [...selected].sort(() => 0.5 - Math.random()).slice(0, count);
 
         const formatted = final20.map((q, idx) => ({
-            id: q.id || `dg_imp_${idx}`,
+            id: q.id || `dg_${idx}`,
             question_number: idx + 1,
             question_text: q.question_text,
             option_a: q.option_a,
             option_b: q.option_b,
-            option_c: q.option_c,
-            option_d: q.option_d,
-            correct_answer: (q.correct_answer || 'a').toLowerCase(),
+            option_c: q.option_c || 'Ninguna de las anteriores',
+            option_d: q.option_d || 'Todas las anteriores',
+            correct_answer: (q.correct_answer || 'a').toLowerCase().trim(),
             explanation: q.explanation || 'Respuesta bíblica oficial NTV.',
             verse_reference: q.verse_reference || '',
             source_category: classifyQuestion(q),
@@ -493,96 +564,63 @@ router.get('/questions/david-goliat/import-from-fire', async (req, res) => {
         res.json({
             count: formatted.length,
             questions: formatted,
-            message: '20 preguntas equilibradas importadas exitosamente desde Fire Questions.'
+            message: '20 preguntas equilibradas listas para David contra Goliat.'
         });
     } catch (err) {
-        console.error('[Simulacro] Error importando desde fire para david-goliat:', err);
-        res.status(500).json({ error: 'Error importando preguntas desde Fire Questions' });
-    }
-});
-
-/**
- * GET /api/simulacro/questions/david-goliat
- * 20 preguntas seleccionadas para enfrentamiento con buzzer
- */
-router.get('/questions/david-goliat', async (req, res) => {
-    try {
-        const count = 20;
-        let pool = cachedQuestions.length > 0 ? cachedQuestions : [];
-
-        if (pool.length === 0) {
-            try {
-                const supabase = getDb();
-                const { data } = await supabase.from('questions').select('*').limit(100);
-                pool = data || [];
-            } catch (e) {}
-        }
-
-        const shuffled = pool.sort(() => 0.5 - Math.random()).slice(0, count);
-
-        const formatted = shuffled.map((q, idx) => ({
-            id: q.id || `dg_${idx}`,
-            question_number: idx + 1,
-            question_text: q.question_text,
-            option_a: q.option_a,
-            option_b: q.option_b,
-            option_c: q.option_c,
-            option_d: q.option_d,
-            correct_answer: (q.correct_answer || 'a').toLowerCase(),
-            explanation: q.explanation || 'Respuesta bíblica oficial NTV.',
-            verse_reference: q.verse_reference || '',
-            points: 10
-        }));
-
-        res.json({ count: formatted.length, questions: formatted });
-    } catch (err) {
-        console.error('[Simulacro] Error en david-goliat:', err);
+        console.error('[Simulacro] Error cargando preguntas para david-goliat:', err);
         res.status(500).json({ error: 'Error cargando preguntas de David contra Goliat' });
     }
-});
+};
+
+router.get('/questions/david-goliat/import-from-fire', handleDavidGoliatQuestions);
+router.get('/questions/david-goliat', handleDavidGoliatQuestions);
 
 /**
  * GET /api/simulacro/questions/dado
- * Pregunta específica determinada por la cara del dado (1-6)
+ * Pregunta aleatoria y temática determinada por la cara del dado (1-6)
+ * Se eligen aleatoriamente de todas las preguntas importadas y almacenadas según su estilo
  */
 router.get('/questions/dado', async (req, res) => {
     try {
+        await ensureQuestionsLoaded();
         const face = parseInt(req.query.face || '1', 10);
         const theme = DADO_THEMES.find(t => t.face === face) || DADO_THEMES[0];
+        const excludeIds = (req.query.exclude || '').split(',').map(s => s.trim()).filter(Boolean);
 
-        let pool = cachedQuestions.length > 0 ? cachedQuestions : [];
-        if (pool.length === 0) {
-            try {
-                const supabase = getDb();
-                const { data } = await supabase.from('questions').select('*').limit(100);
-                pool = data || [];
-            } catch (e) {}
-        }
+        let pool = cachedQuestions.filter(q => !excludeIds.includes(String(q.id)));
+        if (pool.length === 0) pool = [...cachedQuestions];
 
+        // Filtrar por la temática oficial de la cara del dado
         let filtered = pool;
-        if (theme.filter.length > 0) {
+        if (theme.filter && theme.filter.length > 0) {
             filtered = pool.filter(q => {
-                const text = (q.question_text || '').toLowerCase();
+                const text = ((q.question_text || '') + ' ' + (q.explanation || '') + ' ' + (q.verse_reference || '')).toLowerCase();
                 return theme.filter.some(k => text.includes(k));
             });
         }
 
-        if (filtered.length === 0) filtered = pool;
+        // Si la temática específica tiene pocas preguntas, usar todo el pool barajado
+        if (filtered.length === 0) {
+            filtered = pool;
+        }
 
-        const picked = filtered[Math.floor(Math.random() * filtered.length)] || pool[0];
+        // Barajar aleatoriamente para garantizar sorpresa y variedad
+        const shuffled = [...filtered].sort(() => 0.5 - Math.random());
+        const picked = shuffled[0] || cachedQuestions[0] || FALLBACK_BIBLICAL_QUESTIONS[0];
 
         res.json({
             face,
             themeName: theme.name,
+            totalAvailable: filtered.length,
             question: {
                 id: picked.id,
                 question_text: picked.question_text,
                 option_a: picked.option_a,
                 option_b: picked.option_b,
-                option_c: picked.option_c,
-                option_d: picked.option_d,
-                correct_answer: (picked.correct_answer || 'a').toLowerCase(),
-                explanation: picked.explanation || 'Respuesta bíblica NTV.',
+                option_c: picked.option_c || 'Ninguna de las anteriores',
+                option_d: picked.option_d || 'Todas las anteriores',
+                correct_answer: (picked.correct_answer || 'a').toLowerCase().trim(),
+                explanation: picked.explanation || 'Respuesta bíblica oficial NTV.',
                 verse_reference: picked.verse_reference || '',
                 time_limit_seconds: 30,
                 points: 10
@@ -596,48 +634,82 @@ router.get('/questions/dado', async (req, res) => {
 
 /**
  * GET /api/simulacro/questions/ruleta
- * Pregunta específica determinada por el sector de la ruleta (1-8)
+ * Pregunta aleatoria y temática determinada por el sector de la ruleta (1-8)
+ * Se eligen aleatoriamente de todas las preguntas importadas y almacenadas según su estilo y libro
  */
 router.get('/questions/ruleta', async (req, res) => {
     try {
+        await ensureQuestionsLoaded();
         const sectorIdx = parseInt(req.query.sector || '1', 10);
         const sector = RULETA_SECTORS.find(s => s.index === sectorIdx) || RULETA_SECTORS[0];
+        const excludeIds = (req.query.exclude || '').split(',').map(s => s.trim()).filter(Boolean);
 
-        let pool = cachedQuestions.length > 0 ? cachedQuestions : [];
-        if (pool.length === 0) {
-            try {
-                const supabase = getDb();
-                const { data } = await supabase.from('questions').select('*').limit(100);
-                pool = data || [];
-            } catch (e) {}
+        let pool = cachedQuestions.filter(q => !excludeIds.includes(String(q.id)));
+        if (pool.length === 0) pool = [...cachedQuestions];
+
+        // Mapeo temático y por libros para las 8 divisiones de La Ruleta
+        let filtered = pool.filter(q => {
+            const ref = ((q.verse_reference || '') + ' ' + (q.bookName || '')).toLowerCase();
+            const text = ((q.question_text || '') + ' ' + (q.explanation || '')).toLowerCase();
+            const chId = typeof q.chapter_id === 'number' ? q.chapter_id : parseInt(q.chapter_id, 10);
+
+            if (sectorIdx === 1) {
+                // 1 Samuel: El Llamado y Saúl (caps 1 a 15)
+                return (ref.includes('1 samuel') && (chId ? chId <= 15 : true)) ||
+                       (!ref.includes('2 samuel') && (text.includes('saúl') || text.includes('samuel') || text.includes('ana') || text.includes('elí') || text.includes('cis') || text.includes('jabes') || text.includes('silo')));
+            } else if (sectorIdx === 2) {
+                // 1 Samuel: David y Goliat (caps 16 a 31)
+                return (ref.includes('1 samuel') && (chId ? chId > 15 && chId <= 31 : true)) ||
+                       (!ref.includes('2 samuel') && (text.includes('goliat') || text.includes('jonatán') || text.includes('adulam') || text.includes('nob') || text.includes('abigail') || text.includes('siclag') || text.includes('gilboa')));
+            } else if (sectorIdx === 3) {
+                // 2 Samuel: El Reino de David (caps 1 a 12)
+                return (ref.includes('2 samuel') && (chId ? chId > 31 && chId <= 43 : true)) ||
+                       (text.includes('hebrón') || text.includes('is-boset') || text.includes('abner') || text.includes('sion') || text.includes('obed-edom') || text.includes('mefiboset') || text.includes('betsabé') || text.includes('urías'));
+            } else if (sectorIdx === 4) {
+                // 2 Samuel: Valientes y Victorias (caps 13 a 24)
+                return (ref.includes('2 samuel') && (chId ? chId > 43 && chId <= 55 : true)) ||
+                       (text.includes('absalón') || text.includes('amón') || text.includes('tamar') || text.includes('joab') || text.includes('ahitofel') || text.includes('husai') || text.includes('seba') || text.includes('valientes') || text.includes('arauna'));
+            } else if (sectorIdx === 5) {
+                // 1 Reyes: El Templo de Salomón (caps 1 a 11)
+                return (ref.includes('1 reyes') && (chId ? chId > 55 && chId <= 66 : true)) ||
+                       (text.includes('salomón') || text.includes('adonías') || text.includes('templo') || text.includes('hiram') || text.includes('jaquín') || text.includes('boaz') || text.includes('sabá'));
+            } else if (sectorIdx === 6) {
+                // 1 Reyes: Elías en el Carmelo (caps 12 a 22)
+                return (ref.includes('1 reyes') && (chId ? chId > 66 && chId <= 77 : true)) ||
+                       (text.includes('elías') || text.includes('carmelo') || text.includes('baal') || text.includes('acab') || text.includes('jezabel') || text.includes('nabot') || text.includes('roboam') || text.includes('jeroboam'));
+            } else if (sectorIdx === 7) {
+                // 2 Reyes: Eliseo y sus Milagros (caps 1 a 13)
+                return (ref.includes('2 reyes') && (chId ? chId > 77 && chId <= 90 : true)) ||
+                       (text.includes('eliseo') || text.includes('ocozías') || text.includes('sunamita') || text.includes('naamán') || text.includes('giezi') || text.includes('hacha') || text.includes('carro de fuego'));
+            } else {
+                // 2 Reyes: Reyes de Judá e Israel (caps 14 a 25)
+                return (ref.includes('2 reyes') && (chId ? chId > 90 : true)) ||
+                       (text.includes('jehú') || text.includes('atalía') || text.includes('joás') || text.includes('ezequías') || text.includes('senaquerib') || text.includes('manasés') || text.includes('josías') || text.includes('babilonia') || text.includes('nabucodonosor'));
+            }
+        });
+
+        // Si la categoría tiene pocas preguntas específicas, usar todo el pool
+        if (filtered.length === 0) {
+            filtered = pool;
         }
 
-        let filtered = pool;
-        if (sectorIdx <= 2) {
-            filtered = pool.filter(q => (q.verse_reference || '').toLowerCase().includes('1 samuel') || (q.chapter_id && q.chapter_id <= 31));
-        } else if (sectorIdx <= 4) {
-            filtered = pool.filter(q => (q.verse_reference || '').toLowerCase().includes('2 samuel') || (q.chapter_id && q.chapter_id > 31 && q.chapter_id <= 55));
-        } else if (sectorIdx <= 6) {
-            filtered = pool.filter(q => (q.verse_reference || '').toLowerCase().includes('1 reyes') || (q.chapter_id && q.chapter_id > 55 && q.chapter_id <= 77));
-        } else {
-            filtered = pool.filter(q => (q.verse_reference || '').toLowerCase().includes('2 reyes') || (q.chapter_id && q.chapter_id > 77));
-        }
-
-        if (filtered.length === 0) filtered = pool;
-        const picked = filtered[Math.floor(Math.random() * filtered.length)] || pool[0];
+        // Selección aleatoria
+        const shuffled = [...filtered].sort(() => 0.5 - Math.random());
+        const picked = shuffled[0] || cachedQuestions[0] || FALLBACK_BIBLICAL_QUESTIONS[0];
 
         res.json({
             sectorIndex: sectorIdx,
             sectorName: sector.name,
+            totalAvailable: filtered.length,
             question: {
                 id: picked.id,
                 question_text: picked.question_text,
                 option_a: picked.option_a,
                 option_b: picked.option_b,
-                option_c: picked.option_c,
-                option_d: picked.option_d,
-                correct_answer: (picked.correct_answer || 'a').toLowerCase(),
-                explanation: picked.explanation || 'Respuesta bíblica NTV.',
+                option_c: picked.option_c || 'Ninguna de las anteriores',
+                option_d: picked.option_d || 'Todas las anteriores',
+                correct_answer: (picked.correct_answer || 'a').toLowerCase().trim(),
+                explanation: picked.explanation || 'Respuesta bíblica oficial NTV.',
                 verse_reference: picked.verse_reference || '',
                 time_limit_seconds: 30,
                 points: 10
