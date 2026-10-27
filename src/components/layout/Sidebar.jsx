@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router';
-import { ChevronDown, ChevronRight, Book, CheckCircle, Clock, Circle } from 'lucide-react';
+import { ChevronDown, ChevronRight, Book, CheckCircle, Clock, Circle, Trophy } from 'lucide-react';
 import { api } from '../../utils/api';
 
 const Sidebar = () => {
@@ -45,6 +45,27 @@ const Sidebar = () => {
   return (
     <aside className="w-64 bg-white border-r border-parchment-dark hidden md:block overflow-y-auto shrink-0">
       <div className="p-4">
+        {/* Enlace destacado al Simulacro */}
+        <Link
+          to="/simulacro"
+          className="mb-5 w-full flex items-center gap-2.5 p-3 rounded-xl bg-gradient-to-r from-amber-500/15 via-yellow-500/20 to-amber-500/10 border-2 border-amber-500/40 text-amber-950 font-bold text-sm hover:border-amber-500 hover:shadow-md transition-all group block"
+        >
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-amber-500 to-yellow-400 text-slate-950 flex items-center justify-center text-sm shadow font-black shrink-0">
+              🏆
+            </div>
+            <div className="truncate flex-1">
+              <div className="flex items-center gap-1.5">
+                <span className="block truncate font-black text-amber-900 text-xs">Simulacro Oficial</span>
+                <span className="text-[9px] bg-amber-500 text-slate-950 px-1.5 py-0.5 rounded-full font-extrabold uppercase">
+                  Nuevo
+                </span>
+              </div>
+              <span className="block text-[10px] text-amber-700 font-medium">4 Categorías NTV</span>
+            </div>
+          </div>
+        </Link>
+
         <h2 className="font-[Cinzel] font-bold text-lg text-primary mb-4 flex items-center">
           <Book className="w-5 h-5 mr-2 text-gold" />
           Libros de Estudio

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router';
 import { useAuth } from '../hooks/useAuth';
 import { api } from '../utils/api';
-import { Flame, Target, Award, ArrowRight, BookOpen, Loader, Radio, Swords, Users } from 'lucide-react';
+import { Flame, Target, Award, ArrowRight, BookOpen, Loader, Radio, Swords, Users, Trophy, Sparkles } from 'lucide-react';
 
 const verses = [
   '"Procura con diligencia presentarte a Dios aprobado, como obrero que no tiene de qué avergonzarse." — 2 Timoteo 2:15',
@@ -144,11 +144,22 @@ const DashboardPage = () => {
           {/* Botones de acción rápida dentro del cuadro azul */}
           <div className="mt-6 sm:mt-8 pt-5 sm:pt-6 border-t border-white/20 flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2.5 sm:gap-3">
             <Link
+              to="/simulacro"
+              className="inline-flex items-center justify-center gap-2 bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-black px-4 sm:px-6 py-3 sm:py-3.5 rounded-xl text-sm md:text-base shadow-xl shadow-amber-500/30 hover:scale-102 sm:hover:scale-105 transition-all transform shrink-0 group cursor-pointer text-center border border-amber-300"
+            >
+              <Trophy className="w-4 h-4 sm:w-5 sm:h-5 text-slate-950 animate-bounce group-hover:scale-110 transition-transform shrink-0" />
+              <span>Simulacro Oficial</span>
+              <span className="bg-slate-950 text-amber-300 text-[10px] sm:text-xs px-2 py-0.5 rounded-full font-extrabold whitespace-nowrap">
+                ¡NUEVO! 🏆
+              </span>
+            </Link>
+
+            <Link
               to="/meet"
               className="inline-flex items-center justify-center gap-2 bg-gradient-to-r from-gold via-gold-light to-gold hover:from-gold-dark hover:to-gold text-slate-900 font-black px-4 sm:px-6 py-3 sm:py-3.5 rounded-xl text-sm md:text-base shadow-xl shadow-gold/25 hover:scale-102 sm:hover:scale-105 transition-all transform shrink-0 group cursor-pointer text-center"
             >
               <Radio className="w-4 h-4 sm:w-5 sm:h-5 text-red-600 animate-pulse group-hover:scale-110 transition-transform shrink-0" />
-              <span>Entrar a Remanente Meet</span>
+              <span>Remanente Meet</span>
               <span className="bg-slate-900/15 text-slate-900 text-[11px] sm:text-xs px-2 py-0.5 rounded-full font-bold whitespace-nowrap">
                 En Vivo 📖
               </span>
@@ -173,6 +184,41 @@ const DashboardPage = () => {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Banner Destacado: Gran Sección de Simulacro Oficial */}
+      <div className="mb-8 p-5 sm:p-7 rounded-3xl bg-gradient-to-r from-slate-950 via-blue-950 to-slate-900 border-2 border-amber-500/50 shadow-2xl flex flex-col md:flex-row items-center justify-between gap-5 relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-80 h-80 bg-amber-500/10 blur-3xl rounded-full pointer-events-none"></div>
+        <div className="flex items-center gap-4 relative z-10">
+          <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-amber-500 to-yellow-400 text-slate-950 flex items-center justify-center text-3xl shadow-xl shadow-amber-500/30 shrink-0 border-2 border-amber-300">
+            🏆
+          </div>
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[10px] font-extrabold uppercase tracking-widest px-2.5 py-0.5 rounded-full bg-amber-500 text-slate-950 shadow">
+                ¡NUEVA SECCIÓN HABILITADA!
+              </span>
+              <span className="text-xs text-amber-300 font-semibold font-mono">
+                Reglamento Oficial NTV
+              </span>
+            </div>
+            <h2 className="text-xl sm:text-2xl font-black font-serif text-white mt-1">
+              Simulacro de Competencia (4 Categorías)
+            </h2>
+            <p className="text-xs sm:text-sm text-slate-300 mt-1 max-w-xl leading-relaxed">
+              Compite en <strong>Fire Questions</strong> (90s con 5 subcategorías), <strong>David contra Goliat</strong> (pulsador y duelos 1 vs 1 con opciones desbloqueables), <strong>El Dado Dado</strong> y <strong>La Ruleta</strong> (relojes automáticos de 30s).
+            </p>
+          </div>
+        </div>
+
+        <Link
+          to="/simulacro"
+          className="w-full md:w-auto px-6 py-4 bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-black rounded-2xl text-sm uppercase tracking-wider shadow-xl shadow-amber-500/25 flex items-center justify-center gap-2.5 transition-all hover:scale-105 active:scale-95 shrink-0 relative z-10 border border-amber-300 cursor-pointer"
+        >
+          <Trophy className="w-5 h-5 text-slate-950" />
+          <span>Entrar al Simulacro</span>
+          <ArrowRight className="w-4 h-4 text-slate-950" />
+        </Link>
       </div>
 
       <h2 className="font-[Cinzel] text-2xl font-bold text-primary mb-6 border-b-2 border-gold pb-2 inline-block">

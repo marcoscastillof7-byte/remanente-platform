@@ -8,6 +8,7 @@ dist/
 server/db/*.db
 server/db/*.db-wal
 server/db/*.db-shm
+database_export/
 
 # Logs y dependencias de sistema
 npm-debug.log*

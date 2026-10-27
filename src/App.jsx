@@ -32,6 +32,7 @@ const SurvivalPage = lazy(() => import('./pages/SurvivalPage'));
 const SuperDashboard = lazy(() => import('./pages/superadmin/SuperDashboard'));
 const MeetListPage = lazy(() => import('./pages/MeetListPage'));
 const MeetRoomPage = lazy(() => import('./pages/MeetRoomPage'));
+const SimulacroHubPage = lazy(() => import('./pages/SimulacroHubPage'));
 
 const Layout = ({ children }) => {
   const location = useLocation();
@@ -82,6 +83,7 @@ const App = () => {
               <Route path="/profile" element={<Layout><ProfilePage /></Layout>} />
               <Route path="/duels" element={<Layout><DuelsPage /></Layout>} />
               <Route path="/survival" element={<Layout><SurvivalPage /></Layout>} />
+              <Route path="/simulacro" element={<Layout><SimulacroHubPage /></Layout>} />
             </Route>
 
             <Route element={<AdminRoute />}>

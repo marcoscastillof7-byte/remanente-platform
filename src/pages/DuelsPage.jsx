@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router';
 import { api } from '../utils/api';
 import { useAuth } from '../hooks/useAuth';
 import { Swords, User, Play, Clock, Trophy, Check, X, Loader, MessageSquare, Flame } from 'lucide-react';
@@ -212,6 +213,30 @@ const DuelsPage = () => {
       {/* Columna Derecha: Tus Duelos */}
       <div className="md:col-span-2 space-y-8">
         
+        {/* Banner destacado: Enfrentamientos Oficiales de David contra Goliat en Simulacro */}
+        <div className="bg-gradient-to-r from-blue-950 via-slate-900 to-indigo-950 border border-blue-500/40 p-4 rounded-xl shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-white">
+          <div className="flex items-center gap-3">
+            <span className="p-2.5 bg-blue-500/20 text-blue-400 rounded-xl border border-blue-500/30">
+              <Swords className="w-5 h-5 text-amber-400 animate-pulse" />
+            </span>
+            <div>
+              <p className="text-sm font-bold flex items-center gap-2">
+                <span>David contra Goliat • Simulacro Oficial</span>
+                <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full font-mono uppercase">20 Preguntas</span>
+              </p>
+              <p className="text-xs text-slate-300 opacity-90 mt-0.5">
+                Reta a tus hermanos con el pulsador en vivo (10s) y transferencia de puntos.
+              </p>
+            </div>
+          </div>
+          <Link
+            to="/simulacro"
+            className="px-4 py-2 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-slate-950 text-xs font-black rounded-lg shadow transition whitespace-nowrap"
+          >
+            Ir a Simulacro
+          </Link>
+        </div>
+
         {/* Banner de Notificaciones Push (para activar en 1 clic) */}
         <PushNotificationManager compact={true} />
 

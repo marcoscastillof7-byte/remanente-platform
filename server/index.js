@@ -20,8 +20,10 @@ import meetingsRoutes from './routes/meetings.js';
 import superAdminRoutes from './routes/superadmin.js';
 import groupsRoutes from './routes/groups.js';
 import pushRoutes from './routes/push.js';
+import simulacroRoutes from './routes/simulacro.js';
 import jwt from 'jsonwebtoken';
 import { setupMeetSocket, getPlatformOnlineCount, getPlatformOnlineUsers, getPlatformOnlineStats } from './socket/meetSocket.js';
+import { setupSimulacroSocket } from './socket/simulacroSocket.js';
 
 const app = express();
 app.disable('x-powered-by');
@@ -71,6 +73,7 @@ router.use('/meets', meetingsRoutes);
 router.use('/superadmin', superAdminRoutes);
 router.use('/groups', groupsRoutes);
 router.use('/push', pushRoutes);
+router.use('/simulacro', simulacroRoutes);
 
 // Contador global de usuarios en línea en tiempo real (Lista detallada solo para Admin y Líderes)
 router.get('/stats/online', async (req, res) => {
@@ -115,8 +118,9 @@ app.use('/.netlify/functions/api', router);
 // Fallback universal por si serverless-http recorta la ruta base automáticamente
 app.use('/', router);
 
-// Configuración de WebSockets en tiempo real para Meets
+// Configuración de WebSockets en tiempo real para Meets y Simulacro
 setupMeetSocket(io);
+setupSimulacroSocket(io);
 
 io.on('connection', (socket) => {
     console.log('User connected via Socket.io');

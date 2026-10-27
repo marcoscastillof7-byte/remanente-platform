@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { Menu, User, LogOut, Shield, Bell, CheckCircle, Swords, Flame, MessageSquare, Users, X } from 'lucide-react';
+import { Menu, User, LogOut, Shield, Bell, CheckCircle, Swords, Flame, MessageSquare, Users, X, Trophy } from 'lucide-react';
 import { io } from 'socket.io-client';
 import { useAuth } from '../../hooks/useAuth';
 import { api } from '../../utils/api';
@@ -207,6 +207,10 @@ const Navbar = () => {
             <button onClick={() => setMenuOpen(!menuOpen)} className="p-2 mr-2 md:hidden">
               <Menu className="w-6 h-6 text-[var(--color-gold)]" />
             </button>
+            <Link to="/simulacro" className="md:hidden mr-2 flex items-center gap-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 px-2.5 py-1 rounded-lg border border-amber-500/40 text-xs font-bold shrink-0 shadow-sm" title="Ir al Simulacro Oficial">
+              <Trophy className="w-3.5 h-3.5 text-amber-400" />
+              <span>Simulacro</span>
+            </Link>
             <Link to="/" className="flex items-center min-w-0">
               <span className="font-[Cinzel] text-lg sm:text-xl md:text-2xl text-[var(--color-gold)] font-bold truncate max-w-[150px] xs:max-w-[220px] sm:max-w-xs md:max-w-none">
                 📖 {user?.groups?.name || 'Olimpiadas GVY'}
@@ -223,6 +227,10 @@ const Navbar = () => {
               )}
             </Link>
             <Link to="/survival" className="hover:text-[var(--color-gold)] transition-colors flex items-center"><Flame className="w-4 h-4 mr-1"/> Supervivencia</Link>
+            <Link to="/simulacro" className="hover:text-[var(--color-gold)] transition-colors flex items-center text-amber-300 font-bold bg-amber-500/10 hover:bg-amber-500/20 px-2.5 py-1 rounded-lg border border-amber-500/30 shadow-sm">
+              <Trophy className="w-4 h-4 mr-1.5 text-amber-400" />
+              Simulacro
+            </Link>
 
             <Link to="/leaderboard" className="hover:text-[var(--color-gold)] transition-colors">Tabla de Honor</Link>
             <button onClick={() => setShowSuggestion(true)} className="hover:text-[var(--color-gold)] transition-colors flex items-center">
@@ -371,6 +379,9 @@ const Navbar = () => {
             {hasPendingDuel && <span className="flex h-3 w-3 rounded-full bg-red-500"></span>}
           </Link>
           <Link to="/survival" className="block px-3 py-2 rounded-md text-base hover:bg-[var(--color-primary-light)] text-white flex items-center"><Flame className="w-4 h-4 mr-2"/> Supervivencia</Link>
+          <Link to="/simulacro" onClick={() => setMenuOpen(false)} className="block px-3 py-2 rounded-md text-base hover:bg-[var(--color-primary-light)] text-amber-300 font-bold flex items-center bg-amber-500/10 border border-amber-500/20">
+            <Trophy className="w-4 h-4 mr-2 text-amber-400"/> Simulacro Oficial
+          </Link>
 
           <Link to="/leaderboard" className="block px-3 py-2 rounded-md text-base hover:bg-[var(--color-primary-light)] text-white">Tabla de Honor</Link>
           <button onClick={() => { setShowSuggestion(true); setMenuOpen(false); }} className="w-full text-left block px-3 py-2 rounded-md text-base hover:bg-[var(--color-primary-light)] text-[var(--color-gold)] flex items-center">
