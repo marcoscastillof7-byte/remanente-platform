@@ -55,11 +55,11 @@ const FALLBACK_BIBLICAL_QUESTIONS = [
     { id: 'fb_8', question_text: '¿Cómo subió el profeta Elías al cielo en el torbellino?', option_a: 'En un carro de fuego con caballos de fuego', option_b: 'En una nube de gloria', option_c: 'Llevado por dos ángeles', option_d: 'En un carro de oro', correct_answer: 'a', explanation: 'Un carro de fuego con caballos de fuego apartó a ambos, y Elías subió al cielo.', verse_reference: '2 Reyes 2:11', custom_category: 'eventos' }
 ];
 
-async function ensureQuestionsLoaded() {
-    if (cachedQuestions.length >= 20) return cachedQuestions;
+async function ensureQuestionsLoaded(forceRefresh = false) {
+    if (!forceRefresh && cachedQuestions.length >= 20) return cachedQuestions;
     try {
         const supabase = getDb();
-        const { data } = await supabase.from('questions').select('*').limit(500);
+        const { data } = await supabase.from('questions').select('*').limit(3000);
         if (data && data.length > 0) {
             cachedQuestions = data;
             return cachedQuestions;
@@ -270,34 +270,39 @@ router.get('/questions/fire-questions/stats', async (req, res) => {
 });
 
 /**
- * POST /api/simulacro/questions/fire-questions/import
- * Importador de preguntas dedicado para cada apartado de Fire Questions
- * Body: { category: 'personajes'|'lugares'|'cantidades'|'eventos', questions: [...] }
+ * POST /api/simulacro/questions/fire-questions/import y /api/simulacro/questions/import
+ * Importador de preguntas para el apartado de Simulacro y sus disciplinas.
+ * Funciona igual que el importador principal de quizzes:
+ * - Soporta 'append' (agregar) y 'replace' (reemplazar)
+ * - Soporta formato con LIBRO:, CAPITULO:, PREGUNTA:, A., B., C., D., RESPUESTA:, etc.
+ * - Persiste en Supabase (tabla 'questions')
+ * Body: { category?: string, questions: [...], mode?: 'append' | 'replace' }
  */
-router.post('/questions/fire-questions/import', async (req, res) => {
+const handleQuestionsImport = async (req, res) => {
     try {
         await ensureQuestionsLoaded();
-        const { category, questions } = req.body;
-        const validCategories = ['personajes', 'lugares', 'cantidades', 'eventos'];
-        const targetCategory = (category || 'personajes').toLowerCase();
-
-        if (!validCategories.includes(targetCategory)) {
-            return res.status(400).json({ error: 'Categoría no válida. Debe ser: personajes, lugares, cantidades o eventos.' });
-        }
+        const { category, questions, mode = 'append' } = req.body;
 
         if (!Array.isArray(questions) || questions.length === 0) {
             return res.status(400).json({ error: 'La lista de preguntas está vacía o tiene formato incorrecto.' });
         }
 
-        const newQuestions = [];
+        const validCategories = ['personajes', 'lugares', 'cantidades', 'eventos'];
+        const targetCategory = category ? category.toLowerCase().trim() : null;
+
         const timestamp = Date.now();
+        const newQuestions = [];
+        const rowsToInsert = [];
 
         questions.forEach((q, idx) => {
             if (!q.question_text || !q.option_a || !q.option_b) return;
 
+            const qChapterId = q.chapter_id ? parseInt(q.chapter_id, 10) : 1;
+            const assignedCat = targetCategory || q.custom_category || classifyQuestion(q);
+
             const formatted = {
                 id: `fq_imp_${timestamp}_${idx}_${Math.random().toString(36).substr(2, 5)}`,
-                chapter_id: q.chapter_id || 1,
+                chapter_id: qChapterId,
                 question_text: q.question_text.trim(),
                 option_a: q.option_a.trim(),
                 option_b: q.option_b.trim(),
@@ -306,62 +311,91 @@ router.post('/questions/fire-questions/import', async (req, res) => {
                 correct_answer: (q.correct_answer || 'a').toLowerCase().trim(),
                 explanation: (q.explanation || 'Respuesta bíblica oficial NTV.').trim(),
                 verse_reference: (q.verse_reference || '').trim(),
-                custom_category: targetCategory,
+                difficulty: q.difficulty || 'medio',
+                custom_category: assignedCat,
                 created_at: new Date().toISOString()
             };
+
             newQuestions.push(formatted);
+            rowsToInsert.push({
+                chapter_id: qChapterId,
+                question_text: formatted.question_text,
+                option_a: formatted.option_a,
+                option_b: formatted.option_b,
+                option_c: formatted.option_c,
+                option_d: formatted.option_d,
+                correct_answer: formatted.correct_answer,
+                difficulty: formatted.difficulty,
+                explanation: formatted.explanation,
+                verse_reference: formatted.verse_reference
+            });
         });
 
         if (newQuestions.length === 0) {
             return res.status(400).json({ error: 'No se pudieron procesar las preguntas. Verifica el formato.' });
         }
 
-        // Agregar al pool en memoria
-        cachedQuestions.push(...newQuestions);
+        const supabase = getDb();
 
-        // Intentar guardar persistentemente en Supabase si está disponible
-        try {
-            const supabase = getDb();
-            const rowsToInsert = newQuestions.map(q => ({
-                chapter_id: q.chapter_id || 1,
-                question_text: q.question_text,
-                option_a: q.option_a,
-                option_b: q.option_b,
-                option_c: q.option_c,
-                option_d: q.option_d,
-                correct_answer: q.correct_answer,
-                explanation: q.explanation,
-                verse_reference: q.verse_reference
-            }));
-            await supabase.from('questions').insert(rowsToInsert);
-        } catch (supaErr) {
-            console.warn('[Simulacro] Nota: no se persistió en Supabase:', supaErr.message);
+        // Si el modo es 'replace' (reemplazar)
+        if (mode === 'replace') {
+            try {
+                const chapterIds = [...new Set(rowsToInsert.map(r => r.chapter_id).filter(Boolean))];
+                if (chapterIds.length > 0) {
+                    await supabase.from('questions').delete().in('chapter_id', chapterIds);
+                }
+                if (targetCategory && validCategories.includes(targetCategory)) {
+                    cachedQuestions = cachedQuestions.filter(q => classifyQuestion(q) !== targetCategory);
+                }
+            } catch (delErr) {
+                console.warn('[Simulacro] Aviso al reemplazar preguntas previas:', delErr.message);
+            }
         }
 
-        // Guardar persistentemente en questions.json (si el sistema de archivos lo permite)
+        // Insertar en Supabase de forma persistente
+        try {
+            const { error: supaErr } = await supabase.from('questions').insert(rowsToInsert);
+            if (supaErr) {
+                console.warn('[Simulacro] Error insertando en Supabase:', supaErr.message);
+            }
+        } catch (dbErr) {
+            console.warn('[Simulacro] Excepción insertando en Supabase:', dbErr.message);
+        }
+
+        // Agregar al pool en memoria inmediatamente
+        cachedQuestions.push(...newQuestions);
+
+        // Guardar en questions.json si está en entorno de desarrollo local con acceso de escritura
         try {
             if (fs.existsSync(questionsJsonPath)) {
                 fs.writeFileSync(questionsJsonPath, JSON.stringify(cachedQuestions, null, 2), 'utf8');
             }
-        } catch (saveErr) {
-            // Silencioso en entornos serverless de solo lectura como Netlify
-        }
+        } catch (saveErr) {}
 
-        // Contar el nuevo total en esta categoría
-        const countInCat = cachedQuestions.filter(q => classifyQuestion(q) === targetCategory).length;
+        // Forzar recarga de caché desde Supabase
+        await ensureQuestionsLoaded(true);
+
+        const totalInCat = targetCategory && validCategories.includes(targetCategory)
+            ? cachedQuestions.filter(q => classifyQuestion(q) === targetCategory).length
+            : cachedQuestions.length;
 
         res.json({
             success: true,
             importedCount: newQuestions.length,
-            category: targetCategory,
-            totalInCategory: countInCat,
-            message: `¡Se importaron ${newQuestions.length} preguntas correctamente a la categoría ${targetCategory}!`
+            mode,
+            category: targetCategory || 'general',
+            totalInCategory: totalInCat,
+            totalOverall: cachedQuestions.length,
+            message: `¡Se importaron ${newQuestions.length} preguntas correctamente a la base de datos (${mode === 'replace' ? 'reemplazando anteriores' : 'agregando a existentes'})!`
         });
     } catch (err) {
         console.error('[Simulacro] Error importando preguntas:', err);
-        res.status(500).json({ error: 'Error al importar las preguntas.' });
+        res.status(500).json({ error: 'Error al importar las preguntas: ' + (err.message || 'error interno') });
     }
-});
+};
+
+router.post('/questions/fire-questions/import', handleQuestionsImport);
+router.post('/questions/import', handleQuestionsImport);
 
 /**
  * GET /api/simulacro/questions/fire-questions

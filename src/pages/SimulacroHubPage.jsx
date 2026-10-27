@@ -684,10 +684,13 @@ export default function SimulacroHubPage() {
         onAnnulQuestion={handleAnnulQuestion}
       />
 
-      {/* Modal de Importador de Preguntas de Fire Questions */}
+      {/* Modal de Importador de Preguntas de Simulacro */}
       <FireQuestionsImporterModal
         isOpen={fireImporterOpen}
         onClose={() => setFireImporterOpen(false)}
+        onImportSuccess={() => {
+          reloadRecords();
+        }}
       />
     </div>
   );
