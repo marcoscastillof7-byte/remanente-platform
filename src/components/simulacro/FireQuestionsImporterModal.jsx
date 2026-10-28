@@ -1,7 +1,8 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   Upload, X, CheckCircle2, AlertCircle, AlertTriangle, FileText, 
-  Sparkles, Layers, RefreshCw, Database, Trash2, HelpCircle, Check, BookOpen
+  Sparkles, Layers, RefreshCw, Database, Trash2, HelpCircle, Check, 
+  BookOpen, Plus, Copy, Search, Filter, ArrowRight, CornerDownRight
 } from 'lucide-react';
 import { api } from '../../utils/api';
 
@@ -13,34 +14,93 @@ const FIRE_CATEGORIES = [
   { id: 'eventos', name: 'Eventos', icon: '⚡', color: 'text-purple-400', border: 'border-purple-500/40', bg: 'bg-purple-500/10' }
 ];
 
-export default function FireQuestionsImporterModal({ isOpen, onClose, onImportSuccess }) {
-  // Pestaña activa: 'bulk' (Importador Masivo .txt) | 'form' (Individual Manual)
-  const [activeTab, setActiveTab] = useState('bulk');
+// Helper para clasificar automáticamente preguntas si no se especifica categoría
+const autoClassifyCategory = (text = '', explanation = '', verse = '') => {
+  const full = ((text || '') + ' ' + (explanation || '') + ' ' + (verse || '')).toLowerCase();
+  
+  // 1. Cantidades (números, años, medidas, soldados, días)
+  if (
+    full.includes('cuánt') || full.includes('cuant') || full.includes('años') ||
+    full.includes('días') || full.includes('meses') || full.includes('siclos') ||
+    full.includes('codos') || full.includes('hombres') || full.includes('veces') ||
+    full.includes('talent') || full.includes('soldad') || full.includes('edad') ||
+    full.includes('número') || full.includes('numero') || full.includes('total') ||
+    full.includes('primero') || full.includes('segundo') || full.includes('tercero')
+  ) {
+    return 'cantidades';
+  }
 
-  // Categoría o Ámbito Seleccionado
+  // 2. Lugares (ciudades, montes, valles, ríos, territorios)
+  if (
+    full.includes('dónde') || full.includes('donde') || full.includes('lugar') ||
+    full.includes('ciudad') || full.includes('monte') || full.includes('valle') ||
+    full.includes('cueva') || full.includes('río') || full.includes('rio') ||
+    full.includes('jerusalén') || full.includes('belén') || full.includes('hebrón') ||
+    full.includes('gilgal') || full.includes('silo') || full.includes('bet-el') ||
+    full.includes('carmelo') || full.includes('samaria') || full.includes('gat') ||
+    full.includes('siclag') || full.includes('nob') || full.includes('en-gadi') ||
+    full.includes('jordán') || full.includes('jordan') || full.includes('egipto') ||
+    full.includes('asiria') || full.includes('babilonia') || full.includes('tiro') ||
+    full.includes('sión') || full.includes('sion') || full.includes('mizpa') ||
+    full.includes('jabes') || full.includes('tabernáculo')
+  ) {
+    return 'lugares';
+  }
+
+  // 3. Eventos (batallas, muertes, milagros, pactos, juicios)
+  if (
+    full.includes('batalla') || full.includes('guerra') || full.includes('murió') ||
+    full.includes('mató') || full.includes('pacto') || full.includes('milagro') ||
+    full.includes('sucedió') || full.includes('pasó') || full.includes('castigo') ||
+    full.includes('derrotó') || full.includes('escapó') || full.includes('ungió') ||
+    full.includes('oró') || full.includes('sueño') || full.includes('visión') ||
+    full.includes('arca') || full.includes('altar') || full.includes('fuego') ||
+    full.includes('becerro') || full.includes('espada') || full.includes('lanza') ||
+    full.includes('honda') || full.includes('estatua') || full.includes('manto') ||
+    full.includes('hambre') || full.includes('peste') || full.includes('plaga') ||
+    full.includes('edificó') || full.includes('construyó') || full.includes('resucitó')
+  ) {
+    return 'eventos';
+  }
+
+  // 4. Personajes (por defecto o si menciona nombres)
+  return 'personajes';
+};
+
+const normalizeText = (str) => (str || '').normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
+export default function FireQuestionsImporterModal({ isOpen, onClose, onImportSuccess }) {
+  // Pestaña activa: 'rows' (Editor por Renglones) | 'bulk' (Pegar Texto / .txt) | 'single' (Formulario 1 a 1)
+  const [activeTab, setActiveTab] = useState('rows');
+
+  // Categoría global / filtro activo
   const [selectedCategory, setSelectedCategory] = useState('all');
 
-  // Modo de importación: 'append' (agregar) | 'replace' (reemplazar)
+  // Modo de guardado: 'append' (agregar) | 'replace' (reemplazar)
   const [importMode, setImportMode] = useState('append');
 
-  // Texto sin procesar
+  // Texto bruto para importar en lote
   const [inputText, setInputText] = useState('');
 
-  // Preguntas analizadas y errores
-  const [parsedQuestions, setParsedQuestions] = useState([]);
+  // Lista viva de Renglones de Preguntas
+  const [rows, setRows] = useState([]);
+  const [searchFilter, setSearchFilter] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('all');
+
+  // Errores y Mensajes de estado
   const [errors, setErrors] = useState([]);
   const [successMsg, setSuccessMsg] = useState('');
 
-  // Estados de carga
+  // Catálogo de libros y capítulos desde la API / Supabase
   const [books, setBooks] = useState([]);
   const [loadingBooks, setLoadingBooks] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [stats, setStats] = useState({ personajes: 0, lugares: 0, cantidades: 0, eventos: 0, total: 0 });
-  const [showInstructions, setShowInstructions] = useState(true);
+  const [showInstructions, setShowInstructions] = useState(false);
 
   const fileInputRef = useRef(null);
 
-  // Formulario manual individual
+  // Formulario de inserción individual rápida
   const [singleForm, setSingleForm] = useState({
     book_id: '',
     chapter_id: '',
@@ -56,7 +116,7 @@ export default function FireQuestionsImporterModal({ isOpen, onClose, onImportSu
     verse_reference: ''
   });
 
-  // Cargar libros, capítulos y estadísticas de preguntas
+  // Cargar catálogo de libros, capítulos y conteos al abrir
   useEffect(() => {
     if (isOpen) {
       fetchBooksAndChapters();
@@ -106,7 +166,289 @@ export default function FireQuestionsImporterModal({ isOpen, onClose, onImportSu
     }
   };
 
-  // Cargar archivo .txt desde la máquina local
+  // Helper para buscar un libro por nombre o slug
+  const findBookByName = (name) => {
+    if (!name || books.length === 0) return books[0] || null;
+    const clean = normalizeText(name);
+    return books.find(b => {
+      const bClean = normalizeText(b.name);
+      return bClean.includes(clean) || clean.includes(bClean);
+    }) || books[0];
+  };
+
+  // Helper para buscar el chapter_id exacto dado un libro y un número de capítulo
+  const resolveChapterId = (book, chapterNum) => {
+    if (!book) return 1;
+    const ch = book.chapters?.find(c => c.chapter_number === parseInt(chapterNum, 10));
+    return ch?.id || book.chapters?.[0]?.id || 1;
+  };
+
+  // PARSER UNIVERSAL A PRUEBA DE FALLAS
+  const parseQuestionsText = (rawText) => {
+    const textToProcess = (typeof rawText === 'string' ? rawText : inputText).trim();
+    if (!textToProcess) {
+      return { parsed: [], errors: ['El texto está vacío. Por favor escribe, pega o sube un archivo.'] };
+    }
+
+    // 1. Detección automática si es formato JSON
+    if (textToProcess.startsWith('[') || textToProcess.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(textToProcess);
+        const list = Array.isArray(parsed) ? parsed : [parsed];
+        const defaultBook = books[0] || { id: 1, name: '1 Samuel', chapters: [] };
+        
+        const validated = list.map((q, idx) => {
+          const bObj = books.find(b => b.id === parseInt(q.book_id || q.bookId, 10)) || findBookByName(q.bookName || q.book);
+          const chNum = parseInt(q.chapter_number || q.chapterNumber || q.chapter || 1, 10);
+          const chId = q.chapter_id || resolveChapterId(bObj, chNum);
+          const cat = q.category || q.custom_category || autoClassifyCategory(q.question_text, q.explanation, q.verse_reference);
+          
+          let ans = (q.correct_answer || q.respuesta || 'a').toString().toLowerCase().trim();
+          const matchAns = ans.match(/[a-d]/);
+          ans = matchAns ? matchAns[0] : 'a';
+
+          return {
+            id: `row_${Date.now()}_${idx}_${Math.random().toString(36).substr(2, 4)}`,
+            book_id: bObj?.id || 1,
+            bookName: bObj?.name || '1 Samuel',
+            chapterNumber: chNum,
+            chapter_id: chId,
+            category: cat,
+            question_text: (q.question_text || q.pregunta || '').trim(),
+            option_a: (q.option_a || q.a || '').trim(),
+            option_b: (q.option_b || q.b || '').trim(),
+            option_c: (q.option_c || q.c || '').trim() || 'Ninguna de las anteriores',
+            option_d: (q.option_d || q.d || '').trim() || 'Todas las anteriores',
+            correct_answer: ans,
+            explanation: (q.explanation || q.explicacion || '').trim(),
+            verse_reference: (q.verse_reference || q.versiculo || '').trim(),
+            difficulty: q.difficulty || 'medio'
+          };
+        }).filter(q => q.question_text && q.option_a && q.option_b);
+
+        if (validated.length > 0) {
+          return { parsed: validated, errors: [] };
+        }
+      } catch (e) {}
+    }
+
+    // 2. Parser Universal línea por línea y bloque por bloque
+    const lines = textToProcess.split('\n').map(l => l.trim());
+    const parsed = [];
+    const localErrors = [];
+
+    let currentBook = books.length > 0 ? books[0] : { id: 1, name: '1 Samuel', chapters: [] };
+    let currentChapterNum = currentBook.chapters?.[0]?.chapter_number || 1;
+    let currentChapterId = currentBook.chapters?.[0]?.id || 1;
+    let currentCategory = selectedCategory !== 'all' ? selectedCategory : 'personajes';
+
+    let currentQ = null;
+
+    const commitCurrentQ = () => {
+      if (!currentQ) return;
+      if (!currentQ.question_text) return;
+      if (!currentQ.option_a || !currentQ.option_b) {
+        localErrors.push(`Pregunta omitida por falta de opciones A y B: "${currentQ.question_text.substring(0, 45)}..."`);
+        currentQ = null;
+        return;
+      }
+
+      // Si faltan opciones C y D, proveer alternativas estándar
+      if (!currentQ.option_c) currentQ.option_c = 'Ninguna de las anteriores';
+      if (!currentQ.option_d) currentQ.option_d = 'Todas las anteriores';
+
+      // Asegurar que la respuesta correcta es estrictamente 'a', 'b', 'c' o 'd'
+      const matchAns = String(currentQ.correct_answer || 'a').toLowerCase().match(/[a-d]/);
+      currentQ.correct_answer = matchAns ? matchAns[0] : 'a';
+
+      // Si no tiene categoría explícita, clasificar por palabras clave
+      if (!currentQ.category || currentQ.category === 'all') {
+        currentQ.category = autoClassifyCategory(currentQ.question_text, currentQ.explanation, currentQ.verse_reference);
+      }
+
+      parsed.push(currentQ);
+      currentQ = null;
+    };
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (!line) continue;
+
+      // 1. Detección de LIBRO
+      const matchLibro = line.match(/^LIBRO\s*[:\-.]?\s*(.+)$/i);
+      if (matchLibro) {
+        commitCurrentQ();
+        const bName = matchLibro[1].trim();
+        const found = findBookByName(bName);
+        if (found) {
+          currentBook = found;
+          currentChapterNum = found.chapters?.[0]?.chapter_number || 1;
+          currentChapterId = found.chapters?.[0]?.id || 1;
+        } else {
+          localErrors.push(`Línea ${i + 1}: Libro "${bName}" no reconocido. Se utilizará ${currentBook.name}.`);
+        }
+        continue;
+      }
+
+      // 2. Detección de CAPITULO
+      const matchCapitulo = line.match(/^CAP[IÍ]TULO\s*[:\-.]?\s*(\d+)/i) || line.match(/^CAP\s*[:\-.]?\s*(\d+)/i);
+      if (matchCapitulo) {
+        commitCurrentQ();
+        const cNum = parseInt(matchCapitulo[1], 10);
+        currentChapterNum = cNum;
+        currentChapterId = resolveChapterId(currentBook, cNum);
+        continue;
+      }
+
+      // 3. Detección de CATEGORIA
+      const matchCat = line.match(/^(?:CATEGOR[IÍ]A|CATEGORIA|DISCIPLINA|TIPO)\s*[:\-.]?\s*(.+)$/i);
+      if (matchCat) {
+        const catRaw = normalizeText(matchCat[1]);
+        if (catRaw.includes('personaje')) currentCategory = 'personajes';
+        else if (catRaw.includes('lugar')) currentCategory = 'lugares';
+        else if (catRaw.includes('cantida') || catRaw.includes('numero')) currentCategory = 'cantidades';
+        else if (catRaw.includes('evento') || catRaw.includes('suceso')) currentCategory = 'eventos';
+        continue;
+      }
+
+      // 4. Detección de INICIO DE PREGUNTA
+      // Formatos soportados:
+      // - PREGUNTA 1: ¿Texto? / PREGUNTA: ¿Texto? / P1: Texto
+      // - 1. ¿Texto? / 1) Texto / 1.- Texto / 1 - Texto
+      // - ¿Texto de la pregunta?
+      // - O una frase normal si la siguiente línea es la Opción A
+      const matchPreguntaPrefix = line.match(/^(?:PREGUNTA|P)\s*#?\s*\d*\s*[:\-.]?\s*(.+)$/i);
+      const matchNumbered = line.match(/^(\d+)[\.\-\)]\s*(.+)$/);
+      const isDirectQuestion = line.startsWith('¿') || line.startsWith('?');
+      
+      const nextLine = lines[i + 1] || '';
+      const nextIsOptionA = nextLine.match(/^[•\-\*]?\s*[\(]?[A|a][\)\.\-:]\s*(.+)$/);
+
+      if (matchPreguntaPrefix || matchNumbered || isDirectQuestion || (nextIsOptionA && !line.match(/^[•\-\*]?\s*[\(]?[A-Da-d][\)\.\-:]/))) {
+        commitCurrentQ();
+
+        let qText = '';
+        if (matchPreguntaPrefix) {
+          qText = matchPreguntaPrefix[1];
+        } else if (matchNumbered) {
+          qText = matchNumbered[2];
+        } else {
+          qText = line;
+        }
+
+        // Limpiar numeraciones redundantes al inicio del enunciado
+        qText = qText.replace(/^\d+[\.\-\)]\s*/, '').trim();
+
+        currentQ = {
+          id: `row_${Date.now()}_${parsed.length}_${Math.random().toString(36).substr(2, 4)}`,
+          book_id: currentBook?.id || 1,
+          bookName: currentBook?.name || '1 Samuel',
+          chapterNumber: currentChapterNum,
+          chapter_id: currentChapterId,
+          category: selectedCategory !== 'all' ? selectedCategory : currentCategory,
+          question_text: qText,
+          option_a: '',
+          option_b: '',
+          option_c: '',
+          option_d: '',
+          correct_answer: 'a',
+          explanation: '',
+          verse_reference: '',
+          difficulty: 'medio'
+        };
+        continue;
+      }
+
+      // 5. Detección de OPCIONES Y METADATOS dentro de la pregunta en curso
+      if (currentQ) {
+        // Opción A
+        const matchA = line.match(/^[•\-\*]?\s*[\(]?[A|a][\)\.\-:]\s*(.+)$/);
+        if (matchA) {
+          currentQ.option_a = matchA[1].trim();
+          continue;
+        }
+
+        // Opción B
+        const matchB = line.match(/^[•\-\*]?\s*[\(]?[B|b][\)\.\-:]\s*(.+)$/);
+        if (matchB) {
+          currentQ.option_b = matchB[1].trim();
+          continue;
+        }
+
+        // Opción C
+        const matchC = line.match(/^[•\-\*]?\s*[\(]?[C|c][\)\.\-:]\s*(.+)$/);
+        if (matchC) {
+          currentQ.option_c = matchC[1].trim();
+          continue;
+        }
+
+        // Opción D
+        const matchD = line.match(/^[•\-\*]?\s*[\(]?[D|d][\)\.\-:]\s*(.+)$/);
+        if (matchD) {
+          currentQ.option_d = matchD[1].trim();
+          continue;
+        }
+
+        // Respuesta Correcta: RESPUESTA:, CORRECTA:, CLAVE:, R:, SOLUCIÓN:, RTA:
+        const matchResp = line.match(/^(?:RESPUESTA(?:\s+CORRECTA)?|CORRECTA|CLAVE|SOLUCI[OÓ]N|RTA|R)\s*[:\-.]?\s*[\(]?([A-Da-d])(?:[\)\.\-:]\s*.*)?$/i);
+        if (matchResp) {
+          currentQ.correct_answer = matchResp[1].toLowerCase();
+          continue;
+        }
+
+        // Explicación
+        const matchExp = line.match(/^(?:EXPLICACI[OÓ]N|EXPLICACION|EXP|NOTA|COMENTARIO)\s*[:\-.]?\s*(.+)$/i);
+        if (matchExp) {
+          currentQ.explanation = matchExp[1].trim();
+          continue;
+        }
+
+        // Cita Bíblica / Versículo
+        const matchVer = line.match(/^(?:VERS[IÍ]CULO|VERSICULO|CITA|REFERENCIA|REF)\s*[:\-.]?\s*(.+)$/i);
+        if (matchVer) {
+          const vRef = matchVer[1].trim();
+          currentQ.verse_reference = vRef;
+
+          // Auto-detección inteligente de libro y capítulo dentro de la cita bíblica
+          const matchBibleRef = vRef.match(/([12]\s*(?:Samuel|Reyes))\s*(\d+)[:\.]/i);
+          if (matchBibleRef) {
+            const detectedBookName = matchBibleRef[1].trim();
+            const detectedChapterNum = parseInt(matchBibleRef[2], 10);
+            const foundB = findBookByName(detectedBookName);
+            if (foundB) {
+              currentQ.book_id = foundB.id;
+              currentQ.bookName = foundB.name;
+              currentQ.chapterNumber = detectedChapterNum;
+              currentQ.chapter_id = resolveChapterId(foundB, detectedChapterNum);
+            }
+          }
+          continue;
+        }
+
+        // Dificultad
+        const matchDif = line.match(/^(?:DIFICULTAD|NIVEL)\s*[:\-.]?\s*(f[aá]cil|medio|dif[ií]cil)/i);
+        if (matchDif) {
+          currentQ.difficulty = normalizeText(matchDif[1]);
+          continue;
+        }
+
+        // Si es una línea de continuación para la pregunta
+        if (!currentQ.option_a && !currentQ.option_b) {
+          currentQ.question_text += ' ' + line;
+        }
+      }
+    }
+
+    commitCurrentQ();
+
+    if (parsed.length === 0 && localErrors.length === 0) {
+      localErrors.push('No se pudieron reconocer preguntas válidas. Asegúrate de incluir el enunciado y las opciones A y B.');
+    }
+
+    return { parsed, errors: localErrors };
+  };
+
+  // Cargar archivo .txt desde el equipo
   const handleFileUpload = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -116,208 +458,133 @@ export default function FireQuestionsImporterModal({ isOpen, onClose, onImportSu
       const content = event.target?.result;
       if (typeof content === 'string') {
         setInputText(content);
-        handleParse(content);
+        processTextToRows(content);
       }
     };
     reader.readAsText(file);
     e.target.value = '';
   };
 
-  // Parser robusto idéntico al Importador Global Masivo de Quizzes
-  const handleParse = (rawText = inputText) => {
+  // Procesar texto bruto y alimentar directamente los Renglones
+  const processTextToRows = (text = inputText) => {
     setSuccessMsg('');
-    setErrors([]);
-    setParsedQuestions([]);
+    const { parsed, errors: parseErrors } = parseQuestionsText(text);
+    setErrors(parseErrors);
 
-    const textToProcess = (typeof rawText === 'string' ? rawText : inputText).trim();
-    if (!textToProcess) {
-      setErrors(['Por favor escribe, pega o carga un texto antes de analizar.']);
+    if (parsed.length > 0) {
+      setRows(prev => [...prev, ...parsed]);
+      setActiveTab('rows');
+      setSuccessMsg(`¡Éxito! Se cargaron ${parsed.length} preguntas en sus respectivos renglones.`);
+    }
+  };
+
+  // AGREGAR UN RENGLÓN EN BLANCO MANUALMENTE
+  const handleAddNewRow = () => {
+    const defaultBook = books[0] || { id: 1, name: '1 Samuel', chapters: [] };
+    const defaultChapter = defaultBook.chapters?.[0] || { id: 1, chapter_number: 1 };
+    
+    const newRow = {
+      id: `row_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+      book_id: defaultBook.id,
+      bookName: defaultBook.name,
+      chapterNumber: defaultChapter.chapter_number,
+      chapter_id: defaultChapter.id,
+      category: selectedCategory !== 'all' ? selectedCategory : 'personajes',
+      question_text: '',
+      option_a: '',
+      option_b: '',
+      option_c: '',
+      option_d: '',
+      correct_answer: 'a',
+      explanation: '',
+      verse_reference: '',
+      difficulty: 'medio'
+    };
+
+    setRows(prev => [newRow, ...prev]);
+    setActiveTab('rows');
+  };
+
+  // MODIFICAR UN CAMPO DE UN RENGLÓN EN TIEMPO REAL
+  const handleUpdateRow = (id, field, value) => {
+    setRows(prev => prev.map(row => {
+      if (row.id !== id) return row;
+      
+      const updated = { ...row, [field]: value };
+
+      // Si cambió el libro, actualizar también el bookName y el chapter_id correspondiente
+      if (field === 'book_id') {
+        const bObj = books.find(b => b.id === parseInt(value, 10));
+        if (bObj) {
+          updated.bookName = bObj.name;
+          const firstCh = bObj.chapters?.[0];
+          updated.chapterNumber = firstCh?.chapter_number || 1;
+          updated.chapter_id = firstCh?.id || 1;
+        }
+      }
+
+      // Si cambió el capítulo, actualizar el chapterNumber y chapter_id
+      if (field === 'chapter_id') {
+        const bObj = books.find(b => b.id === parseInt(row.book_id, 10));
+        const chObj = bObj?.chapters?.find(c => c.id === parseInt(value, 10));
+        if (chObj) {
+          updated.chapterNumber = chObj.chapter_number;
+        }
+      }
+
+      return updated;
+    }));
+  };
+
+  // ELIMINAR UN RENGLÓN
+  const handleDeleteRow = (id) => {
+    setRows(prev => prev.filter(r => r.id !== id));
+  };
+
+  // DUPLICAR UN RENGLÓN
+  const handleDuplicateRow = (row) => {
+    const duplicated = {
+      ...row,
+      id: `row_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`
+    };
+    setRows(prev => [duplicated, ...prev]);
+  };
+
+  // VACIAR TODOS LOS RENGLONES
+  const handleClearAllRows = () => {
+    if (rows.length === 0) return;
+    if (window.confirm(`¿Estás seguro de vaciar todos los ${rows.length} renglones actuales?`)) {
+      setRows([]);
+      setSuccessMsg('');
+      setErrors([]);
+    }
+  };
+
+  // GUARDAR DEFINITIVAMENTE TODOS LOS RENGLONES EN SUPABASE
+  const handleSaveRowsToDatabase = async () => {
+    const validRows = rows.filter(r => r.question_text.trim() && r.option_a.trim() && r.option_b.trim());
+    if (validRows.length === 0) {
+      alert('No hay renglones completos para guardar. Cada pregunta requiere al menos el enunciado y las opciones A y B.');
       return;
     }
 
-    // 1. Detección automática de JSON si viene en ese formato
-    if (textToProcess.startsWith('[') || textToProcess.startsWith('{')) {
-      try {
-        const parsed = JSON.parse(textToProcess);
-        const list = Array.isArray(parsed) ? parsed : [parsed];
-        const validated = list.map((q, idx) => ({
-          chapter_id: q.chapter_id || 1,
-          bookName: q.bookName || 'Olimpiadas Bíblicas',
-          chapterNumber: q.chapterNumber || q.chapter_number || 1,
-          category: q.category || selectedCategory,
-          question_text: q.question_text || q.pregunta || '',
-          option_a: q.option_a || q.a || '',
-          option_b: q.option_b || q.b || '',
-          option_c: q.option_c || q.c || 'Ninguna de las anteriores',
-          option_d: q.option_d || q.d || 'Todas las anteriores',
-          correct_answer: (q.correct_answer || q.respuesta || 'a').toLowerCase().trim(),
-          explanation: q.explanation || q.explicacion || 'Respuesta bíblica oficial NTV.',
-          verse_reference: q.verse_reference || q.versiculo || '',
-          difficulty: q.difficulty || 'medio'
-        })).filter(q => q.question_text && q.option_a && q.option_b);
-
-        if (validated.length > 0) {
-          setParsedQuestions(validated);
-          return;
-        }
-      } catch (e) {}
-    }
-
-    // 2. Parser por bloques de texto estándar (LIBRO, CAPITULO, PREGUNTA, A., B., C., D., RESPUESTA)
-    const lines = textToProcess.split('\n');
-    const result = [];
-    const localErrors = [];
-
-    const removeAccents = (str) => (str || '').normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-
-    let currentBook = books.length > 0 ? books[0] : null;
-    let currentChapterId = currentBook?.chapters?.[0]?.id || 1;
-    let currentChapterNum = currentBook?.chapters?.[0]?.chapter_number || 1;
-    let currentCategory = selectedCategory !== 'all' ? selectedCategory : 'personajes';
-    let currentQ = null;
-
-    const cleanLines = lines.map(l => l.trim()).filter(l => l.length > 0);
-
-    for (let i = 0; i < cleanLines.length; i++) {
-      const line = cleanLines[i];
-
-      // Detección de LIBRO:
-      const matchLibro = line.match(/^LIBRO\s*[:\-]?\s*(.+)$/i);
-      if (matchLibro) {
-        const bookName = matchLibro[1].trim();
-        const foundBook = books.find(b => removeAccents(b.name.toLowerCase()) === removeAccents(bookName.toLowerCase()));
-        if (foundBook) {
-          currentBook = foundBook;
-          currentChapterId = foundBook.chapters?.[0]?.id || 1;
-          currentChapterNum = foundBook.chapters?.[0]?.chapter_number || 1;
-        } else {
-          localErrors.push(`Línea ${i + 1}: Libro "${bookName}" no encontrado en el sistema. Asegúrate de usar: 1 Samuel, 2 Samuel, 1 Reyes o 2 Reyes.`);
-        }
-        continue;
-      }
-
-      // Detección de CAPITULO:
-      const matchCapitulo = line.match(/^CAP[IÍ]TULO\s*[:\-]?\s*(\d+)/i);
-      if (matchCapitulo) {
-        const chapterNum = parseInt(matchCapitulo[1], 10);
-        if (currentBook) {
-          const foundChapter = currentBook.chapters?.find(c => c.chapter_number === chapterNum);
-          if (foundChapter) {
-            currentChapterId = foundChapter.id;
-            currentChapterNum = foundChapter.chapter_number;
-          } else {
-            localErrors.push(`Línea ${i + 1}: Capítulo ${chapterNum} no existe en el libro ${currentBook.name}.`);
-          }
-        }
-        continue;
-      }
-
-      // Detección de CATEGORIA: (opcional para clasificar en Fire Questions)
-      const matchCategoria = line.match(/^CATEGOR[IÍ]A\s*[:\-]?\s*(.+)$/i);
-      if (matchCategoria) {
-        const catStr = removeAccents(matchCategoria[1].toLowerCase().trim());
-        if (catStr.includes('personaje')) currentCategory = 'personajes';
-        else if (catStr.includes('lugar')) currentCategory = 'lugares';
-        else if (catStr.includes('cantidad') || catStr.includes('numero')) currentCategory = 'cantidades';
-        else if (catStr.includes('evento')) currentCategory = 'eventos';
-        continue;
-      }
-
-      // Detección de PREGUNTA: (soporta PREGUNTA:, P:, o número 1.)
-      const matchPregunta = line.match(/^(?:PREGUNTA|P)\s*[:\-]?\s*(.+)$/i) || line.match(/^(\d+)[\.\-\)]\s+(.+\?.*)$/i);
-      if (matchPregunta) {
-        // Guardar la pregunta anterior si estaba completa
-        if (currentQ) {
-          if (!currentQ.option_a || !currentQ.option_b) {
-            localErrors.push(`Pregunta incompleta antes de la línea ${i + 1}: "${currentQ.question_text.substring(0, 35)}..." (le faltan opciones).`);
-          } else {
-            result.push(currentQ);
-          }
-        }
-
-        const qText = (matchPregunta[1] && matchPregunta[2] ? matchPregunta[2] : matchPregunta[1]).trim();
-        currentQ = {
-          chapter_id: currentChapterId,
-          bookName: currentBook?.name || '1 Samuel',
-          chapterNumber: currentChapterNum,
-          category: selectedCategory !== 'all' ? selectedCategory : currentCategory,
-          question_text: qText,
-          option_a: '',
-          option_b: '',
-          option_c: '',
-          option_d: '',
-          correct_answer: 'a',
-          difficulty: 'medio',
-          explanation: '',
-          verse_reference: ''
-        };
-        continue;
-      }
-
-      // Opciones y Atributos de la Pregunta en curso
-      if (currentQ) {
-        // Soporta formatos A., A), A-, A:
-        const matchA = line.match(/^[A]\s*[.)\-:]\s*(.+)$/i);
-        const matchB = line.match(/^[B]\s*[.)\-:]\s*(.+)$/i);
-        const matchC = line.match(/^[C]\s*[.)\-:]\s*(.+)$/i);
-        const matchD = line.match(/^[D]\s*[.)\-:]\s*(.+)$/i);
-        const matchResp = line.match(/^(?:RESPUESTA|CORRECTA|R)\s*[:\-]?\s*([A-D])/i);
-        const matchExp = line.match(/^(?:EXPLICACI[OÓ]N|EXP|NOTA)\s*[:\-]?\s*(.+)$/i);
-        const matchVer = line.match(/^(?:VERS[IÍ]CULO|VERSICULO|REF|CITA)\s*[:\-]?\s*(.+)$/i);
-        const matchDif = line.match(/^(?:DIFICULTAD|NIVEL)\s*[:\-]?\s*(f[aá]cil|medio|dif[ií]cil)/i);
-
-        if (matchA) currentQ.option_a = matchA[1].trim();
-        else if (matchB) currentQ.option_b = matchB[1].trim();
-        else if (matchC) currentQ.option_c = matchC[1].trim();
-        else if (matchD) currentQ.option_d = matchD[1].trim();
-        else if (matchResp) currentQ.correct_answer = matchResp[1].trim().toLowerCase();
-        else if (matchExp) currentQ.explanation = matchExp[1].trim();
-        else if (matchVer) currentQ.verse_reference = matchVer[1].trim();
-        else if (matchDif) currentQ.difficulty = removeAccents(matchDif[1].toLowerCase());
-      }
-    }
-
-    // Agregar la última pregunta
-    if (currentQ) {
-      if (!currentQ.option_a || !currentQ.option_b) {
-        localErrors.push(`La última pregunta "${currentQ.question_text.substring(0, 35)}..." no tiene opciones A y B válidas.`);
-      } else {
-        result.push(currentQ);
-      }
-    }
-
-    if (result.length === 0 && localErrors.length === 0) {
-      localErrors.push('No se pudieron reconocer preguntas válidas. Revisa las instrucciones de formato o usa el botón "Cargar archivo .txt".');
-    }
-
-    setParsedQuestions(result);
-    setErrors(localErrors);
-  };
-
-  // Descartar una pregunta individual de la vista previa
-  const handleRemoveQuestionFromPreview = (index) => {
-    setParsedQuestions(prev => prev.filter((_, idx) => idx !== index));
-  };
-
-  // Guardar en la Base de Datos (Supabase)
-  const handleSaveToDatabase = async () => {
-    if (parsedQuestions.length === 0) return;
     setSubmitting(true);
     setSuccessMsg('');
+    setErrors([]);
 
     try {
-      const payloadQuestions = parsedQuestions.map(q => ({
-        chapter_id: q.chapter_id || 1,
-        question_text: q.question_text,
-        option_a: q.option_a,
-        option_b: q.option_b,
-        option_c: q.option_c || 'Ninguna de las anteriores',
-        option_d: q.option_d || 'Todas las anteriores',
-        correct_answer: q.correct_answer || 'a',
-        difficulty: q.difficulty || 'medio',
-        explanation: q.explanation || 'Respuesta bíblica oficial NTV.',
-        verse_reference: q.verse_reference || '',
-        custom_category: q.category || selectedCategory
+      const payloadQuestions = validRows.map(r => ({
+        chapter_id: r.chapter_id || 1,
+        question_text: r.question_text.trim(),
+        option_a: r.option_a.trim(),
+        option_b: r.option_b.trim(),
+        option_c: r.option_c.trim() || 'Ninguna de las anteriores',
+        option_d: r.option_d.trim() || 'Todas las anteriores',
+        correct_answer: (r.correct_answer || 'a').toLowerCase().trim(),
+        difficulty: r.difficulty || 'medio',
+        explanation: r.explanation.trim() || 'Respuesta bíblica oficial NTV.',
+        verse_reference: r.verse_reference.trim(),
+        custom_category: r.category || selectedCategory
       }));
 
       const res = await api.post('/simulacro/questions/import', {
@@ -327,9 +594,9 @@ export default function FireQuestionsImporterModal({ isOpen, onClose, onImportSu
       });
 
       if (res && res.success) {
-        setSuccessMsg(`¡Importación exitosa! Se han guardado ${res.importedCount} preguntas en Supabase (${importMode === 'replace' ? 'reemplazando anteriores' : 'agregadas al banco'}). Ya están activas para todas las disciplinas de Simulacro.`);
-        
-        // Almacenar en el navegador para redundancia instantánea en todas las categorías
+        setSuccessMsg(`¡Guardado exitoso! Se han sincronizado ${res.importedCount} preguntas en Supabase. Están disponibles en los 4 formatos de competencia (Fire Questions, David & Goliat, El Dado Dado y La Ruleta).`);
+
+        // Actualizar almacenamiento local para disponibilidad inmediata
         try {
           const currentLocal = JSON.parse(localStorage.getItem('simulacro_custom_questions') || '[]');
           const updated = importMode === 'replace' ? payloadQuestions : [...payloadQuestions, ...currentLocal];
@@ -339,14 +606,12 @@ export default function FireQuestionsImporterModal({ isOpen, onClose, onImportSu
           }));
         } catch (e) {}
 
-        setInputText('');
-        setParsedQuestions([]);
         await fetchStats();
         if (onImportSuccess) {
           onImportSuccess(selectedCategory, res.importedCount);
         }
       } else {
-        throw new Error(res?.error || 'No se pudo completar la importación.');
+        throw new Error(res?.error || 'No se pudo completar el guardado en Supabase.');
       }
     } catch (err) {
       console.error(err);
@@ -356,44 +621,31 @@ export default function FireQuestionsImporterModal({ isOpen, onClose, onImportSu
     }
   };
 
-  // Guardar pregunta individual manual
-  const handleSingleFormSubmit = (e) => {
-    e.preventDefault();
-    if (!singleForm.question_text || !singleForm.option_a || !singleForm.option_b) {
-      alert('Por favor ingresa al menos el enunciado y las opciones A y B.');
-      return;
-    }
+  // Filtrado de renglones para la vista previa
+  const filteredRows = useMemo(() => {
+    return rows.filter(r => {
+      const matchesSearch = !searchFilter || 
+        r.question_text.toLowerCase().includes(searchFilter.toLowerCase()) ||
+        r.bookName?.toLowerCase().includes(searchFilter.toLowerCase()) ||
+        r.verse_reference?.toLowerCase().includes(searchFilter.toLowerCase());
+      
+      const matchesCategory = categoryFilter === 'all' || r.category === categoryFilter;
 
-    const currentBookObj = books.find(b => b.id === parseInt(singleForm.book_id, 10)) || books[0];
-    const currentChapterObj = currentBookObj?.chapters?.find(c => c.id === parseInt(singleForm.chapter_id, 10)) || currentBookObj?.chapters?.[0];
+      return matchesSearch && matchesCategory;
+    });
+  }, [rows, searchFilter, categoryFilter]);
 
-    const newQ = {
-      chapter_id: currentChapterObj?.id || 1,
-      bookName: currentBookObj?.name || '1 Samuel',
-      chapterNumber: currentChapterObj?.chapter_number || 1,
-      category: singleForm.category,
-      question_text: singleForm.question_text.trim(),
-      option_a: singleForm.option_a.trim(),
-      option_b: singleForm.option_b.trim(),
-      option_c: singleForm.option_c.trim() || 'Ninguna de las anteriores',
-      option_d: singleForm.option_d.trim() || 'Todas las anteriores',
-      correct_answer: singleForm.correct_answer.toLowerCase().trim(),
-      difficulty: singleForm.difficulty,
-      explanation: singleForm.explanation.trim() || 'Respuesta bíblica oficial NTV.',
-      verse_reference: singleForm.verse_reference.trim()
-    };
-
-    setParsedQuestions([newQ]);
-    setActiveTab('bulk');
-  };
+  const validRowCount = useMemo(() => {
+    return rows.filter(r => r.question_text.trim() && r.option_a.trim() && r.option_b.trim()).length;
+  }, [rows]);
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/85 backdrop-blur-md animate-fadeIn">
-      <div className="bg-slate-900 border-2 border-amber-500/40 rounded-3xl max-w-4xl w-full max-h-[94vh] flex flex-col shadow-2xl text-white overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-md animate-fadeIn">
+      <div className="bg-slate-900 border-2 border-amber-500/40 rounded-3xl max-w-6xl w-full max-h-[96vh] flex flex-col shadow-2xl text-white overflow-hidden">
         
-        {/* Cabecera del Importador */}
+        {/* Cabecera Principal */}
         <div className="p-4 sm:p-5 bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 border-b border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="p-2.5 rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/30 shadow">
@@ -407,7 +659,7 @@ export default function FireQuestionsImporterModal({ isOpen, onClose, onImportSu
                 <span className="text-xs text-slate-400 hidden sm:inline">Importador Oficial Supabase</span>
               </div>
               <h3 className="text-lg sm:text-xl font-bold font-serif text-white">
-                Importador de Preguntas de Simulacro
+                Importador y Editor de Preguntas por Renglones
               </h3>
             </div>
           </div>
@@ -421,7 +673,7 @@ export default function FireQuestionsImporterModal({ isOpen, onClose, onImportSu
           </button>
         </div>
 
-        {/* Selector de Ámbito / Categoría y Estadísticas en Vivo */}
+        {/* Barra de Ámbitos y Conteo en Vivo */}
         <div className="p-3 bg-slate-950/80 border-b border-slate-800 overflow-x-auto scrollbar-thin">
           <div className="flex items-center gap-2 min-w-max">
             {FIRE_CATEGORIES.map(cat => {
@@ -450,49 +702,65 @@ export default function FireQuestionsImporterModal({ isOpen, onClose, onImportSu
           </div>
         </div>
 
-        {/* Pestañas de Modo: Importación Masiva vs Formulario Manual */}
+        {/* Pestañas de Navegación */}
         <div className="px-5 pt-3 pb-0 bg-slate-900 flex items-center justify-between border-b border-slate-800">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 sm:gap-4 overflow-x-auto">
+            <button
+              onClick={() => setActiveTab('rows')}
+              className={`px-3 sm:px-4 py-2 border-b-2 font-bold text-xs sm:text-sm flex items-center gap-2 transition cursor-pointer ${
+                activeTab === 'rows'
+                  ? 'border-amber-400 text-amber-300 font-black'
+                  : 'border-transparent text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Layers className="w-4 h-4" />
+              <span>Editor de Renglones</span>
+              <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-mono font-bold">
+                {rows.length}
+              </span>
+            </button>
+
             <button
               onClick={() => setActiveTab('bulk')}
-              className={`px-4 py-2 border-b-2 font-bold text-xs sm:text-sm flex items-center gap-2 transition cursor-pointer ${
+              className={`px-3 sm:px-4 py-2 border-b-2 font-bold text-xs sm:text-sm flex items-center gap-2 transition cursor-pointer ${
                 activeTab === 'bulk'
                   ? 'border-amber-400 text-amber-300 font-black'
                   : 'border-transparent text-slate-400 hover:text-slate-200'
               }`}
             >
               <FileText className="w-4 h-4" />
-              <span>Importación Masiva (.txt / Bloques)</span>
+              <span>Pegar Texto / Archivo .txt</span>
             </button>
 
             <button
-              onClick={() => setActiveTab('form')}
-              className={`px-4 py-2 border-b-2 font-bold text-xs sm:text-sm flex items-center gap-2 transition cursor-pointer ${
-                activeTab === 'form'
+              onClick={() => setActiveTab('single')}
+              className={`px-3 sm:px-4 py-2 border-b-2 font-bold text-xs sm:text-sm flex items-center gap-2 transition cursor-pointer ${
+                activeTab === 'single'
                   ? 'border-amber-400 text-amber-300 font-black'
                   : 'border-transparent text-slate-400 hover:text-slate-200'
               }`}
             >
-              <Layers className="w-4 h-4" />
-              <span>Formulario Manual Individual</span>
+              <Plus className="w-4 h-4" />
+              <span>Añadir 1 Renglón</span>
             </button>
           </div>
 
-          {activeTab === 'bulk' && (
+          <div className="flex items-center gap-2 pb-2">
             <button
-              onClick={() => setShowInstructions(!showInstructions)}
-              className="text-xs text-amber-400 hover:text-amber-300 flex items-center gap-1 cursor-pointer pb-2"
+              onClick={handleAddNewRow}
+              className="px-3 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 rounded-xl text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shadow-sm"
+              title="Añadir nuevo renglón vacío"
             >
-              <HelpCircle className="w-3.5 h-3.5" />
-              <span>{showInstructions ? 'Ocultar Formato' : 'Ver Formato'}</span>
+              <Plus className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Nuevo Renglón</span>
             </button>
-          )}
+          </div>
         </div>
 
-        {/* Contenido con Scroll */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5">
+        {/* Área Central con Scroll */}
+        <div className="flex-1 overflow-y-auto p-3 sm:p-5 space-y-4">
           
-          {/* Mensaje de Éxito al Importar */}
+          {/* Alertas de Éxito y Errores */}
           {successMsg && (
             <div className="p-4 rounded-2xl bg-emerald-950/60 border border-emerald-500/60 text-emerald-300 text-xs sm:text-sm font-semibold flex items-center gap-3 animate-fadeIn shadow-lg">
               <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
@@ -500,51 +768,409 @@ export default function FireQuestionsImporterModal({ isOpen, onClose, onImportSu
             </div>
           )}
 
-          {/* MODO 1: IMPORTACIÓN MASIVA (.TXT / TEXTO) */}
-          {activeTab === 'bulk' && (
+          {errors.length > 0 && (
+            <div className="p-4 rounded-2xl bg-red-950/60 border border-red-500/40 text-red-200 text-xs space-y-2 animate-fadeIn">
+              <h4 className="font-bold flex items-center gap-2 text-red-300">
+                <AlertTriangle className="w-4 h-4 text-red-400" />
+                <span>Avisos detectados ({errors.length}):</span>
+              </h4>
+              <ul className="list-disc list-inside space-y-1 text-red-300/90 font-mono text-[11px]">
+                {errors.map((err, i) => (
+                  <li key={i}>{err}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* ============================================================== */}
+          {/* PESTAÑA 1: EDITOR DE RENGLONES (VISTA DE FILAS / TABLA)         */}
+          {/* ============================================================== */}
+          {activeTab === 'rows' && (
             <div className="space-y-4">
               
-              {/* Caja de Instrucciones de Formato */}
+              {/* Barra de Búsqueda, Filtro y Controles de Renglón */}
+              <div className="p-3 bg-slate-950/80 rounded-2xl border border-slate-800 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2 flex-1 min-w-[200px]">
+                  <Search className="w-4 h-4 text-slate-400 ml-2" />
+                  <input
+                    type="text"
+                    value={searchFilter}
+                    onChange={(e) => setSearchFilter(e.target.value)}
+                    placeholder="Buscar en los renglones..."
+                    className="w-full bg-transparent text-xs text-white placeholder:text-slate-500 focus:outline-none"
+                  />
+                  {searchFilter && (
+                    <button onClick={() => setSearchFilter('')} className="text-slate-400 hover:text-white">
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2 flex-wrap text-xs">
+                  <div className="flex items-center gap-1.5 bg-slate-900 px-2 py-1 rounded-xl border border-slate-700">
+                    <Filter className="w-3.5 h-3.5 text-amber-400" />
+                    <select
+                      value={categoryFilter}
+                      onChange={(e) => setCategoryFilter(e.target.value)}
+                      className="bg-transparent text-slate-300 focus:outline-none cursor-pointer"
+                    >
+                      <option value="all">Todas las categorías</option>
+                      <option value="personajes">👤 Personajes</option>
+                      <option value="lugares">📍 Lugares</option>
+                      <option value="cantidades">🔢 Cantidades</option>
+                      <option value="eventos">⚡ Eventos</option>
+                    </select>
+                  </div>
+
+                  <span className="text-slate-400 text-[11px]">
+                    Mostrando <strong className="text-amber-300 font-mono">{filteredRows.length}</strong> de <strong className="text-slate-200 font-mono">{rows.length}</strong>
+                  </span>
+
+                  {rows.length > 0 && (
+                    <button
+                      onClick={handleClearAllRows}
+                      className="px-2.5 py-1 bg-red-950/40 hover:bg-red-900/60 border border-red-500/30 text-red-300 rounded-xl text-xs font-semibold flex items-center gap-1 transition cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Vaciar</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Si no hay renglones cargados todavía */}
+              {rows.length === 0 ? (
+                <div className="p-8 text-center bg-slate-950/40 rounded-3xl border border-dashed border-slate-800 space-y-3">
+                  <div className="w-12 h-12 mx-auto rounded-2xl bg-amber-500/10 text-amber-400 border border-amber-500/30 flex items-center justify-center">
+                    <Layers className="w-6 h-6" />
+                  </div>
+                  <h4 className="text-base font-bold text-white">No hay renglones de preguntas aún</h4>
+                  <p className="text-xs text-slate-400 max-w-md mx-auto">
+                    Carga un archivo <code>.txt</code>, pega un bloque de preguntas o agrega un renglón nuevo directamente para editar cada campo.
+                  </p>
+                  <div className="flex items-center justify-center gap-3 pt-2">
+                    <button
+                      onClick={() => setActiveTab('bulk')}
+                      className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl text-xs flex items-center gap-2 cursor-pointer shadow"
+                    >
+                      <FileText className="w-4 h-4" />
+                      <span>Pegar Texto o Subir .txt</span>
+                    </button>
+                    <button
+                      onClick={handleAddNewRow}
+                      className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl text-xs border border-slate-700 flex items-center gap-2 cursor-pointer"
+                    >
+                      <Plus className="w-4 h-4 text-amber-400" />
+                      <span>Crear Renglón Manual</span>
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                /* LISTA DE RENGLONES INTERACTIVOS */
+                <div className="space-y-4">
+                  {filteredRows.map((row, idx) => {
+                    const isValid = row.question_text.trim() && row.option_a.trim() && row.option_b.trim();
+                    const currentBookObj = books.find(b => b.id === parseInt(row.book_id, 10)) || books[0];
+                    const chaptersList = currentBookObj?.chapters || [];
+
+                    return (
+                      <div 
+                        key={row.id} 
+                        className={`p-4 rounded-2xl border transition-all ${
+                          isValid 
+                            ? 'bg-slate-950/80 border-slate-800 hover:border-slate-700 shadow-md' 
+                            : 'bg-red-950/20 border-red-500/40 ring-1 ring-red-500/20'
+                        }`}
+                      >
+                        {/* Cabecera del Renglón: Número, Selectores de Libro/Capítulo/Categoría y Acciones */}
+                        <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-800/80">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="px-2.5 py-0.5 rounded-lg bg-amber-500/20 text-amber-300 font-mono font-black text-xs border border-amber-500/30">
+                              Renglón #{idx + 1}
+                            </span>
+
+                            {/* Selector de Libro */}
+                            <select
+                              value={row.book_id}
+                              onChange={(e) => handleUpdateRow(row.id, 'book_id', e.target.value)}
+                              className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none focus:border-amber-400 cursor-pointer"
+                            >
+                              {books.map(b => (
+                                <option key={b.id} value={b.id}>{b.name}</option>
+                              ))}
+                            </select>
+
+                            {/* Selector de Capítulo */}
+                            <select
+                              value={row.chapter_id}
+                              onChange={(e) => handleUpdateRow(row.id, 'chapter_id', e.target.value)}
+                              className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-amber-400 cursor-pointer"
+                            >
+                              {chaptersList.map(c => (
+                                <option key={c.id} value={c.id}>Capítulo {c.chapter_number}</option>
+                              ))}
+                            </select>
+
+                            {/* Selector de Categoría */}
+                            <select
+                              value={row.category}
+                              onChange={(e) => handleUpdateRow(row.id, 'category', e.target.value)}
+                              className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs font-bold text-amber-300 focus:outline-none focus:border-amber-400 cursor-pointer"
+                            >
+                              <option value="personajes">👤 Personajes</option>
+                              <option value="lugares">📍 Lugares</option>
+                              <option value="cantidades">🔢 Cantidades</option>
+                              <option value="eventos">⚡ Eventos</option>
+                            </select>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            {isValid ? (
+                              <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold flex items-center gap-1">
+                                <Check className="w-3 h-3 text-emerald-400" />
+                                <span>Renglón Listo</span>
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-bold flex items-center gap-1">
+                                <AlertCircle className="w-3 h-3 text-amber-400" />
+                                <span>Faltan Opciones</span>
+                              </span>
+                            )}
+
+                            <button
+                              type="button"
+                              onClick={() => handleDuplicateRow(row)}
+                              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition cursor-pointer"
+                              title="Duplicar este renglón"
+                            >
+                              <Copy className="w-3.5 h-3.5" />
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteRow(row.id)}
+                              className="p-1.5 rounded-lg bg-slate-800 hover:bg-red-950/60 text-slate-400 hover:text-red-300 transition cursor-pointer"
+                              title="Eliminar este renglón"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Enunciado de la Pregunta */}
+                        <div className="pt-3">
+                          <label className="block text-[11px] font-bold text-slate-400 mb-1">
+                            Enunciado de la Pregunta:
+                          </label>
+                          <textarea
+                            value={row.question_text}
+                            onChange={(e) => handleUpdateRow(row.id, 'question_text', e.target.value)}
+                            placeholder="Escribe aquí la pregunta bíblica (ej. ¿Quién fue el sucesor de Moisés?)..."
+                            rows={2}
+                            className="w-full bg-slate-900/90 border border-slate-700/80 rounded-xl p-2.5 text-xs sm:text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-400 resize-none font-medium"
+                          />
+                        </div>
+
+                        {/* Opciones A, B, C, D con botón interactivo para seleccionar la respuesta correcta */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-2">
+                          
+                          {/* Opción A */}
+                          <div className={`p-2 rounded-xl border flex items-center gap-2 transition ${
+                            row.correct_answer === 'a' 
+                              ? 'bg-emerald-950/40 border-emerald-500/60 ring-1 ring-emerald-500/40 shadow-sm' 
+                              : 'bg-slate-900 border-slate-800'
+                          }`}>
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateRow(row.id, 'correct_answer', 'a')}
+                              className={`w-6 h-6 rounded-lg font-black text-xs flex items-center justify-center shrink-0 cursor-pointer transition ${
+                                row.correct_answer === 'a'
+                                  ? 'bg-emerald-500 text-slate-950 shadow'
+                                  : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
+                              }`}
+                              title="Marcar como respuesta correcta"
+                            >
+                              A
+                            </button>
+                            <input
+                              type="text"
+                              value={row.option_a}
+                              onChange={(e) => handleUpdateRow(row.id, 'option_a', e.target.value)}
+                              placeholder="Opción A (Requerida)"
+                              className="w-full bg-transparent text-xs text-white placeholder:text-slate-600 focus:outline-none"
+                            />
+                          </div>
+
+                          {/* Opción B */}
+                          <div className={`p-2 rounded-xl border flex items-center gap-2 transition ${
+                            row.correct_answer === 'b' 
+                              ? 'bg-emerald-950/40 border-emerald-500/60 ring-1 ring-emerald-500/40 shadow-sm' 
+                              : 'bg-slate-900 border-slate-800'
+                          }`}>
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateRow(row.id, 'correct_answer', 'b')}
+                              className={`w-6 h-6 rounded-lg font-black text-xs flex items-center justify-center shrink-0 cursor-pointer transition ${
+                                row.correct_answer === 'b'
+                                  ? 'bg-emerald-500 text-slate-950 shadow'
+                                  : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
+                              }`}
+                              title="Marcar como respuesta correcta"
+                            >
+                              B
+                            </button>
+                            <input
+                              type="text"
+                              value={row.option_b}
+                              onChange={(e) => handleUpdateRow(row.id, 'option_b', e.target.value)}
+                              placeholder="Opción B (Requerida)"
+                              className="w-full bg-transparent text-xs text-white placeholder:text-slate-600 focus:outline-none"
+                            />
+                          </div>
+
+                          {/* Opción C */}
+                          <div className={`p-2 rounded-xl border flex items-center gap-2 transition ${
+                            row.correct_answer === 'c' 
+                              ? 'bg-emerald-950/40 border-emerald-500/60 ring-1 ring-emerald-500/40 shadow-sm' 
+                              : 'bg-slate-900 border-slate-800'
+                          }`}>
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateRow(row.id, 'correct_answer', 'c')}
+                              className={`w-6 h-6 rounded-lg font-black text-xs flex items-center justify-center shrink-0 cursor-pointer transition ${
+                                row.correct_answer === 'c'
+                                  ? 'bg-emerald-500 text-slate-950 shadow'
+                                  : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
+                              }`}
+                              title="Marcar como respuesta correcta"
+                            >
+                              C
+                            </button>
+                            <input
+                              type="text"
+                              value={row.option_c}
+                              onChange={(e) => handleUpdateRow(row.id, 'option_c', e.target.value)}
+                              placeholder="Opción C (Opcional - por defecto 'Ninguna')"
+                              className="w-full bg-transparent text-xs text-white placeholder:text-slate-600 focus:outline-none"
+                            />
+                          </div>
+
+                          {/* Opción D */}
+                          <div className={`p-2 rounded-xl border flex items-center gap-2 transition ${
+                            row.correct_answer === 'd' 
+                              ? 'bg-emerald-950/40 border-emerald-500/60 ring-1 ring-emerald-500/40 shadow-sm' 
+                              : 'bg-slate-900 border-slate-800'
+                          }`}>
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateRow(row.id, 'correct_answer', 'd')}
+                              className={`w-6 h-6 rounded-lg font-black text-xs flex items-center justify-center shrink-0 cursor-pointer transition ${
+                                row.correct_answer === 'd'
+                                  ? 'bg-emerald-500 text-slate-950 shadow'
+                                  : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
+                              }`}
+                              title="Marcar como respuesta correcta"
+                            >
+                              D
+                            </button>
+                            <input
+                              type="text"
+                              value={row.option_d}
+                              onChange={(e) => handleUpdateRow(row.id, 'option_d', e.target.value)}
+                              placeholder="Opción D (Opcional - por defecto 'Todas')"
+                              className="w-full bg-transparent text-xs text-white placeholder:text-slate-600 focus:outline-none"
+                            />
+                          </div>
+
+                        </div>
+
+                        {/* Fila Inferior: Referencia Bíblica y Explicación */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-2.5 text-xs">
+                          <div>
+                            <input
+                              type="text"
+                              value={row.verse_reference}
+                              onChange={(e) => handleUpdateRow(row.id, 'verse_reference', e.target.value)}
+                              placeholder="📖 Cita bíblica (ej. 1 Samuel 17:40)"
+                              className="w-full bg-slate-900/60 border border-slate-800 rounded-lg px-2.5 py-1.5 text-[11px] text-amber-200 placeholder:text-slate-600 focus:outline-none focus:border-amber-400"
+                            />
+                          </div>
+                          <div>
+                            <input
+                              type="text"
+                              value={row.explanation}
+                              onChange={(e) => handleUpdateRow(row.id, 'explanation', e.target.value)}
+                              placeholder="💡 Explicación bíblica de la respuesta correcta"
+                              className="w-full bg-slate-900/60 border border-slate-800 rounded-lg px-2.5 py-1.5 text-[11px] text-slate-300 placeholder:text-slate-600 focus:outline-none focus:border-amber-400"
+                            />
+                          </div>
+                        </div>
+
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+            </div>
+          )}
+
+          {/* ============================================================== */}
+          {/* PESTAÑA 2: PEGAR TEXTO O SUBIR ARCHIVO .TXT                     */}
+          {/* ============================================================== */}
+          {activeTab === 'bulk' && (
+            <div className="space-y-4 animate-fadeIn">
+              
+              {/* Botón de Ayuda con Guía de Formato */}
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-slate-400">
+                  Pega preguntas en cualquier formato o usa un archivo <code>.txt</code>. El sistema las convertirá automáticamente en renglones.
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowInstructions(!showInstructions)}
+                  className="text-xs text-amber-400 hover:text-amber-300 flex items-center gap-1 cursor-pointer"
+                >
+                  <HelpCircle className="w-3.5 h-3.5" />
+                  <span>{showInstructions ? 'Ocultar Ejemplos' : 'Ver Ejemplos de Formato'}</span>
+                </button>
+              </div>
+
               {showInstructions && (
                 <div className="p-4 rounded-2xl bg-blue-950/40 border border-blue-500/30 text-blue-200 text-xs space-y-2 animate-fadeIn">
                   <div className="flex items-center justify-between">
                     <span className="font-bold flex items-center gap-1.5 text-blue-300">
                       <BookOpen className="w-4 h-4" />
-                      Instrucciones de Formato Oficial
+                      Formatos Soportados Automáticamente
                     </span>
                     <span className="text-[11px] text-blue-400">
-                      Compatible con el formato del Importador Global de Quizzes
+                      No importa cómo empiece la pregunta (con número, con ¿ o con PREGUNTA:)
                     </span>
                   </div>
-                  <p className="text-slate-300 text-[11px] leading-relaxed">
-                    Puedes incluir las etiquetas <code>LIBRO:</code> y <code>CAPITULO:</code> para asignar las preguntas a los libros oficiales (1 Samuel, 2 Samuel, 1 Reyes, 2 Reyes). Si no las incluyes, se asignarán automáticamente al ámbito seleccionado arriba.
-                  </p>
                   <pre className="bg-slate-950/90 p-3 rounded-xl border border-slate-800 font-mono text-[11px] text-amber-200/90 overflow-x-auto whitespace-pre-wrap leading-relaxed">
 {`LIBRO: 1 Samuel
-CAPITULO: 1
+CAPITULO: 17
 
-PREGUNTA: ¿Cómo se llamaba la madre del profeta Samuel?
-A. Ana
-B. Penina
-C. Sara
-D. Raquel
+1. ¿Cuántas piedras lisas recogió David del arroyo?
+A. 5 piedras
+B. 3 piedras
+C. 7 piedras
+D. 1 piedra
 RESPUESTA: A
-EXPLICACION: Ana oró fervientemente a Dios en el templo de Silo.
-VERSICULO: 1 Samuel 1:20
+EXPLICACION: David escogió cinco piedras lisas para su honda.
+VERSICULO: 1 Samuel 17:40
 
-PREGUNTA: ¿Quién era el sumo sacerdote que vio orar a Ana?
-A. Elí
-B. Samuel
-C. Aarón
-D. Sadoc
-RESPUESTA: A
-EXPLICACION: Elí observaba su boca en el templo.
-VERSICULO: 1 Samuel 1:9`}
+¿Quién ungió a Saúl como el primer rey de Israel?
+• A. Samuel
+• B. Natán
+• C. Elí
+• D. Gad
+Clave: A`}
                   </pre>
                 </div>
               )}
 
-              {/* Botones de Entrada y Carga de Archivo */}
+              {/* Botones de Carga y Acción */}
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
                   <input
@@ -562,177 +1188,80 @@ VERSICULO: 1 Samuel 1:9`}
                     <Upload className="w-4 h-4 text-amber-400" />
                     <span>Cargar archivo .txt</span>
                   </button>
-                  <span className="text-xs text-slate-400">o pega el texto abajo:</span>
+                  <span className="text-xs text-slate-400">o pega el texto en el área de abajo:</span>
                 </div>
 
                 <button
                   type="button"
-                  onClick={() => handleParse()}
-                  className="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl text-xs sm:text-sm transition flex items-center gap-2 shadow cursor-pointer"
+                  onClick={() => processTextToRows()}
+                  disabled={!inputText.trim()}
+                  className="px-5 py-2.5 bg-amber-500 hover:bg-amber-400 disabled:opacity-40 disabled:cursor-not-allowed text-slate-950 font-black rounded-xl text-xs sm:text-sm transition flex items-center gap-2 shadow cursor-pointer"
                 >
                   <Sparkles className="w-4 h-4 text-slate-950" />
-                  <span>Analizar Texto</span>
+                  <span>Procesar y Pasar a Renglones</span>
                 </button>
               </div>
 
-              {/* Área de Texto */}
+              {/* Textarea */}
               <textarea
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
-                placeholder="Pega aquí todo el bloque de preguntas en formato estándar..."
-                rows={8}
+                placeholder="Pega aquí tus preguntas bíblicas..."
+                rows={10}
                 className="w-full bg-slate-950 border border-slate-700/80 rounded-2xl p-4 text-xs sm:text-sm font-mono text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-amber-400/80 transition resize-y leading-relaxed"
               />
-
-              {/* Caja de Errores Detectados */}
-              {errors.length > 0 && (
-                <div className="p-4 rounded-2xl bg-red-950/60 border border-red-500/40 text-red-200 text-xs space-y-2 animate-fadeIn">
-                  <h4 className="font-bold flex items-center gap-2 text-red-300">
-                    <AlertTriangle className="w-4 h-4 text-red-400" />
-                    <span>Errores detectados en el formato ({errors.length}):</span>
-                  </h4>
-                  <ul className="list-disc list-inside space-y-1 text-red-300/90 font-mono text-[11px]">
-                    {errors.map((err, i) => (
-                      <li key={i}>{err}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {/* VISTA PREVIA DE PREGUNTAS LISTAS PARA GUARDAR */}
-              {parsedQuestions.length > 0 && (
-                <div className="space-y-4 pt-3 border-t border-slate-800 animate-fadeIn">
-                  
-                  {/* Barra de Modo de Importación */}
-                  <div className="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div>
-                      <h4 className="text-sm font-bold text-white flex items-center gap-2">
-                        <Check className="w-4 h-4 text-emerald-400" />
-                        <span>Vista Previa ({parsedQuestions.length} preguntas detectadas)</span>
-                      </h4>
-                      <p className="text-[11px] text-slate-400 mt-0.5">
-                        Revisa las preguntas antes de guardarlas definitivamente en Supabase.
-                      </p>
-                    </div>
-
-                    <div className="flex items-center gap-3 text-xs">
-                      <label className="flex items-center gap-1.5 cursor-pointer text-slate-300 hover:text-white">
-                        <input
-                          type="radio"
-                          name="importMode"
-                          value="append"
-                          checked={importMode === 'append'}
-                          onChange={(e) => setImportMode(e.target.value)}
-                          className="text-amber-500 focus:ring-amber-400"
-                        />
-                        <span className="font-semibold">Agregar a las existentes</span>
-                      </label>
-
-                      <label className="flex items-center gap-1.5 cursor-pointer text-slate-300 hover:text-white">
-                        <input
-                          type="radio"
-                          name="importMode"
-                          value="replace"
-                          checked={importMode === 'replace'}
-                          onChange={(e) => setImportMode(e.target.value)}
-                          className="text-amber-500 focus:ring-amber-400"
-                        />
-                        <span className="font-semibold text-red-300">Reemplazar existentes</span>
-                      </label>
-                    </div>
-                  </div>
-
-                  {/* Cuadrícula de Preguntas en Preview */}
-                  <div className="space-y-2.5 max-h-72 overflow-y-auto pr-2 scrollbar-thin">
-                    {parsedQuestions.map((q, idx) => (
-                      <div key={idx} className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 hover:border-slate-700 text-xs space-y-2 relative group">
-                        
-                        <div className="flex items-start justify-between gap-2 pr-6">
-                          <div className="flex items-center gap-2">
-                            <span className="px-2 py-0.5 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold text-[10px] uppercase font-mono">
-                              {q.bookName} • Cap. {q.chapterNumber}
-                            </span>
-                            {q.category && (
-                              <span className="px-2 py-0.5 rounded-lg bg-blue-500/20 text-blue-300 border border-blue-500/30 text-[10px] font-bold">
-                                {q.category}
-                              </span>
-                            )}
-                          </div>
-                          
-                          <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 uppercase font-black text-[10px] font-mono">
-                            Respuesta: {q.correct_answer?.toUpperCase()}
-                          </span>
-                        </div>
-
-                        <p className="font-bold text-white text-sm leading-snug">
-                          {idx + 1}. {q.question_text}
-                        </p>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[11px] text-slate-300 pt-1">
-                          <div className={`p-1.5 rounded-lg border ${q.correct_answer === 'a' ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-200 font-bold' : 'bg-slate-900 border-slate-800'}`}>
-                            A. {q.option_a}
-                          </div>
-                          <div className={`p-1.5 rounded-lg border ${q.correct_answer === 'b' ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-200 font-bold' : 'bg-slate-900 border-slate-800'}`}>
-                            B. {q.option_b}
-                          </div>
-                          <div className={`p-1.5 rounded-lg border ${q.correct_answer === 'c' ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-200 font-bold' : 'bg-slate-900 border-slate-800'}`}>
-                            C. {q.option_c}
-                          </div>
-                          <div className={`p-1.5 rounded-lg border ${q.correct_answer === 'd' ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-200 font-bold' : 'bg-slate-900 border-slate-800'}`}>
-                            D. {q.option_d}
-                          </div>
-                        </div>
-
-                        {(q.explanation || q.verse_reference) && (
-                          <div className="flex flex-wrap items-center justify-between text-[10px] text-slate-400 italic pt-1 border-t border-slate-900">
-                            {q.explanation && <span>💡 {q.explanation}</span>}
-                            {q.verse_reference && <span className="font-semibold text-amber-300">📖 {q.verse_reference}</span>}
-                          </div>
-                        )}
-
-                        {/* Botón para descartar del preview */}
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveQuestionFromPreview(idx)}
-                          className="absolute top-3 right-3 p-1 rounded-lg text-slate-500 hover:text-red-400 hover:bg-red-950/40 transition cursor-pointer"
-                          title="Quitar pregunta del preview"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Botón de Guardado */}
-                  <div className="pt-2 flex justify-end">
-                    <button
-                      type="button"
-                      onClick={handleSaveToDatabase}
-                      disabled={submitting || parsedQuestions.length === 0}
-                      className="px-6 py-3 bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-black rounded-xl text-xs sm:text-sm uppercase tracking-wider shadow-xl shadow-amber-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition flex items-center gap-2 cursor-pointer"
-                    >
-                      {submitting ? (
-                        <>
-                          <RefreshCw className="w-4 h-4 animate-spin" />
-                          <span>Guardando en Supabase...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Database className="w-4 h-4" />
-                          <span>Guardar {parsedQuestions.length} Pregunta(s) en la Base de Datos</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </div>
-              )}
-
             </div>
           )}
 
-          {/* MODO 2: FORMULARIO MANUAL INDIVIDUAL */}
-          {activeTab === 'form' && (
-            <form onSubmit={handleSingleFormSubmit} className="space-y-4 bg-slate-950/70 p-5 rounded-3xl border border-slate-800 animate-fadeIn">
+          {/* ============================================================== */}
+          {/* PESTAÑA 3: FORMULARIO INDIVIDUAL RÁPIDO                         */}
+          {/* ============================================================== */}
+          {activeTab === 'single' && (
+            <form 
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!singleForm.question_text || !singleForm.option_a || !singleForm.option_b) {
+                  alert('Por favor ingresa al menos el enunciado y las opciones A y B.');
+                  return;
+                }
+
+                const currentBookObj = books.find(b => b.id === parseInt(singleForm.book_id, 10)) || books[0];
+                const currentChapterObj = currentBookObj?.chapters?.find(c => c.id === parseInt(singleForm.chapter_id, 10)) || currentBookObj?.chapters?.[0];
+
+                const newR = {
+                  id: `row_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+                  book_id: currentBookObj?.id || 1,
+                  bookName: currentBookObj?.name || '1 Samuel',
+                  chapterNumber: currentChapterObj?.chapter_number || 1,
+                  chapter_id: currentChapterObj?.id || 1,
+                  category: singleForm.category,
+                  question_text: singleForm.question_text.trim(),
+                  option_a: singleForm.option_a.trim(),
+                  option_b: singleForm.option_b.trim(),
+                  option_c: singleForm.option_c.trim() || 'Ninguna de las anteriores',
+                  option_d: singleForm.option_d.trim() || 'Todas las anteriores',
+                  correct_answer: singleForm.correct_answer.toLowerCase().trim(),
+                  difficulty: singleForm.difficulty,
+                  explanation: singleForm.explanation.trim() || 'Respuesta bíblica oficial NTV.',
+                  verse_reference: singleForm.verse_reference.trim()
+                };
+
+                setRows(prev => [newR, ...prev]);
+                setSingleForm(prev => ({
+                  ...prev,
+                  question_text: '',
+                  option_a: '',
+                  option_b: '',
+                  option_c: '',
+                  option_d: '',
+                  verse_reference: '',
+                  explanation: ''
+                }));
+                setActiveTab('rows');
+                setSuccessMsg('¡Renglón agregado con éxito a la lista!');
+              }} 
+              className="space-y-4 bg-slate-950/70 p-5 rounded-3xl border border-slate-800 animate-fadeIn"
+            >
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-300 mb-1">Libro Bíblico:</label>
@@ -797,7 +1326,7 @@ VERSICULO: 1 Samuel 1:9`}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-400 mb-1">Opción A:</label>
+                  <label className="block text-[11px] font-bold text-slate-400 mb-1">Opción A (Requerida):</label>
                   <input
                     type="text"
                     value={singleForm.option_a}
@@ -808,7 +1337,7 @@ VERSICULO: 1 Samuel 1:9`}
                   />
                 </div>
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-400 mb-1">Opción B:</label>
+                  <label className="block text-[11px] font-bold text-slate-400 mb-1">Opción B (Requerida):</label>
                   <input
                     type="text"
                     value={singleForm.option_b}
@@ -881,8 +1410,8 @@ VERSICULO: 1 Samuel 1:9`}
                   type="submit"
                   className="px-6 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl text-xs sm:text-sm transition cursor-pointer flex items-center gap-2"
                 >
-                  <Sparkles className="w-4 h-4" />
-                  <span>Enviar a Vista Previa</span>
+                  <Plus className="w-4 h-4" />
+                  <span>Insertar en Renglones</span>
                 </button>
               </div>
             </form>
@@ -890,19 +1419,67 @@ VERSICULO: 1 Samuel 1:9`}
 
         </div>
 
-        {/* Footer */}
-        <div className="p-4 bg-slate-950 border-t border-slate-800 flex items-center justify-between gap-3">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs sm:text-sm font-semibold transition cursor-pointer"
-          >
-            Cerrar
-          </button>
+        {/* ============================================================== */}
+        {/* BARRA INFERIOR / PIE DE ACCIONES Y GUARDADO                    */}
+        {/* ============================================================== */}
+        <div className="p-4 bg-slate-950 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3">
+          
+          <div className="flex items-center gap-4 text-xs">
+            <span className="text-slate-400">Modo de sincronización:</span>
+            <label className="flex items-center gap-1.5 cursor-pointer text-slate-300 hover:text-white">
+              <input
+                type="radio"
+                name="footerImportMode"
+                value="append"
+                checked={importMode === 'append'}
+                onChange={(e) => setImportMode(e.target.value)}
+                className="text-amber-500 focus:ring-amber-400"
+              />
+              <span className="font-semibold">Agregar al banco</span>
+            </label>
 
-          <span className="text-[11px] text-slate-400">
-            Total en base de datos: <strong className="text-amber-300 font-mono">{stats.total || 0}</strong> preguntas
-          </span>
+            <label className="flex items-center gap-1.5 cursor-pointer text-slate-300 hover:text-white">
+              <input
+                type="radio"
+                name="footerImportMode"
+                value="replace"
+                checked={importMode === 'replace'}
+                onChange={(e) => setImportMode(e.target.value)}
+                className="text-amber-500 focus:ring-amber-400"
+              />
+              <span className="font-semibold text-red-300">Reemplazar categoría</span>
+            </label>
+          </div>
+
+          <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold transition cursor-pointer"
+            >
+              Cerrar
+            </button>
+
+            <button
+              type="button"
+              onClick={handleSaveRowsToDatabase}
+              disabled={submitting || validRowCount === 0}
+              className="px-6 py-2.5 bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-black rounded-xl text-xs sm:text-sm uppercase tracking-wider shadow-xl shadow-amber-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition flex items-center gap-2 cursor-pointer"
+            >
+              {submitting ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  <span>Guardando en Supabase...</span>
+                </>
+              ) : (
+                <>
+                  <Database className="w-4 h-4" />
+                  <span>Guardar {validRowCount} Renglones en Supabase</span>
+                </>
+              )}
+            </button>
+          </div>
+
         </div>
 
       </div>

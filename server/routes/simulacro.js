@@ -158,6 +158,12 @@ function classifyQuestion(q) {
     }
     const text = ((q.question_text || '') + ' ' + (q.explanation || '') + ' ' + (q.verse_reference || '')).toLowerCase();
     
+    // Si viene la etiqueta explícita de categoría [PERSONAJES], [LUGARES], etc.
+    if (text.includes('[personajes]') || text.includes('[categoría: personajes]') || text.includes('[categoria: personajes]')) return 'personajes';
+    if (text.includes('[lugares]') || text.includes('[categoría: lugares]') || text.includes('[categoria: lugares]')) return 'lugares';
+    if (text.includes('[cantidades]') || text.includes('[categoría: cantidades]') || text.includes('[categoria: cantidades]')) return 'cantidades';
+    if (text.includes('[eventos]') || text.includes('[categoría: eventos]') || text.includes('[categoria: eventos]')) return 'eventos';
+
     // 1. Cantidades (¿cuántos?, números, años, medidas)
     if (
         text.includes('cuánt') || text.includes('cuant') || text.includes('años') ||
@@ -353,8 +359,23 @@ const handleQuestionsImport = async (req, res) => {
         questions.forEach((q, idx) => {
             if (!q.question_text || !q.option_a || !q.option_b) return;
 
-            const qChapterId = q.chapter_id ? parseInt(q.chapter_id, 10) : 1;
-            const assignedCat = targetCategory || q.custom_category || classifyQuestion(q);
+            // Validación estricta del chapter_id (1-102 en Supabase)
+            let qChapterId = parseInt(q.chapter_id, 10);
+            if (isNaN(qChapterId) || qChapterId < 1 || qChapterId > 102) {
+                qChapterId = 1;
+            }
+
+            const assignedCat = targetCategory || q.custom_category || q.category || classifyQuestion(q);
+
+            // Sanitización estricta de correct_answer para respetar CHECK(correct_answer IN ('a','b','c','d'))
+            const matchAns = String(q.correct_answer || 'a').toLowerCase().match(/[a-d]/);
+            const ans = matchAns ? matchAns[0] : 'a';
+
+            // Incluir etiqueta de categoría en la explicación para persistencia inequívoca
+            let cleanExplanation = (q.explanation || 'Respuesta bíblica oficial NTV.').trim();
+            if (!cleanExplanation.toLowerCase().includes(`[${assignedCat}]`)) {
+                cleanExplanation = `[${assignedCat.toUpperCase()}] ${cleanExplanation}`;
+            }
 
             const formatted = {
                 id: `fq_imp_${timestamp}_${idx}_${Math.random().toString(36).substr(2, 5)}`,
@@ -364,8 +385,8 @@ const handleQuestionsImport = async (req, res) => {
                 option_b: q.option_b.trim(),
                 option_c: (q.option_c || '').trim() || 'Ninguna de las anteriores',
                 option_d: (q.option_d || '').trim() || 'Todas las anteriores',
-                correct_answer: (q.correct_answer || 'a').toLowerCase().trim(),
-                explanation: (q.explanation || 'Respuesta bíblica oficial NTV.').trim(),
+                correct_answer: ans,
+                explanation: cleanExplanation,
                 verse_reference: (q.verse_reference || '').trim(),
                 difficulty: q.difficulty || 'medio',
                 custom_category: assignedCat,
@@ -408,20 +429,27 @@ const handleQuestionsImport = async (req, res) => {
             }
         }
 
-        // Insertar en Supabase de forma persistente
-        try {
-            const { error: supaErr } = await supabase.from('questions').insert(rowsToInsert);
-            if (supaErr) {
-                console.warn('[Simulacro] Error insertando en Supabase:', supaErr.message);
+        // Insertar en Supabase en lotes seguros de 50 registros para evitar límites de payload
+        const CHUNK_SIZE = 50;
+        let insertedToDb = 0;
+        for (let i = 0; i < rowsToInsert.length; i += CHUNK_SIZE) {
+            const chunk = rowsToInsert.slice(i, i + CHUNK_SIZE);
+            try {
+                const { error: supaErr } = await supabase.from('questions').insert(chunk);
+                if (supaErr) {
+                    console.warn(`[Simulacro] Advertencia lote ${i}-${i + chunk.length} en Supabase:`, supaErr.message);
+                } else {
+                    insertedToDb += chunk.length;
+                }
+            } catch (dbErr) {
+                console.warn('[Simulacro] Excepción lote en Supabase:', dbErr.message);
             }
-        } catch (dbErr) {
-            console.warn('[Simulacro] Excepción insertando en Supabase:', dbErr.message);
         }
 
         // Agregar al pool en memoria inmediatamente
         cachedQuestions.push(...newQuestions);
 
-        // Guardar en questions.json si está en entorno de desarrollo local con acceso de escritura
+        // Guardar en questions.json si está en entorno local con acceso de escritura
         try {
             if (fs.existsSync(questionsJsonPath)) {
                 fs.writeFileSync(questionsJsonPath, JSON.stringify(cachedQuestions, null, 2), 'utf8');
@@ -438,6 +466,7 @@ const handleQuestionsImport = async (req, res) => {
         res.json({
             success: true,
             importedCount: newQuestions.length,
+            insertedToDb,
             mode,
             category: targetCategory || 'general',
             totalInCategory: totalInCat,
