@@ -653,13 +653,13 @@ export default function FireQuestionsImporterModal({ isOpen, onClose, onImportSu
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="text-[10px] uppercase font-bold tracking-wider px-2.5 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/20">
-                  Simulacro & Olimpiadas Bíblicas
+                <span className="text-[10px] uppercase font-bold tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
+                  Banco Desvinculado de Simulacro
                 </span>
-                <span className="text-xs text-slate-400 hidden sm:inline">Importador Oficial Supabase</span>
+                <span className="text-xs text-slate-400 hidden sm:inline">Independiente de los Quizzes de Capítulos</span>
               </div>
               <h3 className="text-lg sm:text-xl font-bold font-serif text-white">
-                Importador y Editor de Preguntas por Renglones
+                Importador y Editor de Preguntas para Bancos de Clase
               </h3>
             </div>
           </div>

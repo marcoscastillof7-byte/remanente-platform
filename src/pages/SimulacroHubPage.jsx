@@ -3,7 +3,7 @@ import {
   Trophy, Flame, Swords, Dices, Disc, Users, BookOpen, Shield, 
   RotateCcw, Sparkles, CheckCircle2, ChevronRight, Play, Award,
   AlertTriangle, RefreshCw, Star, Info, Upload, UserCheck, Plus, Check,
-  Lock, ArrowLeft
+  Lock, ArrowLeft, Database, Layers
 } from 'lucide-react';
 import FireQuestionsEngine from '../components/simulacro/FireQuestionsEngine';
 import DavidGoliatEngine from '../components/simulacro/DavidGoliatEngine';
@@ -11,6 +11,7 @@ import DadoDadoEngine from '../components/simulacro/DadoDadoEngine';
 import RuletaEngine from '../components/simulacro/RuletaEngine';
 import DisciplinaryCardModal from '../components/simulacro/DisciplinaryCardModal';
 import FireQuestionsImporterModal from '../components/simulacro/FireQuestionsImporterModal';
+import SimulacroBankManager from '../components/simulacro/SimulacroBankManager';
 import { api } from '../utils/api';
 import { useAuth } from '../hooks/useAuth';
 
@@ -191,9 +192,21 @@ export default function SimulacroHubPage() {
 
             <div className="flex flex-wrap items-center gap-2">
               <button
+                onClick={() => {
+                  setActiveTab('bancos');
+                  setSelectedCategory(null);
+                }}
+                className="px-3.5 py-2 bg-gradient-to-r from-blue-600/30 to-indigo-500/20 hover:from-blue-600/40 hover:to-indigo-500/30 border border-blue-500/50 text-blue-300 rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow cursor-pointer"
+                title="Explorar y administrar los bancos desvinculados por clase de Simulacro"
+              >
+                <Database className="w-4 h-4 text-blue-400" />
+                <span>Bancos por Clase</span>
+              </button>
+
+              <button
                 onClick={() => setFireImporterOpen(true)}
                 className="px-3.5 py-2 bg-gradient-to-r from-amber-600/30 to-amber-500/20 hover:from-amber-600/40 hover:to-amber-500/30 border border-amber-500/50 text-amber-300 rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow cursor-pointer"
-                title="Importar preguntas para cada sección de Fire Questions"
+                title="Importar preguntas al banco desvinculado de Simulacro"
               >
                 <Upload className="w-4 h-4 text-amber-400" />
                 <span>Importador</span>
@@ -229,7 +242,25 @@ export default function SimulacroHubPage() {
           </button>
 
           <button
-            onClick={() => setActiveTab('tabla')}
+            onClick={() => {
+              setActiveTab('bancos');
+              setSelectedCategory(null);
+            }}
+            className={`px-4 py-2 rounded-xl transition flex items-center gap-2 cursor-pointer ${
+              activeTab === 'bancos'
+                ? 'bg-amber-500 text-slate-950 shadow-lg shadow-amber-500/20 font-black'
+                : 'bg-slate-900/80 hover:bg-slate-800 text-slate-300 border border-slate-800'
+            }`}
+          >
+            <Database className="w-4 h-4" />
+            <span>Bancos por Clase</span>
+          </button>
+
+          <button
+            onClick={() => {
+              setActiveTab('tabla');
+              setSelectedCategory(null);
+            }}
             className={`px-4 py-2 rounded-xl transition flex items-center gap-2 cursor-pointer ${
               activeTab === 'tabla'
                 ? 'bg-amber-500 text-slate-950 shadow-lg shadow-amber-500/20 font-black'
@@ -241,7 +272,10 @@ export default function SimulacroHubPage() {
           </button>
 
           <button
-            onClick={() => setActiveTab('reglamento')}
+            onClick={() => {
+              setActiveTab('reglamento');
+              setSelectedCategory(null);
+            }}
             className={`px-4 py-2 rounded-xl transition flex items-center gap-2 cursor-pointer ${
               activeTab === 'reglamento'
                 ? 'bg-amber-500 text-slate-950 shadow-lg shadow-amber-500/20 font-black'
@@ -672,6 +706,16 @@ export default function SimulacroHubPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* 4. PESTAÑA: BANCOS DE PREGUNTAS POR CLASE (DESVINCULADO) */}
+      {activeTab === 'bancos' && (
+        <SimulacroBankManager
+          onOpenImporter={(category) => {
+            setSelectedCategory(category);
+            setFireImporterOpen(true);
+          }}
+        />
       )}
 
       {/* Modal de Arbitraje Disciplinario */}
