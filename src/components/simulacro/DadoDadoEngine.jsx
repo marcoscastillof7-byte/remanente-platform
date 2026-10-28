@@ -694,14 +694,25 @@ export default function DadoDadoEngine({
                       const isSelected = selectedOptKey === optKey;
 
                       let btnStyle = 'bg-slate-950/80 border-slate-800 text-slate-200 hover:border-amber-400 hover:bg-slate-800/60';
+                      let badge = null;
 
                       if (answeredState) {
                         if (isCorrect) {
-                          btnStyle = 'bg-emerald-950/90 border-emerald-500 text-emerald-200 ring-2 ring-emerald-500';
+                          btnStyle = 'bg-emerald-950/90 border-emerald-500 text-emerald-100 ring-2 ring-emerald-400 shadow-lg shadow-emerald-950/50 scale-[1.01]';
+                          badge = (
+                            <span className="ml-auto px-2 py-0.5 rounded-full bg-emerald-500/30 text-emerald-300 text-[11px] font-black border border-emerald-400 flex items-center gap-1 shrink-0 animate-pulse">
+                              ✓ Correcta
+                            </span>
+                          );
                         } else if (isSelected && !isCorrect) {
-                          btnStyle = 'bg-red-950/90 border-red-500 text-red-200 line-through';
+                          btnStyle = 'bg-red-950/90 border-red-500 text-red-200 line-through ring-2 ring-red-400 opacity-90';
+                          badge = (
+                            <span className="ml-auto px-2 py-0.5 rounded-full bg-red-500/30 text-red-300 text-[11px] font-black border border-red-400 flex items-center gap-1 shrink-0">
+                              ✗ Tu Elección
+                            </span>
+                          );
                         } else {
-                          btnStyle = 'bg-slate-950/40 border-slate-900 text-slate-600 opacity-50';
+                          btnStyle = 'bg-slate-950/40 border-slate-900 text-slate-600 opacity-40';
                         }
                       }
 
@@ -712,12 +723,19 @@ export default function DadoDadoEngine({
                           disabled={!timerActive || answeredState !== null}
                           className={`p-4 rounded-2xl border-2 text-left transition-all duration-150 flex items-start gap-3 cursor-pointer ${btnStyle}`}
                         >
-                          <span className="w-7 h-7 rounded-lg bg-slate-900 border border-slate-700 flex items-center justify-center font-mono font-bold text-xs uppercase shrink-0">
+                          <span className={`w-7 h-7 rounded-lg border flex items-center justify-center font-mono font-bold text-xs uppercase shrink-0 ${
+                            answeredState && isCorrect
+                              ? 'bg-emerald-800 border-emerald-400 text-white font-black'
+                              : answeredState && isSelected && !isCorrect
+                              ? 'bg-red-900 border-red-400 text-white font-black'
+                              : 'bg-slate-900 border-slate-700 text-slate-300'
+                          }`}>
                             {optKey}
                           </span>
-                          <span className="text-sm font-medium leading-snug pt-0.5">
+                          <span className="text-sm font-medium leading-snug pt-0.5 flex-1">
                             {optText}
                           </span>
+                          {badge}
                         </button>
                       );
                     })}
@@ -725,23 +743,28 @@ export default function DadoDadoEngine({
 
                   {/* Feedback y Botón Siguiente Tirada */}
                   {answeredState && (
-                    <div className={`p-4 rounded-2xl border-2 flex flex-col sm:flex-row items-center justify-between gap-4 animate-fadeIn ${
+                    <div className={`p-4 rounded-2xl border-2 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 animate-fadeIn ${
                       answeredState === 'correct' 
                         ? 'bg-emerald-950/60 border-emerald-500 text-emerald-200' 
                         : 'bg-red-950/60 border-red-500 text-red-200'
                     }`}>
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-start gap-3">
                         {answeredState === 'correct' ? (
-                          <CheckCircle2 className="w-6 h-6 text-emerald-400 shrink-0" />
+                          <CheckCircle2 className="w-6 h-6 text-emerald-400 shrink-0 mt-0.5" />
                         ) : (
-                          <XCircle className="w-6 h-6 text-red-400 shrink-0" />
+                          <XCircle className="w-6 h-6 text-red-400 shrink-0 mt-0.5" />
                         )}
                         <div>
                           <h4 className="text-base font-black">
                             {answeredState === 'correct' ? '¡Respuesta Correcta! (+10 pts)' : answeredState === 'timeout' ? '¡Tiempo Agotado! (0 pts)' : '¡Respuesta Incorrecta! (0 pts)'}
                           </h4>
+                          <div className="mt-1 flex items-center gap-2">
+                            <span className="text-xs bg-slate-950/90 px-2.5 py-1 rounded-lg border border-slate-700 font-bold text-white">
+                              Respuesta correcta: <strong className="text-emerald-400 uppercase">{(currentQuestion.correct_answer || 'a')})</strong> {currentQuestion[`option_${(currentQuestion.correct_answer || 'a').toLowerCase()}`]}
+                            </span>
+                          </div>
                           {currentQuestion.explanation && (
-                            <p className="text-xs text-slate-300 mt-0.5 italic">
+                            <p className="text-xs text-slate-300 mt-1 italic">
                               💡 {currentQuestion.explanation}
                             </p>
                           )}

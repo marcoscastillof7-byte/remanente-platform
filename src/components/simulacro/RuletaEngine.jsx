@@ -757,7 +757,7 @@ export default function RuletaEngine({
                       </h3>
                     </div>
 
-                    {/* Banner de Resultado */}
+                    {/* Banner de Resultado y Revelación de la Respuesta Correcta */}
                     {answeredState && (
                       <div className={`p-4 rounded-2xl border text-center animate-fadeIn ${
                         answeredState === 'correct'
@@ -784,9 +784,14 @@ export default function RuletaEngine({
                             <span>¡Tiempo de 30s agotado! Pregunta anulada por reglamento (0 puntos)</span>
                           </div>
                         )}
+                        <div className="mt-2 flex items-center justify-center">
+                          <span className="text-xs bg-slate-950/90 px-3 py-1 rounded-lg border border-slate-700 font-bold text-white">
+                            Respuesta correcta: <strong className="text-emerald-400 uppercase">{(currentQuestion.correct_answer || 'a')})</strong> {currentQuestion[`option_${(currentQuestion.correct_answer || 'a').toLowerCase()}`]}
+                          </span>
+                        </div>
                         {currentQuestion.explanation && (
                           <p className="text-xs text-slate-300 mt-1 italic">
-                            💡 {currentQuestion.explanation} ({currentQuestion.verse_reference})
+                            💡 {currentQuestion.explanation} {currentQuestion.verse_reference ? `(${currentQuestion.verse_reference})` : ''}
                           </p>
                         )}
                       </div>
@@ -801,13 +806,25 @@ export default function RuletaEngine({
                         const isSelectedOpt = selectedOptKey === opt;
                         
                         let btnStyle = 'bg-slate-950/80 border-slate-700/80 text-slate-200 hover:border-purple-400 cursor-pointer';
+                        let badge = null;
+
                         if (answeredState) {
                           if (isCorrectOpt) {
-                            btnStyle = 'bg-emerald-600/30 border-emerald-500 text-white font-bold ring-1 ring-emerald-500';
+                            btnStyle = 'bg-emerald-950/90 border-emerald-500 text-emerald-100 ring-2 ring-emerald-400 font-bold shadow-lg shadow-emerald-950/50 scale-[1.01]';
+                            badge = (
+                              <span className="ml-auto px-2 py-0.5 rounded-full bg-emerald-500/30 text-emerald-300 text-[11px] font-black border border-emerald-400 flex items-center gap-1 shrink-0 animate-pulse">
+                                ✓ Correcta
+                              </span>
+                            );
                           } else if (isSelectedOpt && !isCorrectOpt) {
-                            btnStyle = 'bg-red-950/90 border-red-500 text-red-200 line-through';
+                            btnStyle = 'bg-red-950/90 border-red-500 text-red-200 line-through ring-2 ring-red-400 opacity-90';
+                            badge = (
+                              <span className="ml-auto px-2 py-0.5 rounded-full bg-red-500/30 text-red-300 text-[11px] font-black border border-red-400 flex items-center gap-1 shrink-0">
+                                ✗ Tu Elección
+                              </span>
+                            );
                           } else {
-                            btnStyle = 'bg-slate-950/40 border-slate-800 text-slate-500 opacity-60';
+                            btnStyle = 'bg-slate-950/40 border-slate-800 text-slate-600 opacity-40';
                           }
                         }
 
@@ -818,10 +835,17 @@ export default function RuletaEngine({
                             disabled={!timerActive || Boolean(answeredState)}
                             className={`p-3.5 rounded-2xl border text-left flex items-start gap-3 transition ${btnStyle}`}
                           >
-                            <span className="w-6 h-6 rounded-md bg-slate-800 text-purple-400 font-mono text-xs font-bold flex items-center justify-center shrink-0">
+                            <span className={`w-7 h-7 rounded-lg border font-mono text-xs font-bold flex items-center justify-center shrink-0 ${
+                              answeredState && isCorrectOpt
+                                ? 'bg-emerald-800 border-emerald-400 text-white font-black'
+                                : answeredState && isSelectedOpt && !isCorrectOpt
+                                ? 'bg-red-900 border-red-400 text-white font-black'
+                                : 'bg-slate-800 text-purple-400 border-slate-700'
+                            }`}>
                               {opt.toUpperCase()}
                             </span>
-                            <span className="text-xs sm:text-sm font-medium leading-snug">{optText}</span>
+                            <span className="text-xs sm:text-sm font-medium leading-snug pt-0.5 flex-1">{optText}</span>
+                            {badge}
                           </button>
                         );
                       })}

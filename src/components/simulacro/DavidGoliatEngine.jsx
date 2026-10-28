@@ -751,14 +751,25 @@ export default function DavidGoliatEngine({
                   const isSelected = selectedOptKey === optKey;
 
                   let btnStyle = 'bg-slate-950/80 border-slate-800 text-slate-200';
+                  let badge = null;
 
                   if (answeredState) {
                     if (isCorrect) {
-                      btnStyle = 'bg-emerald-950/90 border-emerald-500 text-emerald-200 ring-2 ring-emerald-500';
+                      btnStyle = 'bg-emerald-950/90 border-emerald-500 text-emerald-100 ring-2 ring-emerald-400 shadow-lg shadow-emerald-950/50 scale-[1.01]';
+                      badge = (
+                        <span className="ml-auto px-2 py-0.5 rounded-full bg-emerald-500/30 text-emerald-300 text-[11px] font-black border border-emerald-400 flex items-center gap-1 shrink-0 animate-pulse">
+                          ✓ Correcta
+                        </span>
+                      );
                     } else if (isSelected && !isCorrect) {
-                      btnStyle = 'bg-red-950/90 border-red-500 text-red-200 line-through';
+                      btnStyle = 'bg-red-950/90 border-red-500 text-red-200 line-through ring-2 ring-red-400 opacity-90';
+                      badge = (
+                        <span className="ml-auto px-2 py-0.5 rounded-full bg-red-500/30 text-red-300 text-[11px] font-black border border-red-400 flex items-center gap-1 shrink-0">
+                          ✗ Tu Elección
+                        </span>
+                      );
                     } else {
-                      btnStyle = 'bg-slate-950/40 border-slate-900 text-slate-600 opacity-50';
+                      btnStyle = 'bg-slate-950/40 border-slate-900 text-slate-600 opacity-40';
                     }
                   } else if (buzzerPressed) {
                     btnStyle = 'bg-slate-950 border-amber-500/40 text-white hover:border-amber-400 hover:bg-amber-950/30 cursor-pointer shadow-md';
@@ -773,12 +784,19 @@ export default function DavidGoliatEngine({
                       disabled={!buzzerPressed || answeredState !== null}
                       className={`p-4 rounded-2xl border-2 text-left transition-all duration-150 flex items-start gap-3 ${btnStyle}`}
                     >
-                      <span className="w-8 h-8 rounded-xl bg-slate-900 border border-slate-700 flex items-center justify-center font-mono font-bold text-xs uppercase shrink-0">
+                      <span className={`w-8 h-8 rounded-xl border flex items-center justify-center font-mono font-bold text-xs uppercase shrink-0 ${
+                        answeredState && isCorrect
+                          ? 'bg-emerald-800 border-emerald-400 text-white font-black'
+                          : answeredState && isSelected && !isCorrect
+                          ? 'bg-red-900 border-red-400 text-white font-black'
+                          : 'bg-slate-900 border-slate-700 text-slate-300'
+                      }`}>
                         {optKey}
                       </span>
-                      <span className="text-sm sm:text-base font-medium leading-snug pt-1">
+                      <span className="text-sm sm:text-base font-medium leading-snug pt-1 flex-1">
                         {optText}
                       </span>
+                      {badge}
                     </button>
                   );
                 })}
@@ -791,19 +809,24 @@ export default function DavidGoliatEngine({
                     ? 'bg-emerald-950/60 border-emerald-500 text-emerald-200' 
                     : 'bg-red-950/60 border-red-500 text-red-200'
                 }`}>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-start gap-3">
                     {answeredState.isCorrect ? (
-                      <CheckCircle2 className="w-7 h-7 text-emerald-400 shrink-0" />
+                      <CheckCircle2 className="w-7 h-7 text-emerald-400 shrink-0 mt-0.5" />
                     ) : (
-                      <XCircle className="w-7 h-7 text-red-400 shrink-0" />
+                      <XCircle className="w-7 h-7 text-red-400 shrink-0 mt-0.5" />
                     )}
                     <div>
                       <h4 className="text-base font-black">
-                        {answeredState.isCorrect ? '¡Impacto Certero!' : '¡Tiro Fallido!'}
+                        {answeredState.isCorrect ? '¡Impacto Certero! (+10 pts)' : '¡Tiro Fallido! (0 pts)'}
                       </h4>
                       <p className="text-xs sm:text-sm font-semibold opacity-90 mt-0.5">
                         {answeredState.message}
                       </p>
+                      <div className="mt-1.5 flex items-center gap-2">
+                        <span className="text-xs bg-slate-950/90 px-2.5 py-1 rounded-lg border border-slate-700 font-bold text-white">
+                          Respuesta correcta: <strong className="text-emerald-400 uppercase">{(currentQ.correct_answer || 'a')})</strong> {currentQ[`option_${(currentQ.correct_answer || 'a').toLowerCase()}`]}
+                        </span>
+                      </div>
                       {currentQ.explanation && (
                         <p className="text-[11px] text-slate-300 mt-1 italic">
                           💡 {currentQ.explanation}

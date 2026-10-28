@@ -128,10 +128,12 @@ export default function FireQuestionsEngine({
   const [incorrectCount, setIncorrectCount] = useState(0);
   const [pasoCount, setPasoCount] = useState(0);
   const [selectedOptKey, setSelectedOptKey] = useState(null);
+  const [answeredFeedback, setAnsweredFeedback] = useState(null);
   const [isNewRecord, setIsNewRecord] = useState(false);
   const [wisdomAwarded, setWisdomAwarded] = useState(null);
 
   const timerRef = useRef(null);
+  const advanceTimeoutRef = useRef(null);
 
   // Cargar preguntas de la categoría elegida
   const loadCategoryQuestions = async (catId) => {
@@ -162,6 +164,7 @@ export default function FireQuestionsEngine({
 
   // Iniciar la ronda individual de 90 segundos del jugador
   const handleStartRound = () => {
+    if (advanceTimeoutRef.current) clearTimeout(advanceTimeoutRef.current);
     setIsPlaying(true);
     setRoundFinished(false);
     setTimeLeft(90);
@@ -171,6 +174,7 @@ export default function FireQuestionsEngine({
     setPasoCount(0);
     setQIndex(0);
     setSelectedOptKey(null);
+    setAnsweredFeedback(null);
     setIsNewRecord(false);
     setWisdomAwarded(null);
     playNotificationSound();
@@ -194,8 +198,10 @@ export default function FireQuestionsEngine({
   // Finalizar la ronda de 90 segundos
   const handleFinishRound = () => {
     if (timerRef.current) clearInterval(timerRef.current);
+    if (advanceTimeoutRef.current) clearTimeout(advanceTimeoutRef.current);
     setIsPlaying(false);
     setRoundFinished(true);
+    setAnsweredFeedback(null);
     playNotificationSound();
 
     // Actualizar registro del jugador
@@ -249,20 +255,30 @@ export default function FireQuestionsEngine({
     });
   };
 
-  // Limpieza de temporizador al desmontar
+  // Limpieza de temporizadores al desmontar
   useEffect(() => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
+      if (advanceTimeoutRef.current) clearTimeout(advanceTimeoutRef.current);
     };
   }, []);
 
+  // Avanzar de inmediato a la siguiente pregunta cancelando la espera automática
+  const handleAdvanceNextImmediate = () => {
+    if (advanceTimeoutRef.current) clearTimeout(advanceTimeoutRef.current);
+    setSelectedOptKey(null);
+    setAnsweredFeedback(null);
+    setQIndex(prev => prev + 1);
+  };
+
   // Respuesta del jugador: selección entre A, B, C, D
   const handleAnswerOption = (optKey) => {
-    if (!isPlaying || roundFinished || timeLeft <= 0 || !questions[qIndex]) return;
+    if (!isPlaying || roundFinished || timeLeft <= 0 || !questions[qIndex] || answeredFeedback) return;
 
     setSelectedOptKey(optKey);
     const curQ = questions[qIndex];
-    const isCorrect = (curQ.correct_answer || 'a').toLowerCase() === optKey.toLowerCase();
+    const correctKey = (curQ.correct_answer || 'a').toLowerCase();
+    const isCorrect = correctKey === optKey.toLowerCase();
 
     if (isCorrect) {
       setScore(prev => prev + 10);
@@ -273,28 +289,67 @@ export default function FireQuestionsEngine({
       playTone('wrong');
     }
 
-    // Avanzar de inmediato a la siguiente pregunta
-    setTimeout(() => {
+    setAnsweredFeedback({
+      selectedKey: optKey,
+      correctKey,
+      isCorrect,
+      isPaso: false,
+      explanation: curQ.explanation,
+      verse: curQ.verse_reference
+    });
+
+    // Revelar la respuesta correcta de inmediato y avanzar de forma suave tras 1.7s
+    if (advanceTimeoutRef.current) clearTimeout(advanceTimeoutRef.current);
+    advanceTimeoutRef.current = setTimeout(() => {
       setSelectedOptKey(null);
+      setAnsweredFeedback(null);
       setQIndex(prev => prev + 1);
-    }, 150);
+    }, 1700);
   };
 
-  // Botón "PASO" (0 puntos, sin penalización)
+  // Botón "PASO" (0 puntos, sin penalización, revela la correcta pedagógicamente)
   const handlePaso = () => {
-    if (!isPlaying || roundFinished || timeLeft <= 0) return;
+    if (!isPlaying || roundFinished || timeLeft <= 0 || !questions[qIndex] || answeredFeedback) return;
     setPasoCount(prev => prev + 1);
     playTone('paso');
+
+    const curQ = questions[qIndex];
+    const correctKey = (curQ.correct_answer || 'a').toLowerCase();
+
     setSelectedOptKey(null);
-    setQIndex(prev => prev + 1);
+    setAnsweredFeedback({
+      selectedKey: null,
+      correctKey,
+      isCorrect: false,
+      isPaso: true,
+      explanation: curQ.explanation,
+      verse: curQ.verse_reference
+    });
+
+    if (advanceTimeoutRef.current) clearTimeout(advanceTimeoutRef.current);
+    advanceTimeoutRef.current = setTimeout(() => {
+      setSelectedOptKey(null);
+      setAnsweredFeedback(null);
+      setQIndex(prev => prev + 1);
+    }, 1500);
   };
 
-  // Controles por teclado: Teclas 1, 2, 3, 4 o A, B, C, D y Espacio/P para Paso
+  // Controles por teclado: Teclas 1, 2, 3, 4 o A, B, C, D y Espacio/P para Paso, Enter/Espacio para avanzar
   useEffect(() => {
     if (!isPlaying || roundFinished) return;
 
     const handleKeyDown = (e) => {
       const key = e.key.toLowerCase();
+
+      // Si la retroalimentación está en pantalla, permitir avanzar inmediatamente con Enter, Espacio o Flecha
+      if (answeredFeedback) {
+        if (key === 'enter' || key === ' ' || key === 'arrowright') {
+          e.preventDefault();
+          handleAdvanceNextImmediate();
+        }
+        return;
+      }
+
       if (key === 'a' || key === '1') handleAnswerOption('a');
       else if (key === 'b' || key === '2') handleAnswerOption('b');
       else if (key === 'c' || key === '3') handleAnswerOption('c');
@@ -307,7 +362,7 @@ export default function FireQuestionsEngine({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isPlaying, roundFinished, qIndex, questions]);
+  }, [isPlaying, roundFinished, qIndex, questions, answeredFeedback]);
 
   // Tabla general de clasificación ordenada por mejor puntaje
   const sortedLeaderboard = effectivePlayers.map(p => {
@@ -701,45 +756,123 @@ export default function FireQuestionsEngine({
                     </h3>
                   </div>
 
-                  {/* 4 Opciones de Respuesta */}
+                  {/* 4 Opciones de Respuesta con Retroalimentación Inmediata */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                     {['a', 'b', 'c', 'd'].map(optKey => {
                       const optText = currentQ[`option_${optKey}`];
                       if (!optText) return null;
 
-                      const isSelected = selectedOptKey === optKey;
+                      const correctKey = (currentQ.correct_answer || 'a').toLowerCase();
+                      const isThisCorrect = correctKey === optKey;
+                      const isThisSelected = selectedOptKey === optKey;
+
+                      let btnStyle = 'bg-slate-950/80 border-slate-800 hover:border-amber-500/60 hover:bg-slate-800/60 text-slate-200';
+                      let badge = null;
+
+                      if (answeredFeedback) {
+                        if (isThisCorrect) {
+                          btnStyle = 'bg-emerald-950/90 border-emerald-500 text-emerald-100 ring-2 ring-emerald-400 shadow-lg shadow-emerald-950/50 scale-[1.01]';
+                          badge = (
+                            <span className="ml-auto px-2 py-0.5 rounded-full bg-emerald-500/30 text-emerald-300 text-[11px] font-black border border-emerald-400 flex items-center gap-1 shrink-0 animate-pulse">
+                              ✓ Correcta
+                            </span>
+                          );
+                        } else if (isThisSelected && !isThisCorrect) {
+                          btnStyle = 'bg-red-950/90 border-red-500 text-red-200 line-through ring-2 ring-red-400 opacity-90';
+                          badge = (
+                            <span className="ml-auto px-2 py-0.5 rounded-full bg-red-500/30 text-red-300 text-[11px] font-black border border-red-400 flex items-center gap-1 shrink-0">
+                              ✗ Tu Respuesta
+                            </span>
+                          );
+                        } else {
+                          btnStyle = 'bg-slate-950/40 border-slate-900 text-slate-600 opacity-40';
+                        }
+                      }
 
                       return (
                         <button
                           key={optKey}
                           onClick={() => handleAnswerOption(optKey)}
-                          className={`p-4 rounded-2xl border-2 text-left transition-all duration-150 flex items-start gap-3 cursor-pointer ${
-                            isSelected
-                              ? 'bg-amber-500/20 border-amber-400 text-white scale-[1.01]'
-                              : 'bg-slate-950/80 border-slate-800 hover:border-amber-500/60 hover:bg-slate-800/60 text-slate-200'
-                          }`}
+                          disabled={Boolean(answeredFeedback)}
+                          className={`p-4 rounded-2xl border-2 text-left transition-all duration-150 flex items-start gap-3 cursor-pointer ${btnStyle}`}
                         >
-                          <span className="w-7 h-7 rounded-lg bg-slate-900 border border-slate-700 flex items-center justify-center font-mono font-bold text-xs uppercase shrink-0">
+                          <span className={`w-7 h-7 rounded-lg border flex items-center justify-center font-mono font-bold text-xs uppercase shrink-0 ${
+                            answeredFeedback && isThisCorrect
+                              ? 'bg-emerald-800 border-emerald-400 text-white font-black'
+                              : answeredFeedback && isThisSelected && !isThisCorrect
+                              ? 'bg-red-900 border-red-400 text-white font-black'
+                              : 'bg-slate-900 border-slate-700 text-slate-300'
+                          }`}>
                             {optKey}
                           </span>
-                          <span className="text-sm sm:text-base font-medium leading-snug pt-0.5">
+                          <span className="text-sm sm:text-base font-medium leading-snug pt-0.5 flex-1">
                             {optText}
                           </span>
+                          {badge}
                         </button>
                       );
                     })}
                   </div>
 
+                  {/* Retroalimentación Visual Inmediata: Revela la Respuesta Correcta */}
+                  {answeredFeedback && (
+                    <div className={`p-4 rounded-2xl border-2 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-fadeIn ${
+                      answeredFeedback.isCorrect 
+                        ? 'bg-emerald-950/70 border-emerald-500 text-emerald-200' 
+                        : answeredFeedback.isPaso
+                        ? 'bg-amber-950/70 border-amber-500 text-amber-200'
+                        : 'bg-red-950/70 border-red-500 text-red-200'
+                    }`}>
+                      <div className="space-y-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          {answeredFeedback.isCorrect ? (
+                            <span className="font-black text-sm text-emerald-300 flex items-center gap-1.5">
+                              <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+                              ¡RESPUESTA CORRECTA! (+10 pts)
+                            </span>
+                          ) : answeredFeedback.isPaso ? (
+                            <span className="font-black text-sm text-amber-300 flex items-center gap-1.5">
+                              ↷ PASASTE ESTA PREGUNTA (0 pts)
+                            </span>
+                          ) : (
+                            <span className="font-black text-sm text-red-300 flex items-center gap-1.5">
+                              <XCircle className="w-5 h-5 text-red-400 shrink-0" />
+                              RESPUESTA INCORRECTA (0 pts)
+                            </span>
+                          )}
+                          <span className="text-xs bg-slate-950/90 px-2.5 py-1 rounded-lg border border-slate-700 font-bold text-white">
+                            Respuesta correcta: <strong className="text-emerald-400 uppercase">{answeredFeedback.correctKey})</strong> {currentQ[`option_${answeredFeedback.correctKey}`]}
+                          </span>
+                        </div>
+                        {(answeredFeedback.explanation || answeredFeedback.verse) && (
+                          <p className="text-xs text-slate-300 italic pt-0.5">
+                            💡 {answeredFeedback.explanation || ''} {answeredFeedback.verse ? `(${answeredFeedback.verse})` : ''}
+                          </p>
+                        )}
+                      </div>
+
+                      <button
+                        onClick={handleAdvanceNextImmediate}
+                        className="w-full sm:w-auto px-4 py-2 bg-white text-slate-950 hover:bg-slate-200 font-black text-xs rounded-xl shadow transition flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
+                      >
+                        <span>Siguiente Pregunta</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
+
                   {/* Botón PASO */}
-                  <div className="pt-2 flex justify-end">
-                    <button
-                      onClick={handlePaso}
-                      className="px-6 py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white font-bold text-xs sm:text-sm rounded-xl transition cursor-pointer flex items-center gap-2"
-                      title="Pasar a la siguiente pregunta sin penalización"
-                    >
-                      <span>↷ PASO (Presiona Espacio o P)</span>
-                    </button>
-                  </div>
+                  {!answeredFeedback && (
+                    <div className="pt-2 flex justify-end">
+                      <button
+                        onClick={handlePaso}
+                        className="px-6 py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white font-bold text-xs sm:text-sm rounded-xl transition cursor-pointer flex items-center gap-2"
+                        title="Pasar a la siguiente pregunta sin penalización"
+                      >
+                        <span>↷ PASO (Presiona Espacio o P)</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="py-12 text-center text-slate-400">
