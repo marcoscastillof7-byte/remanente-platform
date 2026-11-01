@@ -100,13 +100,6 @@ export default function ClausuraOverlay() {
               </p>
 
               <p className="font-serif text-slate-100 sm:text-lg leading-relaxed">
-                Gracias a Dios que me permitió usar mi talento para poder{' '}
-                <u className="decoration-amber-400 decoration-[2.5px] underline-offset-4 text-amber-200 font-bold bg-amber-500/10 px-1.5 py-0.5 rounded">
-                  ayudar a otros y seguir siendo embajador de su reino
-                </u>.
-              </p>
-
-              <p className="font-serif text-slate-100 sm:text-lg leading-relaxed">
                 <u className="decoration-amber-400 decoration-[2.5px] underline-offset-4 text-amber-200 font-bold bg-amber-500/10 px-1.5 py-0.5 rounded">
                   No pares de estudiar Su palabra y de seguir buscándolo
                 </u>.
