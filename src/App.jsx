@@ -8,6 +8,7 @@ import LoadingSpinner from './components/shared/LoadingSpinner';
 import InAppNotificationBanner from './components/shared/InAppNotificationBanner';
 import GlobalRealtimeManager from './components/shared/GlobalRealtimeManager';
 import ErrorBoundary from './components/shared/ErrorBoundary';
+import ClausuraOverlay from './components/shared/ClausuraOverlay';
 import { unlockAudio } from './utils/notificationSound';
 
 const LoginPage = lazy(() => import('./pages/LoginPage'));
@@ -62,6 +63,7 @@ const App = () => {
   return (
     <ToastProvider>
       <AuthProvider>
+        <ClausuraOverlay />
         <GlobalRealtimeManager />
         <InAppNotificationBanner />
         <ErrorBoundary>
